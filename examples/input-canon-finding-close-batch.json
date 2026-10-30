@@ -1,0 +1,19 @@
+[
+  {
+    "operands": [
+      "add-login"
+    ],
+    "round": 1,
+    "seq": 1,
+    "disposition": "fixed"
+  },
+  {
+    "operands": [
+      "add-login"
+    ],
+    "round": 1,
+    "seq": 2,
+    "disposition": "deferred",
+    "reason": "tracked for the next release"
+  }
+]

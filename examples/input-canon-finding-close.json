@@ -1,0 +1,9 @@
+{
+  "operands": [
+    "add-login"
+  ],
+  "round": 1,
+  "seq": 2,
+  "disposition": "rejected",
+  "reason": "works as designed"
+}

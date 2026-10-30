@@ -1,0 +1,12 @@
+{
+  "operands": [
+    "add-login"
+  ],
+  "round": 1,
+  "seq": 1,
+  "disposition": "fixed",
+  "reason": "x",
+  "resolutionRev": "HEAD",
+  "promote": true,
+  "noPromote": true
+}
