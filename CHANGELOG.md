@@ -35,6 +35,10 @@ declares `meta.contractVersion: "1.1"`.
 - **Callers keep what they understand.** A caller leaves out an argument, output, tree entry or batch item of an
   unknown variant, drops the completeness rules its view can then no longer meet, and never rejects a document for
   what it left out; a listed member that is not a string is still a wrong type (15.6, 15.8, D28).
+- **Every listed value has a caller treatment.** One table in 15.6 covers every string member whose values the
+  contract lists (kinds, effect, idempotency, level, valueType, constraint rule, input option, domain keywords and
+  types, output kind, batch status, stream line type): leave it out, use the most cautious known value, the part is
+  unusable, or (another major) refuse. `scripts/check.ts` fails when a schema lists values without a row (D29).
 - **Map keys with NUL** are not selectable, since argv cannot carry them (6.10, D28).
 - **Examples and validator.** The synthetic tool `acme` now declares 1.1: registry reasons, a warning registry,
   map and escaped field paths. `examples/caller-*.json` are documents of a later minor that a caller must read;
