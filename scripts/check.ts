@@ -10,7 +10,8 @@
 //                                           that command's fragment schema and, unless the name contains
 //                                           `fragment`, its `argumentsRef`, `required` and `constraints` (11.7)
 //   stream-*   an NDJSON stream            stream-line.schema.json + spec 13.5
-//   caller-*   a document of a later minor that a caller of this one must read (spec 15.6, 15.8): it must pass
+//   caller-*   a document of a later minor that a caller of this one must read (spec 15.6, 15.8; also
+//              caller-*.ndjson streams and caller-batch-* batch reports): its view must pass
 //              the contract schemas read open (`additionalProperties: false` ignored) and fail them closed, so it
 //              really carries unknown members; `caller-schema-*` against schema-doc, the rest against envelope
 //   anything else: an envelope             envelope.schema.json + spec 6-8, 11.11, and `data` against the
@@ -1525,102 +1526,230 @@ function checkStream(text: string, problems: string[]) {
   checkEnvelope(result, problems, { output })
 }
 
-/** The values of a listed set in a contract schema, read from the schema itself so they cannot drift. */
-const schemaDocDefs = (JSON.parse(readFileSync(join(repo, "schema", "schema-doc.schema.json"), "utf8")) as { $defs: Record<string, JsonObject> }).$defs
-const listed = (node: JsonValue | undefined): JsonValue[] => (isObject(node) && Array.isArray(node.enum) ? node.enum : [])
+// ---- the caller (spec 15.6, 15.8) ----
+/** The values of a listed set, read from the contract schemas themselves so that they cannot drift. */
+const schemaFile = (name: string) => JSON.parse(readFileSync(join(repo, "schema", name), "utf8")) as JsonObject & { $defs: Record<string, JsonObject> }
+const docDefs = schemaFile("schema-doc.schema.json").$defs
+const prop = (def: JsonObject | undefined, name: string): JsonValue | undefined => (isObject(def?.properties) ? def.properties[name] : undefined)
+const listed = (node: JsonValue | undefined): JsonValue[] => (isObject(node) && Array.isArray(node.enum) ? node.enum : isObject(node) && node.const !== undefined ? [node.const] : [])
 const KNOWN = {
   kinds: ["tree", "group", "command", "errors", "error", "warnings", "warning"],
-  effects: listed(schemaDocDefs.effect),
-  idempotency: listed(schemaDocDefs.idempotency),
-  valueTypes: listed(isObject(schemaDocDefs.option.properties) ? schemaDocDefs.option.properties.valueType : undefined),
-  outputKinds: listed(isObject(schemaDocDefs.output.properties) ? schemaDocDefs.output.properties.kind : undefined),
-  entryKinds: listed(isObject(schemaDocDefs.treeEntry.properties) ? schemaDocDefs.treeEntry.properties.kind : undefined),
+  effects: listed(docDefs.effect),
+  idempotency: listed(docDefs.idempotency),
+  levels: listed(prop(docDefs.tree, "level")),
+  entryKinds: listed(prop(docDefs.treeEntry, "kind")),
+  operandTypes: listed(prop(docDefs.operand, "valueType")),
+  optionTypes: listed(prop(docDefs.option, "valueType")),
+  rules: listed(prop(docDefs.constraint, "rule")),
+  inputOptions: listed(prop(docDefs.input, "option")),
+  domainKeywords: Object.keys(isObject(docDefs.domainNode.properties) ? docDefs.domainNode.properties : {}),
+  jsonTypes: listed(docDefs.jsonType),
+  outputKinds: listed(prop(docDefs.output, "kind")),
+  statuses: listed(prop(schemaFile("batch-report.schema.json").$defs.item, "status")),
+  lineTypes: ["start", "event", "end"],
 }
 
 /**
- * A caller's view of a schema answer (spec 15.6, 15.8): what it can act on, with every value outside a listed set
- * handled as 15.6 says. A listed member (a discriminator) whose value is not a string is a known member of the wrong
- * type and rejects the document (`problems`); only an unknown string falls back. An unknown `data.kind` leaves
- * `data` unusable (the view keeps `ok` and `meta` and an empty `data`, which only the envelope schema then checks);
- * an unknown `effect` becomes `destructive` and an unknown or missing `idempotency` of such a command `once`; an
- * argument of an unknown `valueType` is unusable and left out (the command is unusable when it was required); an
- * output, a tree entry or a batch item of an unknown kind or status is left out. `notes` says what was done.
+ * Every string-valued `enum` or `const` in the contract schemas that a document's member takes (not one inside a
+ * condition, a `not` or `propertyNames`), as `file#pointer`. Each must have a row in the table of spec 15.6 and a
+ * treatment in the caller's view below; `checkCallerCoverage` fails when a schema gains one that is not covered.
  */
-function callerView(answer: JsonValue, notes: string[], problems: string[]): JsonValue {
+const CALLER_COVERED: Record<string, string> = {
+  "envelope.schema.json#/$defs/meta/properties/contract": "meta.contract: another major, refused",
+  "stream-line.schema.json#/$defs/start/properties/contract": "meta.contract: another major, refused",
+  "schema-doc.schema.json#/allOf/1/properties/meta/properties/command": "a schema answer's meta.command: identity of the answer, not a listed set",
+  "schema-doc.schema.json#/$defs/effect": "effect: destructive",
+  "schema-doc.schema.json#/$defs/idempotency": "idempotency: once",
+  "schema-doc.schema.json#/$defs/treeEntry/properties/kind": "tree entry kind: left out",
+  "schema-doc.schema.json#/$defs/tree/properties/kind": "data.kind: unusable",
+  "schema-doc.schema.json#/$defs/tree/properties/level": "level: L1",
+  "schema-doc.schema.json#/$defs/group/properties/kind": "data.kind: unusable",
+  "schema-doc.schema.json#/$defs/errors/properties/kind": "data.kind: unusable",
+  "schema-doc.schema.json#/$defs/error/properties/kind": "data.kind: unusable",
+  "schema-doc.schema.json#/$defs/warnings/properties/kind": "data.kind: unusable",
+  "schema-doc.schema.json#/$defs/warning/properties/kind": "data.kind: unusable",
+  "schema-doc.schema.json#/$defs/command/properties/kind": "data.kind: unusable",
+  "schema-doc.schema.json#/$defs/operand/properties/valueType": "valueType: argument left out",
+  "schema-doc.schema.json#/$defs/option/properties/valueType": "valueType: argument left out",
+  "schema-doc.schema.json#/$defs/jsonType": "domain type: domain left out",
+  "schema-doc.schema.json#/$defs/constraint/properties/rule": "rule: constraint left out",
+  "schema-doc.schema.json#/$defs/output/properties/kind": "output kind: left out",
+  "schema-doc.schema.json#/$defs/input/properties/option": "input.option: input left out",
+  "batch-report.schema.json#/$defs/item/properties/status": "status: item left out",
+  "stream-line.schema.json#/$defs/start/properties/type": "line type: left out",
+  "stream-line.schema.json#/$defs/event/properties/type": "line type: left out",
+  "stream-line.schema.json#/$defs/end/properties/type": "line type: left out",
+}
+function checkCallerCoverage(): string[] {
+  const found: string[] = []
+  const SKIP = new Set(["if", "then", "else", "not", "propertyNames", "contains"])
+  const walk = (node: JsonValue, pointer: string, file: string) => {
+    if (Array.isArray(node)) return node.forEach((n, i) => walk(n, `${pointer}/${i}`, file))
+    if (!isObject(node)) return
+    const values = Array.isArray(node.enum) ? node.enum : node.const !== undefined ? [node.const] : []
+    if (values.some((v) => typeof v === "string") && !pointer.includes("/domainNode/")) found.push(`${file}#${pointer}`)
+    for (const [k, v] of Object.entries(node)) if (!SKIP.has(k) && k !== "examples" && k !== "default") walk(v, `${pointer}/${k}`, file)
+  }
+  for (const f of readdirSync(join(repo, "schema"))) walk(JSON.parse(readFileSync(join(repo, "schema", f), "utf8")) as JsonValue, "", f)
+  return found.filter((f) => !CALLER_COVERED[f]).map((f) => `${f} lists string values, but the caller table of spec 15.6 has no row for it`)
+}
+
+/**
+ * One row of the table of spec 15.6, applied to one member: a known string is kept; an unknown string returns false
+ * so that the caller applies the row's treatment; a non-string, or a missing required member, is a wrong shape and
+ * is reported in `problems`.
+ */
+function knownValue(value: JsonValue | undefined, set: JsonValue[], at: string, problems: string[], required = false): boolean {
+  if (value === undefined) {
+    if (required) problems.push(`${at} is missing (spec 15.6: a required listed member)`)
+    return true
+  }
+  if (typeof value !== "string") {
+    problems.push(`${at} is ${JSON.stringify(value)}, not a string (spec 15.6: a known member of the wrong type)`)
+    return true
+  }
+  return set.includes(value)
+}
+
+/** Whether a domain uses only known keywords and known JSON type names, recursively (spec 15.6, `domain` row). */
+function domainKnown(node: JsonValue, at: string, problems: string[]): boolean {
+  if (!isObject(node)) return true
+  for (const [k, v] of Object.entries(node)) {
+    if (!KNOWN.domainKeywords.includes(k)) return false
+    if (k === "type" && ![v].flat().every((t) => knownValue(t, KNOWN.jsonTypes, `${at} type`, problems))) return false
+    if (k === "properties" && isObject(v) && !Object.entries(v).every(([n, c]) => domainKnown(c, `${at}/properties/${n}`, problems))) return false
+    if ((k === "items" || k === "additionalProperties") && !domainKnown(v, `${at}/${k}`, problems)) return false
+  }
+  return true
+}
+
+/**
+ * A caller's view of a `schema` answer: every unknown string handled as the table of spec 15.6 says. `notes` says
+ * what was done; `problems` gets every wrong shape.
+ */
+function schemaAnswerView(answer: JsonValue, notes: string[], problems: string[]): JsonValue {
   const view = structuredClone(answer)
   if (!isObject(view) || !isObject(view.data)) return view
   const data = view.data
-  /** Whether `value` is a known listed value; a non-string is a wrong type and is reported. */
-  const known = (value: JsonValue | undefined, set: JsonValue[], at: string) => {
-    if (value !== undefined && typeof value !== "string") problems.push(`${at} is ${JSON.stringify(value)}, not a string (spec 15.6: a known member of the wrong type)`)
-    return value === undefined || set.includes(value)
-  }
-  if (!known(data.kind, KNOWN.kinds, "data.kind")) {
+  if (!knownValue(data.kind, KNOWN.kinds, "data.kind", problems, true)) {
     notes.push(`data.kind ${String(data.kind)} is unknown: data unusable`)
     view.data = {}
     return view
   }
   const effect = (node: JsonObject, at: string) => {
-    if (known(node.effect, KNOWN.effects, `${at} effect`)) return false
+    if (knownValue(node.effect, KNOWN.effects, `${at} effect`, problems)) return false
     notes.push(`${at} effect ${String(node.effect)} is unknown: treated as destructive`)
     node.effect = "destructive"
     return true
   }
+  if (data.kind === "tree" && !knownValue(data.level, KNOWN.levels, "tree level", problems)) {
+    notes.push(`level ${String(data.level)} is unknown: treated as L1`)
+    data.level = "L1"
+  }
   if (Array.isArray(data.commands))
     data.commands = data.commands.filter((e) => {
       if (!isObject(e)) return true
-      if (!known(e.kind, KNOWN.entryKinds, `tree entry ${String(e.command)} kind`)) {
+      if (!knownValue(e.kind, KNOWN.entryKinds, `tree entry ${String(e.command)} kind`, problems, true)) {
         notes.push(`tree entry ${String(e.command)} of unknown kind left out`)
         return false
       }
       effect(e, `tree entry ${String(e.command)}`)
       return true
     })
-  if (data.kind === "command") {
-    const destructive = effect(data, "the command")
-    if (!known(data.idempotency, KNOWN.idempotency, "idempotency") || (destructive && data.idempotency === undefined)) {
-      notes.push(`idempotency ${String(data.idempotency ?? "(none)")} read as once`)
-      data.idempotency = "once"
-    }
-    for (const key of ["operands", "options"] as const) {
-      const list = data[key]
-      if (!Array.isArray(list)) continue
-      data[key] = list.filter((a) => {
-        if (!isObject(a) || known(a.valueType, KNOWN.valueTypes, `argument ${String(a.name)} valueType`)) return true
+  if (data.kind !== "command") return view
+  const destructive = effect(data, "the command")
+  if (!knownValue(data.idempotency, KNOWN.idempotency, "idempotency", problems) || (destructive && data.idempotency === undefined)) {
+    notes.push(`idempotency ${String(data.idempotency ?? "(none)")} read as once`)
+    data.idempotency = "once"
+  }
+  for (const [key, types] of [["operands", KNOWN.operandTypes], ["options", KNOWN.optionTypes]] as const) {
+    const list = data[key]
+    if (!Array.isArray(list)) continue
+    data[key] = list.filter((a) => {
+      if (!isObject(a)) return true
+      if (!knownValue(a.valueType, types, `argument ${String(a.name)} valueType`, problems, true)) {
         notes.push(`argument ${String(a.name)} of unknown valueType ${String(a.valueType)} is unusable${a.required === true ? ", so the command is unusable" : ""}`)
         return false
-      })
-    }
-    if (Array.isArray(data.outputs))
-      data.outputs = data.outputs.filter((o) => {
-        if (!isObject(o) || known(o.kind, KNOWN.outputKinds, `output ${String(o.schemaRef)} kind`)) return true
-        notes.push(`output ${String(o.schemaRef)} of unknown kind ${String(o.kind)} left out`)
-        return false
-      })
+      }
+      if (a.domain !== undefined && !domainKnown(a.domain, `argument ${String(a.name)} domain`, problems)) {
+        notes.push(`the domain of ${String(a.name)} has an unknown keyword or type: left out of the caller's checks`)
+        delete a.domain
+      }
+      return true
+    })
   }
+  if (Array.isArray(data.constraints))
+    data.constraints = data.constraints.filter((c) => {
+      if (!isObject(c) || knownValue(c.rule, KNOWN.rules, "constraint rule", problems, true)) return true
+      notes.push(`constraint rule ${String(c.rule)} is unknown: left out of the caller's checks, the tool still enforces it`)
+      return false
+    })
+  if (isObject(data.input) && !knownValue(data.input.option, KNOWN.inputOptions, "input.option", problems, true)) {
+    notes.push(`input.option ${String(data.input.option)} is unknown: input left out, argv only`)
+    delete data.input
+    if (Array.isArray(data.options)) data.options = data.options.filter((o) => !(isObject(o) && o.name === "input"))
+  }
+  if (Array.isArray(data.outputs))
+    data.outputs = data.outputs.filter((o) => {
+      if (!isObject(o) || knownValue(o.kind, KNOWN.outputKinds, `output ${String(o.schemaRef)} kind`, problems, true)) return true
+      notes.push(`output ${String(o.schemaRef)} of unknown kind ${String(o.kind)} left out`)
+      return false
+    })
+  return view
+}
+
+/** A caller's view of a batch report: items of an unknown `status` are left out (spec 15.6, batch-report row). */
+function batchView(envelope: JsonValue, notes: string[], problems: string[]): JsonValue {
+  const view = structuredClone(envelope)
+  if (!isObject(view) || !isObject(view.data) || !Array.isArray(view.data.items)) return view
+  view.data.items = view.data.items.filter((item) => {
+    if (!isObject(item) || knownValue(item.status, KNOWN.statuses, `item ${String(item.index)} status`, problems, true)) return true
+    notes.push(`item ${String(item.index)} of unknown status ${String(item.status)}: outcome unknown, left out`)
+    return false
+  })
   return view
 }
 
 /**
  * Spec 15.6 and 15.8: a document of a later minor (or one with members this repository does not know) that a caller
- * of this minor must read. The caller's view of it (unknown variants replaced, `callerView`) passes the contract
+ * of this minor must read. Its view (every unknown string handled as the table of 15.6 says) passes the contract
  * schemas read open, and the document itself fails them closed, so that it really exercises what a caller must
  * ignore. A document whose `meta.contract` names another major stays rejected.
+ *   caller-schema-*  a `schema` answer       caller-batch-*  a batch report (its data against batch-report)
+ *   caller-stream-*  an NDJSON stream        anything else: an envelope
  */
-function checkCallerDocument(name: string, value: unknown, problems: string[]) {
+function checkCallerDocument(name: string, text: string, problems: string[]) {
+  const notes: string[] = []
+  if (name.endsWith(".ndjson")) {
+    const lines = text.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as JsonValue)
+    const kept = lines.filter((l, i) => !isObject(l) || knownValue(l.type, KNOWN.lineTypes, `line ${i + 1} type`, problems, true) || void notes.push(`line ${i + 1} of unknown type left out`))
+    const open = openSchema("stream-line.schema.json")
+    kept.forEach((l, i) => open(l) || problems.push(`a caller reading stream-line.schema.json open rejects kept line ${i + 1}: ${ajvErrors(open)}`))
+    if (!isObject(kept[0]) || kept[0].type !== "start" || !isObject(kept.at(-1)) || (kept.at(-1) as JsonObject).type !== "end") problems.push("the kept lines do not run from start to end")
+    if (lines.every((l) => V.stream(l))) problems.push("every line passes stream-line.schema.json closed, so it carries nothing a caller must ignore")
+    return
+  }
+  const value = JSON.parse(text) as JsonValue
   const schemaAnswer = name.startsWith("caller-schema-")
   const file = schemaAnswer ? "schema-doc.schema.json" : "envelope.schema.json"
-  const notes: string[] = []
-  const view = schemaAnswer ? callerView(value as JsonValue, notes, problems) : value
+  const view = schemaAnswer ? schemaAnswerView(value, notes, problems) : name.startsWith("caller-batch-") ? batchView(value, notes, problems) : value
   const unusable = notes.some((n) => n.endsWith("data unusable"))
   const open = openSchema(unusable ? "envelope.schema.json" : file)
+  const seen: JsonValue = view // ajv's guard narrows its argument to never on failure; inspect the alias instead
   if (!open(view)) {
     // Report the errors of the branch `data.kind` selects, as checkSchemaAnswer does.
-    const data = isObject(view as JsonValue) ? (view as JsonObject).data : undefined
+    const data = isObject(seen) ? seen.data : undefined
     const kind = isObject(data) && typeof data.kind === "string" && KNOWN.kinds.includes(data.kind) ? data.kind : undefined
     const branch = schemaAnswer && !unusable && kind ? openAjv.compile({ $ref: `https://atip.dev/1/schema-doc.schema.json#/$defs/${kind}` }) : undefined
     const detail = branch && !branch(data) ? `/data: ${ajvErrors(branch)}` : ajvErrors(open)
     problems.push(`a caller reading ${file} open rejects it: ${detail}`)
+  }
+  if (name.startsWith("caller-batch-")) {
+    const batch = openSchema("batch-report.schema.json")
+    const data = isObject(seen) ? seen.data : undefined
+    if (!batch(data)) problems.push(`a caller reading batch-report.schema.json open rejects its data: ${ajvErrors(batch)}`)
+    if (V.batch(isObject(value) ? value.data : undefined) && contractSchema(file)(value)) problems.push("it passes the schemas closed, so it carries nothing a caller must ignore")
+    return
   }
   if (contractSchema(file)(value)) problems.push(`it passes ${file} closed, so it carries nothing a caller must ignore`)
 }
@@ -1653,8 +1782,8 @@ function check(path: string): string[] {
   const problems: string[] = []
   const name = basename(path)
   try {
-    if (name.endsWith(".ndjson")) checkStream(readFileSync(path, "utf8"), problems)
-    else if (name.startsWith("caller-")) checkCallerDocument(name, readJson(path), problems)
+    if (name.startsWith("caller-")) checkCallerDocument(name, readFileSync(path, "utf8"), problems)
+    else if (name.endsWith(".ndjson")) checkStream(readFileSync(path, "utf8"), problems)
     else if (name.startsWith("schema-")) checkSchemaAnswer(readJson(path), problems)
     else if (name.startsWith("input-")) checkInput(path, readJson(path), problems)
     else checkEnvelope(readJson(path), problems)
@@ -1698,6 +1827,9 @@ for (const [dir, mustPass] of [[exampleDir, true], [join(exampleDir, "invalid"),
 const references = checkSpecReferences()
 references.length ? failed++ : passed++
 console.log(`${references.length ? "FAIL" : "ok  "}  spec/atip-1.md cross-references${references.map((p) => `\n      ${p}`).join("")}`)
+const coverage = checkCallerCoverage()
+coverage.length ? failed++ : passed++
+console.log(`${coverage.length ? "FAIL" : "ok  "}  every listed string member has a caller treatment (spec 15.6)${coverage.map((p) => `\n      ${p}`).join("")}`)
 const regex = checkRegexCases()
 regex.length ? failed++ : passed++
 console.log(`${regex.length ? "FAIL" : "ok  "}  scripts/regex-cases.json (${regexCases.length} cases, ECMAScript side and form)${regex.map((p) => `\n      ${p}`).join("")}`)

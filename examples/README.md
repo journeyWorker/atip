@@ -159,6 +159,16 @@ read: the completeness rules it can no longer meet are dropped. A discriminator 
 type, not an unknown value: `invalid/caller-schema-command-effect-wrong-type.json` (`effect: {"bad": true}`) and
 `invalid/caller-schema-command-value-type-wrong-type.json` (`valueType: 77`) are rejected.
 
+Every row of the caller table of spec 15.6 has a fixture: `meta.contract` (`invalid/caller-report-unknown-major.json`),
+`data.kind` (`caller-schema-acme-unknown-kind.json`), a tree entry's `kind` and `effect` and the tree's `level`
+(`caller-schema-tree-acme-unknown-entry-kind.json`, `-unknown-entry-effect.json`, `-unknown-level.json`), a command's
+`effect` and `idempotency`, an operand's and an option's `valueType`, a constraint's `rule`, `input.option`, a
+domain keyword and a domain type name, an output's `kind` (`caller-schema-command-acme-unknown-*.json`), a batch
+item's `status` (`caller-batch-acme-member-tag-unknown-status.json`, whose data is also checked against the batch
+report read open) and a stream line's `type` (`caller-stream-acme-build-unknown-line-type.ndjson`). Wrong shapes stay
+rejected: a constraint `rule` of `77` or missing, a batch `status` of `5`, a stream line `type` of `3`, and an exit
+outside `1` and `2` (`invalid/caller-*`).
+
 A 1.1 tool marks every document: `invalid/report-acme-markers-missing.json`, `invalid/schema-tree-acme-markers-missing.json`
 and `invalid/stream-acme-build-markers-missing.ndjson` omit `contract` and `contractVersion` and are rejected. A
 map key containing U+0000 cannot be selected (`invalid/report-acme-member-list-fields-map-key-nul.json`).
