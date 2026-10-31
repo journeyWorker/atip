@@ -2,7 +2,7 @@
 
 Status: **1.1.0** (release candidate). Version 1.0.0 was adopted 2026-10-30 after six rounds of independent review;
 1.1.0 adds optional members and SHOULD/MAY rules from implementer feedback and fixes how the contract is versioned
-(15, Appendix A D20-D28). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
+(15, Appendix A D20-D29). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
 2026-10-28 (Appendix A, D13).
 
 ## Abstract
@@ -1387,22 +1387,44 @@ tool's changelog. A code or a reason is never reused with another meaning.
 15.6. **Unknown members and values.** A caller MUST ignore a member it does not know in every object this document
 defines, as 15.3 says for reports: the envelope and `meta` with every object inside it (`next` entries, `page`,
 `truncated`, `warnings` items), `error` and its `details` items, error and warning registry entries and their
-reasons, every `schema` document and everything inside it, stream lines, batch reports and guides. A caller MUST NOT
-fail a whole document because a member whose values this document lists (`data.kind`, `valueType`, `effect`,
-`idempotency`, an output's `kind`, a batch item's `status`) has a value it does not know; it does not act on what
-it cannot interpret: an answer of an unknown `data.kind` is one it cannot use, a command with an unknown `effect`
-is treated as `destructive`, and an argument of an unknown `valueType` is one it cannot give (the caller leaves it
-out; when it is required, the caller cannot run the command). Only an unknown *string* is an unknown value: a
-listed member whose value is not a string, or a required listed member that is missing, is a known member of the
-wrong shape, and the caller rejects the document. A caller refuses a document whose `meta.contract` names a major
-it does not know. Tools are held to the
-opposite rule: a tool emits only what its minor defines, plus `x-<tool>` members (10.12, 15.7). [Appendix A D20]
+reasons, every `schema` document and everything inside it, stream lines, batch reports and guides.
+
+A caller MUST NOT fail a whole document because a member whose values this document lists has a string value it
+does not know. The table below is every such member, read from the schemas in `schema/`; for each it says what the
+caller does with an unknown string. It never infers that something it did not understand is satisfied, done or
+safe, and what it left out is not absent: a view with no outputs, entries or arguments left does not say the
+command has none, only that the caller cannot use them. Only an unknown *string* is an unknown value: a listed member whose value is not a string, or a required
+listed member that is missing, is a known member of the wrong shape, and the caller rejects the document. A later
+minor that adds a listed member adds its row here; `scripts/check.ts` fails when a schema in `schema/` lists string
+values for a member that has no row, and its caller view applies every row. [Appendix A D20, D28, D29]
+
+| Member (schema) | An unknown string means |
+|---|---|
+| `meta.contract` (envelope, stream start line) | Another major: the caller refuses the whole document. |
+| `data.kind` of a `schema` answer (schema-doc) | The answer is unusable; `ok` and `meta` are still read. |
+| A tree entry's `kind` (schema-doc `treeEntry`) | The entry is left out. |
+| `effect` of a command or a tree entry (schema-doc `effect`) | The command is treated as `destructive`. |
+| `idempotency` (schema-doc `idempotency`) | The command is treated as `once`: never repeated after an unknown outcome. Also when `effect` was unknown and `idempotency` is absent. |
+| A tree's `level` (schema-doc `tree`) | The tool is treated as claiming `L1`, the lowest level a tree can claim. |
+| An operand's or an option's `valueType` (schema-doc `operand`, `option`; each has its own list) | The argument is left out: the caller cannot give it, and when it is required the caller cannot run the command. |
+| A constraint's `rule` (schema-doc `constraint`) | The constraint is left out of the caller's own checks. The caller does not assume it holds: the tool checks it before acting, and a violation is a refusal that changes nothing (8.2, 11.7 step 6). |
+| `input.option` (schema-doc `input`) | `input` is left out: the caller builds invocations from argv only. |
+| A keyword of a `domain`, or a JSON type name in a domain's `type` (schema-doc `domainNode`, `jsonType`) | The whole `domain` of that argument is left out of the caller's own checks; the tool still enforces it, as for a constraint. |
+| An output's `kind` (schema-doc `output`) | The output is left out. |
+| A batch item's `status` (batch-report) | The item is left out of what the caller counts as written, unchanged, failed or skipped: its outcome is unknown, and the caller reads its state before repeating it. |
+| A stream line's `type` (stream-line) | The line is left out; the stream still ends with its `end` line. |
+
+Listed values that are not strings are fixed by this major and have no unknown values: `ok` is a boolean, a
+registry entry's `exit` is `1` or `2` (8.6), and `batch` and `async` are booleans; any other value is a wrong shape.
+Tools are held to the opposite rule: a tool emits only what its minor defines, plus `x-<tool>` members (10.12,
+15.7). [Appendix A D20]
 
 15.7. **Declaring the minor** (since 1.1). `meta.contractVersion` (6.6) is the contract version a tool implements,
 `<major>.<minor>`; absent, it is `"1.0"`, and it is never written as `"1.0"`. A tool that implements 1.1 or later
 MUST set `meta.contract` and `meta.contractVersion` on every envelope (the `result` of a stream's `end` line
 included) and `contract` and `contractVersion` on every stream start line, so that a document without the marker
-is always a 1.0 document. It is the same on every document one build of the tool prints. A tool emits no member, document kind or syntax
+is always a 1.0 document. It is the same on every document one build of the tool prints. A tool emits no member,
+document kind or syntax
 added in a later minor than the one it declares (10.13 rule 16). Conformance is stated with the minor:
 "ATIP 1.1 L1 conformant". The checker (17) reads the claimed minor from the fixture, as it reads an L0 tool's
 level, and checks that the tool's documents declare it. [Appendix A D20]
@@ -1415,12 +1437,9 @@ that declares `"1.0"` must not emit. Some 1.1 additions are meanings, not shapes
 map-key selection (6.10), the hint forms of 7.1.2 and 11.2's `USAGE`; 10.13 rule 16 lists every such rule and
 `scripts/check.ts` applies each by the declared minor. A caller MUST NOT reject a document only because it fails these
 schemas by an unknown member (15.6). A caller that validates uses them *open*: with `additionalProperties: false`
-read as absent, every other keyword unchanged. A value outside a listed set (an unknown `data.kind`, `valueType`,
-`effect`, output `kind` or batch item `status`) still fails the schemas read open, so a caller that validates first
-builds its view of the document as 15.6 says: an unknown `data.kind` leaves `data` unusable; an unknown `effect`
-makes the command `destructive` (and, without a known `idempotency`, `once`); an argument of an unknown
-`valueType`, an output of an unknown `kind`, a tree entry of an unknown `kind` and a batch item of an unknown
-`status` are left out. The view can no longer meet the producer's completeness rules (at least one output or
+read as absent, every other keyword unchanged. A value outside a listed set still fails the schemas read open, so
+a caller that validates first builds its *view* of the document: every unknown string handled as the table of 15.6
+says. The view can no longer meet the producer's completeness rules (at least one output or
 entry, a batch output when `input.batch` is `true`, and the other `minItems`, `contains` and `if`/`then`/`else`
 rules), so a caller reading open also drops those keywords: they are the producer's obligations, which the checker
 enforces on the tool's own documents. Types, `required` members and listed values stay. The caller validates its
@@ -1474,7 +1493,7 @@ registries with the one in its fixture and with the codes and reasons the tool e
 
 ## 18. Open questions
 
-Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, and D20-D28 for 1.1.0). None is
+Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, and D20-D29 for 1.1.0). None is
 open in 1.1.0.
 The two that revision 5 raised are kept here with their decisions, so that earlier references still resolve.
 
@@ -1567,6 +1586,7 @@ caller is `atip/2`.
 | D26 | Clarifications: `USAGE` SHOULD carry `field`, and without one its hint names the command's `schema`; in text mode a refusal prints nothing on stdout and exit 1 may print its result; `--input` given twice or without a value is `USAGE`; precondition and during-the-work code names; a code with two exits is split; a batch report is its own output; a signal shows as a wait status or as a launcher's 128+n; a `hint` is exactly one of its three forms; a report may keep its own paging members, `meta.page` is authoritative. | 5.3, 6.6, 6.9, 7.1.2, 7.1.3, 7.3.2, 8.3, 8.4, 11.2 |
 | D27 | A minor never makes a 1.0-conforming tool non-conforming: a 1.1 rule that would (map cut nodes, command-line hints, `--input` twice as `USAGE`) applies only to a document that declares 1.1, and a 1.0 tool keeps 1.0's behaviour; dual warning/error registration applies only to a tool that keeps a warning registry. A 1.1 tool sets `contract` and `contractVersion` everywhere, so an unmarked document is always 1.0. Callers build a view of a document with unknown listed values before validating it. | 6.10, 7.1.2, 7.5.3, 11.2, 10.13 rule 16, 15.7, 15.8 |
 | D28 | A caller's view leaves out every unknown variant (argument, output, tree entry, batch item) and drops the producer's completeness rules it can no longer meet (`minItems`, `contains`, `if`/`then`/`else`), so it never rejects a document for what it left out; a listed member that is not a string is a wrong type and is rejected. A map key containing U+0000 is not selectable. A 1.1 tool's markers are a MUST of the checker's L0.contract-version. | 6.10, 15.6, 15.8 |
+| D29 | Every string member whose values the contract lists has an explicit caller treatment for an unknown value, in one table (15.6): refuse the document (another major), the document part is unusable, the entry is left out, or the most cautious known value. The table is read from the schemas, and a later minor that adds a listed member adds its row. | 15.6, 15.8 |
 
 ## Appendix B. Prior art
 
