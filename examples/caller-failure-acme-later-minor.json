@@ -1,0 +1,19 @@
+{
+  "ok": false,
+  "error": {
+    "code": "MEMBER_NOT_FOUND",
+    "message": "No member has id 9",
+    "retryable": false,
+    "field": "MEMBER",
+    "severity": "user"
+  },
+  "meta": {
+    "command": "member show",
+    "contract": "atip/1",
+    "contractVersion": "1.2",
+    "schemaVersion": "1.0",
+    "tool": "acme",
+    "toolVersion": "1.4.0",
+    "trace": "t-91"
+  }
+}

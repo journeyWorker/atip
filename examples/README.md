@@ -2,7 +2,7 @@
 
 Documents that `scripts/validate.sh` checks: everything here must pass, everything in `invalid/` must be
 rejected (by a JSON Schema or by a rule of `scripts/check.ts`), and the validator prints the first reason for each
-rejection. The file name says what a file is (`schema-*`, `input-*`, `stream-*`, otherwise an envelope); see the
+rejection. The file name says what a file is (`schema-*`, `input-*`, `stream-*`, `caller-*`, otherwise an envelope); see the
 header of `scripts/check.ts`.
 
 Every positive file is a complete conformance fixture: its schemas describe the whole output, previews list every
@@ -23,7 +23,8 @@ three kinds:
 - **proposed**: a behaviour change the contract requires of canon, not just a rename.
 - **not verified**: shown for completeness; nothing here establishes it.
 
-**A synthetic reference tool, `acme`** (`*-acme-*`): an invented tool that exercises what neither translation does,
+**A synthetic reference tool, `acme`** (`*-acme-*`), which declares contract 1.1 (`meta.contractVersion`, spec 15.7)
+while canon's translations declare 1.0: an invented tool that exercises what neither translation does,
 so that every rule has a positive witness: a declared short option (`-t`), a required repeatable option and an
 `x-acme` extension member (`acme page label`), an `async` command with an operation key and the command that
 waits for it (`acme deploy start`, `acme deploy status`, `report-acme-deploy-start-accepted.json`), nested field projection with `[]`
@@ -101,3 +102,31 @@ ones that are easiest to miss:
 
 Cross-engine pattern behaviour (a trailing LF or CRLF, `&&` and `~~` in a class, `\p{Cs}` and `\p{Cn}`, a category
 that differs between Unicode versions) is recorded in `scripts/regex-cases.json`.
+
+## Contract 1.1
+
+acme declares 1.1 and uses what 1.1 adds; canon's translations declare 1.0, and every 1.1 addition in a document
+that declares 1.0 is rejected (spec 10.13 rule 16).
+
+| Case | File | Result |
+|---|---|---|
+| registry reasons under `INPUT_INVALID` and `CURSOR_INVALID`; one entry | `schema-errors-acme.json`, `schema-error-acme-input-invalid.json` | accepted |
+| an error with a registered reason; `details` items with reasons | `report-failure-acme-input-reason.json`, `report-failure-acme-input-details-reason.json` | accepted |
+| a reason not registered under its code, at the top or in `details` | `invalid/report-acme-reason-unregistered.json`, `invalid/report-acme-details-reason-unregistered.json` | rejected |
+| a reason, reasons, a warning registry or a bracketed path in a document that declares 1.0 | `invalid/report-acme-reason-in-1-0.json`, `invalid/schema-errors-acme-reasons-in-1-0.json`, `invalid/schema-warnings-acme-in-1-0.json`, `invalid/schema-fields-bracket-in-1-0.json`, `invalid/report-acme-member-list-fields-map-key-in-1-0.json` | rejected |
+| a reason twice under one code; a code twice; a lower-case reason | `invalid/schema-errors-acme-duplicate-reason.json`, `invalid/schema-errors-acme-duplicate-code.json`, `invalid/schema-error-acme-reason-lowercase.json` | rejected |
+| the warning registry and one entry; a report whose warning is only in it | `schema-warnings-acme.json`, `schema-warning-acme-member-archived.json`, `report-acme-member-list-warning.json` | accepted |
+| a warning registered nowhere; a warning twice; a warning entry with an exit | `invalid/report-acme-warning-unregistered.json`, `invalid/schema-warnings-acme-duplicate.json`, `invalid/schema-warnings-acme-with-exit.json` | rejected |
+| `schema --error` given a warning-only code, with and without the `--warning` hint | `report-failure-acme-schema-error-warning-only.json`; `invalid/report-acme-schema-error-warning-only-no-hint.json` | accepted; rejected |
+| a hint that starts with the tool name but does not split | `invalid/report-acme-hint-not-a-command-line.json` | rejected |
+| a bracketed key (`["display-name"]`) and map keys (`attributes.region`, `attributes["http.status-code"]`) | `report-acme-member-list-fields-map-keys.json` | accepted |
+| a map key left in that was not selected; a path that is neither declared nor a map key | `invalid/report-acme-member-list-fields-map-key-leak.json`, `invalid/report-acme-member-list-fields-not-a-map-key.json` | rejected |
+| an identifier in brackets; a malformed path | `invalid/schema-fields-bracket-identifier.json`, `invalid/schema-fields-path-malformed.json` | rejected |
+| a schema answer whose `schemaVersion` is not its contract version; `contractVersion` without `contract`; a minor this repository does not describe; a stream whose end declares another minor than its start | `invalid/schema-version-not-contract-version.json`, `invalid/envelope-contract-version-without-contract.json`, `invalid/report-acme-contract-version-unknown.json`, `invalid/stream-acme-build-start-contract-version-mismatch.ndjson` | rejected |
+
+**Caller documents** (`caller-*.json`) are what a tool of a later minor might print: `contractVersion` `1.2` and
+members this repository does not define (`meta.costMs`, `page.exact`, `error.severity`, a registry entry's `docs`).
+A caller of this minor must read them (spec 15.6): each passes the contract schemas read open and fails them
+closed. `invalid/caller-report-nothing-unknown.json` carries nothing unknown, and `invalid/caller-report-wrong-type.json`
+gives a known member the wrong type, so a caller reading open still rejects it.
+
