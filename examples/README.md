@@ -151,5 +151,15 @@ through the caller's view of spec 15.8 first (`callerView` in `scripts/check.ts`
 (`caller-schema-acme-unknown-kind.json`), `valueType`, `effect`, output `kind` and tree entry `kind`
 (`caller-schema-command-acme-unknown-*.json`, `caller-schema-tree-acme-unknown-entry-kind.json`) are accepted that
 way, while an unknown major (`invalid/caller-report-unknown-major.json`) and a known member of the wrong type
-(`invalid/caller-schema-command-wrong-known-type.json`) stay rejected.
+(`invalid/caller-schema-command-wrong-known-type.json`) stay rejected. A view that has left out every output
+(`caller-schema-command-acme-all-outputs-unknown.json`), every tree entry
+(`caller-schema-tree-acme-all-entries-unknown.json`), the batch output (`caller-schema-command-acme-batch-output-unknown.json`)
+or an argument with no value name (`caller-schema-command-acme-unknown-flag-without-value-name.json`) is still
+read: the completeness rules it can no longer meet are dropped. A discriminator that is not a string is a wrong
+type, not an unknown value: `invalid/caller-schema-command-effect-wrong-type.json` (`effect: {"bad": true}`) and
+`invalid/caller-schema-command-value-type-wrong-type.json` (`valueType: 77`) are rejected.
+
+A 1.1 tool marks every document: `invalid/report-acme-markers-missing.json`, `invalid/schema-tree-acme-markers-missing.json`
+and `invalid/stream-acme-build-markers-missing.ndjson` omit `contract` and `contractVersion` and are rejected. A
+map key containing U+0000 cannot be selected (`invalid/report-acme-member-list-fields-map-key-nul.json`).
 

@@ -122,13 +122,21 @@ const V = {
   batch: contractSchema("batch-report.schema.json"),
 }
 
-/** The contract schemas read open, as a caller reads them (spec 15.8): every `additionalProperties: false` dropped. */
+/**
+ * The contract schemas read open, as a caller reads them (spec 15.8): every `additionalProperties: false` dropped, and
+ * the completeness rules that a caller's view can no longer meet once it has left out what it does not understand
+ * (`minItems`, `contains`, and the conditional `if`/`then`/`else`): those are the producer's obligations, which the
+ * tool checks above enforce. Types, `required` members and listed values stay.
+ */
+const CALLER_DROPS = new Set(["minItems", "contains", "if", "then", "else"])
 const openAjv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false })
 const opened = (node: unknown): unknown => {
   if (Array.isArray(node)) return node.map(opened)
   if (typeof node !== "object" || node === null) return node
   return Object.fromEntries(
-    Object.entries(node).filter(([k, v]) => !(k === "additionalProperties" && v === false)).map(([k, v]) => [k, opened(v)]),
+    Object.entries(node)
+      .filter(([k, v]) => !(k === "additionalProperties" && v === false) && !CALLER_DROPS.has(k))
+      .map(([k, v]) => [k, opened(v)]),
   )
 }
 for (const f of readdirSync(join(repo, "schema"))) openAjv.addSchema(opened(JSON.parse(readFileSync(join(repo, "schema", f), "utf8"))) as object)
@@ -815,6 +823,7 @@ function parseFieldPath(path: string): Step[] | undefined {
     if (path.startsWith('["', i)) {
       let j = i + 2
       for (; j < path.length && path[j] !== '"'; j++) {
+        if (path[j] === "\u0000") return undefined // argv cannot carry NUL (spec 6.10)
         if (path[j] === "\\") {
           if (path[j + 1] !== '"' && path[j + 1] !== "\\") return undefined
           j++
@@ -1200,11 +1209,14 @@ const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"
 const commandDocs = new Map<string, CommandDoc>()
 const registries = new Map<string, RegistryEntry[]>()
 const warningRegistries = new Map<string, WarningEntry[]>()
+/** The minor each example tool's build declares, from its schema answers (the fixture's claim, spec 15.7). */
+const toolMinors = new Map<string, string>()
 for (const f of readdirSync(exampleDir).filter((f) => f.startsWith("schema-") && f.endsWith(".json"))) {
   const answer = readJson(join(exampleDir, f)) as { data: SchemaData; meta: Meta }
   if (answer.data.kind === "command") commandDocs.set(`${answer.meta.tool} ${answer.data.command}`, answer.data)
   if (answer.data.kind === "errors") registries.set(answer.meta.tool, answer.data.errors)
   if (answer.data.kind === "warnings") warningRegistries.set(answer.meta.tool, answer.data.warnings)
+  toolMinors.set(answer.meta.tool, answer.meta.contractVersion ?? "1.0")
 }
 /** The registry entry of an error code: the tool's own row (with its reasons), else the reserved code's (7.2.1). */
 const registered = (tool: string, code: string): RegistryEntry | undefined =>
@@ -1527,23 +1539,29 @@ const KNOWN = {
 
 /**
  * A caller's view of a schema answer (spec 15.6, 15.8): what it can act on, with every value outside a listed set
- * replaced as 15.6 says. An unknown `data.kind` leaves `data` unusable (the view keeps `ok` and `meta` and an
- * empty `data`, which only the envelope schema then checks); an unknown `effect` becomes
- * `destructive` and an unknown or missing `idempotency` of such a command `once`; an argument of an unknown
- * `valueType` becomes a `string` without its typed members; an output of an unknown `kind` and a tree entry of an
- * unknown `kind` are left out. `notes` says what was replaced.
+ * handled as 15.6 says. A listed member (a discriminator) whose value is not a string is a known member of the wrong
+ * type and rejects the document (`problems`); only an unknown string falls back. An unknown `data.kind` leaves
+ * `data` unusable (the view keeps `ok` and `meta` and an empty `data`, which only the envelope schema then checks);
+ * an unknown `effect` becomes `destructive` and an unknown or missing `idempotency` of such a command `once`; an
+ * argument of an unknown `valueType` is unusable and left out (the command is unusable when it was required); an
+ * output, a tree entry or a batch item of an unknown kind or status is left out. `notes` says what was done.
  */
-function callerView(answer: JsonValue, notes: string[]): JsonValue {
+function callerView(answer: JsonValue, notes: string[], problems: string[]): JsonValue {
   const view = structuredClone(answer)
   if (!isObject(view) || !isObject(view.data)) return view
   const data = view.data
-  if (typeof data.kind === "string" && !KNOWN.kinds.includes(data.kind)) {
-    notes.push(`data.kind ${data.kind} is unknown: data unusable`)
+  /** Whether `value` is a known listed value; a non-string is a wrong type and is reported. */
+  const known = (value: JsonValue | undefined, set: JsonValue[], at: string) => {
+    if (value !== undefined && typeof value !== "string") problems.push(`${at} is ${JSON.stringify(value)}, not a string (spec 15.6: a known member of the wrong type)`)
+    return value === undefined || set.includes(value)
+  }
+  if (!known(data.kind, KNOWN.kinds, "data.kind")) {
+    notes.push(`data.kind ${String(data.kind)} is unknown: data unusable`)
     view.data = {}
     return view
   }
   const effect = (node: JsonObject, at: string) => {
-    if (node.effect === undefined || KNOWN.effects.includes(node.effect)) return false
+    if (known(node.effect, KNOWN.effects, `${at} effect`)) return false
     notes.push(`${at} effect ${String(node.effect)} is unknown: treated as destructive`)
     node.effect = "destructive"
     return true
@@ -1551,7 +1569,7 @@ function callerView(answer: JsonValue, notes: string[]): JsonValue {
   if (Array.isArray(data.commands))
     data.commands = data.commands.filter((e) => {
       if (!isObject(e)) return true
-      if (!KNOWN.entryKinds.includes(e.kind ?? null)) {
+      if (!known(e.kind, KNOWN.entryKinds, `tree entry ${String(e.command)} kind`)) {
         notes.push(`tree entry ${String(e.command)} of unknown kind left out`)
         return false
       }
@@ -1560,23 +1578,22 @@ function callerView(answer: JsonValue, notes: string[]): JsonValue {
     })
   if (data.kind === "command") {
     const destructive = effect(data, "the command")
-    if (destructive || (data.idempotency !== undefined && !KNOWN.idempotency.includes(data.idempotency))) {
-      if (data.idempotency !== "once") notes.push(`idempotency ${String(data.idempotency ?? "(none)")} read as once`)
+    if (!known(data.idempotency, KNOWN.idempotency, "idempotency") || (destructive && data.idempotency === undefined)) {
+      notes.push(`idempotency ${String(data.idempotency ?? "(none)")} read as once`)
       data.idempotency = "once"
     }
-    for (const list of [data.operands, data.options])
-      if (Array.isArray(list))
-        for (const a of list)
-          if (isObject(a) && !KNOWN.valueTypes.includes(a.valueType ?? null)) {
-            notes.push(`argument ${String(a.name)} of unknown valueType ${String(a.valueType)} read as a string`)
-            a.valueType = "string"
-            delete a.possibleValues
-            delete a.domain
-            if (a.default !== null && typeof a.default !== "string") a.default = null
-          }
+    for (const key of ["operands", "options"] as const) {
+      const list = data[key]
+      if (!Array.isArray(list)) continue
+      data[key] = list.filter((a) => {
+        if (!isObject(a) || known(a.valueType, KNOWN.valueTypes, `argument ${String(a.name)} valueType`)) return true
+        notes.push(`argument ${String(a.name)} of unknown valueType ${String(a.valueType)} is unusable${a.required === true ? ", so the command is unusable" : ""}`)
+        return false
+      })
+    }
     if (Array.isArray(data.outputs))
       data.outputs = data.outputs.filter((o) => {
-        if (!isObject(o) || KNOWN.outputKinds.includes(o.kind ?? null)) return true
+        if (!isObject(o) || known(o.kind, KNOWN.outputKinds, `output ${String(o.schemaRef)} kind`)) return true
         notes.push(`output ${String(o.schemaRef)} of unknown kind ${String(o.kind)} left out`)
         return false
       })
@@ -1594,7 +1611,7 @@ function checkCallerDocument(name: string, value: unknown, problems: string[]) {
   const schemaAnswer = name.startsWith("caller-schema-")
   const file = schemaAnswer ? "schema-doc.schema.json" : "envelope.schema.json"
   const notes: string[] = []
-  const view = schemaAnswer ? callerView(value as JsonValue, notes) : value
+  const view = schemaAnswer ? callerView(value as JsonValue, notes, problems) : value
   const unusable = notes.some((n) => n.endsWith("data unusable"))
   const open = openSchema(unusable ? "envelope.schema.json" : file)
   if (!open(view)) {
@@ -1608,6 +1625,30 @@ function checkCallerDocument(name: string, value: unknown, problems: string[]) {
   if (contractSchema(file)(value)) problems.push(`it passes ${file} closed, so it carries nothing a caller must ignore`)
 }
 
+/**
+ * Spec 15.7: a tool whose build declares 1.1 sets `contract` and `contractVersion` on every envelope (a stream's end
+ * result included) and on every stream start line, so that an unmarked document is always a 1.0 document. Checked
+ * last, so that a document's own first problem is reported first.
+ */
+function checkMarkers(name: string, text: string, problems: string[]) {
+  const marked = (o: { contract?: string; contractVersion?: string } | undefined, what: string, tool?: string) => {
+    if (!tool || (toolMinors.get(tool) ?? "1.0") === "1.0") return
+    if (!o?.contract || !o.contractVersion)
+      problems.push(`${tool} declares 1.1, but ${what} lacks contract or contractVersion (spec 15.7)`)
+  }
+  if (name.endsWith(".ndjson")) {
+    const lines = text.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as StreamLine & { meta?: Meta })
+    for (const [i, l] of lines.entries()) {
+      if (l.type === "start") marked(l as { contract?: string; contractVersion?: string }, `start line ${i + 1}`, l.tool)
+      else if (l.type === "end" && l.result?.meta) marked(l.result.meta, `the end result`, l.result.meta.tool)
+      else if (l.type === undefined && l.meta) marked(l.meta, "the refusal", l.meta.tool)
+    }
+    return
+  }
+  const doc = JSON.parse(text) as { meta?: Meta }
+  if (doc.meta) marked(doc.meta, "the document", doc.meta.tool)
+}
+
 function check(path: string): string[] {
   const problems: string[] = []
   const name = basename(path)
@@ -1617,6 +1658,7 @@ function check(path: string): string[] {
     else if (name.startsWith("schema-")) checkSchemaAnswer(readJson(path), problems)
     else if (name.startsWith("input-")) checkInput(path, readJson(path), problems)
     else checkEnvelope(readJson(path), problems)
+    if (!name.startsWith("caller-") && !name.startsWith("input-")) checkMarkers(name, readFileSync(path, "utf8"), problems)
   } catch (e) {
     problems.push(`not parseable: ${(e as Error).message}`)
   }

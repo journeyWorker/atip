@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "data": {
+    "kind": "tree",
+    "level": "L1",
+    "commands": [
+      {
+        "command": "release",
+        "path": [
+          "release"
+        ],
+        "kind": "recipe",
+        "summary": "Build, then deploy"
+      },
+      {
+        "command": "rollback",
+        "path": [
+          "rollback"
+        ],
+        "kind": "recipe",
+        "summary": "Deploy the previous build"
+      }
+    ]
+  },
+  "meta": {
+    "command": "schema",
+    "contract": "atip/1",
+    "contractVersion": "1.2",
+    "schemaVersion": "1.2",
+    "tool": "acme",
+    "toolVersion": "1.0.0"
+  }
+}
