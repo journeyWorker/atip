@@ -28,6 +28,10 @@ declares `meta.contractVersion: "1.1"`.
   during-the-work codes (8.3); a code with two exits is split (7.3.2); a batch report is its own output (6.6);
   signals as a wait status or a launcher's 128+n (8.4); a report may keep its own paging members (6.9).
 - **Declined (D24).** No per-command member saying whether a command accepts `--json`: `options` already says it.
+- **A 1.0 tool is untouched.** The rules that are meanings rather than members apply only to a tool that declares
+  1.1: map keys and map cut nodes (6.10), command-line hints (7.1.2), `--input` twice as `USAGE` (11.2); dual
+  warning/error registration applies only to a tool with a warning registry (7.5.3). A second synthetic tool,
+  `ledger`, stays on 1.0 in the examples to show it.
 - **Examples and validator.** The synthetic tool `acme` now declares 1.1: registry reasons, a warning registry,
   map and escaped field paths. `examples/caller-*.json` are documents of a later minor that a caller must read;
   `scripts/check.ts` validates them against the schemas read open and checks every tool document against the
