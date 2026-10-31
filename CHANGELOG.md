@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 (release candidate)
+## 1.1.0 (2026-11-01)
 
 Optional additions and SHOULD/MAY rules from implementer feedback from two early adopters, and a fix to how the
 contract is versioned. A tool that conformed to 1.0.0 still conforms, as a 1.0 tool; a tool that uses anything new

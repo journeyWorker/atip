@@ -7,8 +7,8 @@ streams, and the guide shipped in the binary. It is written for tools built with
 TypeScript/Effect 4, but nothing in it depends on either, and it is checked against built binaries. A tool that
 passes is "ATIP 1.1 L1 conformant" (contract minor, then level L0, L1 or L2) for a release.
 
-**Status: 1.1.0, release candidate.** 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
-adds optional members and SHOULD/MAY rules from implementer feedback. The decisions behind both are in Appendix A of
+**Status: 1.1.0** (2026-11-01). 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0, after
+four more, adds optional members and SHOULD/MAY rules from implementer feedback. The decisions behind both are in Appendix A of
 the spec; no question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, and 15.9 states
 the one place where 1.1.0 changes what 1.0.0 promised callers. Until its second revision the contract was called `agent-cli/1`.
 
