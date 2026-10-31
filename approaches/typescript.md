@@ -195,10 +195,11 @@ with no value, is `USAGE` with `field` `--input` (spec 11.2), raised by the argv
    (`CONTRACT_VERSION = "1.1"`), set on every envelope including the `result` of a stream's `end` line; a tool does
    not write the minor itself (spec 15.7).
 8. **Field paths.** `--fields` and the projection share one parser for field paths (spec 6.10): dotted names,
-   `[]`, and a bracketed JSON string for a key that is not an identifier (`attributes["http.status-code"]`, only
-   `\"` and `\\` escape inside the quotes). It rejects a bracketed identifier, so every member has one spelling
+   `[]`, and a bracketed key for a name that is not an identifier (`attributes["http.status-code"]`, `attributes[""]`;
+   only `\"` and `\\` escape inside the quotes, so it is not `JSON.parse`). It rejects a bracketed identifier, so every member has one spelling
    and `meta.fields` compares as text; its writer is the inverse; the `--fields` value is split by a scanner that
-   ignores commas inside brackets. A map the output schema declares (`Schema.Record`) has selectable keys. A
+   ignores commas inside brackets. In a tool that declares 1.1, a map the output schema declares (`Schema.Record`) has selectable keys and is a cut
+   node; a tool that declares 1.0 keeps it whole. A
    test round-trips every path of the examples and one with a quote, a backslash and a comma in the key.
 
 ### 3.3 Schema → self-description mapping

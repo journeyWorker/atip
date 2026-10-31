@@ -110,8 +110,9 @@ for one of those situations takes the name from there. A reason never changes th
 unregistered warning code does not compile. A tool's warning registry is its own `&'static [&'static WarningInfo]`,
 printed by `schema --warnings` (`data.kind` `warnings`) and `schema --warning <CODE>` (`warning`). `schema
 --error <CODE>` for a code that is only in the warning table refuses with `USAGE`, `field` `--error`, and the
-`hint` `<tool> schema --warning <CODE> --json`. A situation reported as a warning in one invocation and as an error
-in another has a row in both tables; a test asserts the two `meaning`s are equal (spec 7.5.3).
+`hint` `<tool> schema --warning <CODE> --json`. When the tool keeps a warning table, a situation reported as a
+warning in one invocation and as an error in another has a row in both tables, and a test asserts the two
+`meaning`s are equal (spec 7.5.3); a tool without a warning table keeps such a code in the error table only.
 
 **The contract constant.** `pub const CONTRACT_VERSION: &str = "1.1"` in the crate is the one place the minor is
 written. `Meta` sets `contractVersion` from it on every envelope, the `result` of a stream's `end` line included,
@@ -185,13 +186,16 @@ keyed by id and the completeness test of §3.3 keeps it honest.
 `--fields` and the projection share one small parser, `fieldpath::parse`, so the two cannot read a path
 differently (spec 6.10). Segments are `Name(String)`, `Each` (`[]`) and a bracketed key, which is a `Name` written
 as a JSON string: `attributes["http.status-code"]`, `["x.y"].value`. Inside the quotes only `\"` and `\\` are
-escapes. `parse` refuses a path that is not in its one spelling: a name that is an identifier
+escapes, every other character stands for itself, and the quotes may enclose nothing (`attributes[""]`, the
+empty key); `\n` and `\u0041` are not escapes, so this is not `serde_json::from_str`. `parse` refuses a path that is not in its one spelling: a name that is an identifier
 (`[A-Za-z_][A-Za-z0-9_]*`) must be written with a dot, never bracketed, so `meta.fields` can be compared as text.
 `write` is the inverse and produces that spelling. The `--fields` value is split by a scanner that does not split
-at commas inside a bracketed key, not by `str::split(',')`. A key of a map the output schema declares
-(`additionalProperties` with a value schema) is selectable; the projection descends into every member the path
-names and keeps the rest out. Tests: `write(parse(p)) == p` for every path in the examples, a path with `"` and
-`\` in a key, and a comma inside brackets.
+at commas inside a bracketed key, not by `str::split(',')`. In a tool that declares 1.1, a key of a map the
+output schema declares (`additionalProperties` a schema or `true`, `properties` absent or empty) is selectable, and
+the map is a cut node; the map is the schema the declared path names, so `labels` declared as an array of maps is
+selected through `labels[]`, never `labels.region`. A tool that declares 1.0 keeps a declared map whole. The
+projection descends into every member the path names and keeps the rest out. Tests: `write(parse(p)) == p` for
+every path in the examples, a path with `"` and `\` in a key, the empty key, and a comma inside brackets.
 
 ### 3.5 Signals and launchers (spec 8.4)
 

@@ -185,22 +185,27 @@ claim is `1.0`, and its documents carry no 1.1 member. The additions are optiona
 | `USAGE` with `field`, or a hint naming `<tool> schema <command> --json` | 7.1.3 | SHOULD |
 | Precondition and during-the-work code names; a code with two exits split in two | 7.3.2, 8.3 | naming SHOULD |
 | Conservative staging: a write leaf reports a failure it cannot place as exit 1 | 8.3.1 | MAY |
+| `--input` twice or without a value refused with `USAGE` | 11.2 | SHOULD for a 1.0 tool; MUST once it declares 1.1 |
+| Text mode: a command that exits 1 prints its result on stdout | 5.3 | MAY (callers: see 15.9) |
 | A launcher re-raises the signal or exits 128+n | 8.4 | SHOULD |
 
-**If the tool uses any 1.1 member, it declares 1.1.** It sets `meta.contractVersion` to `"1.1"` on every envelope
-that sets `meta.contract` (and should set both everywhere, including a stream's end result), and its `schema`
-answers carry `meta.schemaVersion` `"1.1"` (spec 15.7, 10.1.4, 10.13 rule 16). The value is the same on every
+**If the tool uses any 1.1 member, it declares 1.1.** It sets `meta.contract` and `meta.contractVersion` (`"1.1"`)
+on every envelope, a stream's end result included, and `contract` and `contractVersion` on every stream start line,
+and its `schema` answers carry `meta.schemaVersion` `"1.1"` (spec 15.7, 10.1.4, 10.13 rule 16). The value is the same on every
 document one build prints; in a Rust or TypeScript tool it is one constant of the shared package
 (approaches/rust.md §3.1, approaches/typescript.md §3.2). The reverse holds as well: a tool that declares `1.0`
 emits no reason, no `warnings` or `warning` document and no bracketed path, and the checker fails it if it does
-(L0.contract-version). The tool's fixture gets `contractVersion: "1.1"` and a `registry` (approaches/checker.md §5),
+(L0.contract-version). Declaring 1.1 also turns on rules that are meanings rather than members: a hint that
+starts with the tool name must be a command line (7.1.2), so reword prose hints such as "canon can't find …"; a
+declared map's keys become selectable and the map becomes a cut node (6.10), so drop `minProperties` and the like
+from it or stop declaring it; and `--input` given twice must be `USAGE` (11.2). The tool's fixture gets `contractVersion: "1.1"` and a `registry` (approaches/checker.md §5),
 and it claims "ATIP 1.1 L1".
 
 **A caller's new duty (spec 15.6, 15.8).** Ignore every member you do not know, in every object the contract
 defines, not only in reports; do not fail a document because a listed value (`data.kind`, `valueType`, `effect`) is
 one you do not know, and do not act on what you cannot interpret (an unknown `effect` is `destructive`). Validate
 with the published schemas read open (`additionalProperties: false` taken as absent), or not at all. Look a warning
-code up in the warning registry first and the error registry second (7.5.3). Treat a missing `contractVersion` as
+code up in the warning registry first, when the tool has one, and the error registry second (7.5.3). Treat a missing `contractVersion` as
 `1.0`. A caller that branches on `code` alone keeps working with a 1.1 tool: a reason refines a code and never
 replaces it. The one-time break (15.9): a 1.0 caller that validated tool output against the closed 1.0 schemas
 rejects the members 1.1 adds, and must be changed before it meets a 1.1 tool.
