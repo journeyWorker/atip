@@ -2,7 +2,7 @@
 
 Status: **1.1.0** (release candidate). Version 1.0.0 was adopted 2026-10-30 after six rounds of independent review;
 1.1.0 adds optional members and SHOULD/MAY rules from implementer feedback and fixes how the contract is versioned
-(15, Appendix A D20-D27). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
+(15, Appendix A D20-D28). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
 2026-10-28 (Appendix A, D13).
 
 ## Abstract
@@ -269,23 +269,25 @@ When the value there is an array, each element is a record.
 
 **Escaped keys** (since 1.1). A member whose name is not an identifier (`[A-Za-z_][A-Za-z0-9_]*`), such as an
 attribute key `http.status-code`, is written as a bracketed JSON string instead of `.name`: `["http.status-code"]`.
-Inside the quotes only `\"` and `\\` are escapes; every other character, control characters included, stands for
-itself, and the quotes may enclose nothing (`attributes[""]` selects the key that is the empty string). This is
-the grammar of the bracketed key, not JSON's: `\n`, `\u0041` and the other JSON escapes are not escapes here. A path may start with a
-bracketed key, and a bracketed key may be followed by `[]` and by further steps: `attributes["http.status-code"]`,
-`["x.y"].value`. A member whose name is an identifier is always written with a dot, never in brackets, so each
-member has exactly one spelling and `meta.fields` can be compared as text. Paths without brackets mean what they
-meant in 1.0. In the `--fields` value, commas inside a bracketed key do not separate paths.
+Inside the quotes only `\"` and `\\` are escapes; every other character except U+0000, control characters included,
+stands for itself, and the quotes may enclose nothing (`attributes[""]` selects the key that is the empty string).
+This is the grammar of the bracketed key, not JSON's: `\n`, `\u0041` and the other JSON escapes are not escapes
+here. A path may start with a bracketed key, and a bracketed key may be followed by `[]` and by further steps:
+`attributes["http.status-code"]`, `["x.y"].value`. A member whose name is an identifier is always written with a
+dot, never in brackets, so each member has exactly one spelling and `meta.fields` can be compared as text. Paths
+without brackets mean what they meant in 1.0. In the `--fields` value, commas inside a bracketed key do not separate
+paths.
 
 **Map keys** (since 1.1, for a document that declares 1.1). A declared path whose schema is a *map*, an object
 schema whose `additionalProperties` is a schema (`true` included) and whose `properties` is absent or empty, also
-makes each of its keys selectable: `attributes.region`, `attributes["http.status-code"]` or `attributes[""]` when
-`attributes` is declared. The map is the schema the declared path itself names: `labels` declared as an array of
-maps names the array, so its keys are selected through `labels[]` (`labels[].region`), never `labels.region`.
-Such a path selects the whole value under that key and goes no deeper. A key the record does not have is simply
-absent from the projection. The map's schema is then a cut node. In a command document that declares 1.0, a
-declared map is a member kept whole, exactly as in 1.0: its keys are not selectable and its schema is not a cut
-node, so a 1.0 tool's map may keep keywords such as `minProperties` (rule 16).
+makes each of its keys selectable, except a key that contains U+0000, which no argv element can carry (9.12) and
+which is reached only by selecting the whole map: `attributes.region`, `attributes["http.status-code"]` or
+`attributes[""]` when `attributes` is declared. The map is the schema the declared path itself names: `labels`
+declared as an array of maps names the array, so its keys are selected through `labels[]` (`labels[].region`), never
+`labels.region`. Such a path selects the whole value under that key and goes no deeper. A key the record does not
+have is simply absent from the projection. The map's schema is then a cut node. In a command document that declares
+1.0, a declared map is a member kept whole, exactly as in 1.0: its keys are not selectable and its schema is not a
+cut node, so a 1.0 tool's map may keep keywords such as `minProperties` (rule 16).
 
 **Projection.** For each record:
 
@@ -1389,8 +1391,11 @@ reasons, every `schema` document and everything inside it, stream lines, batch r
 fail a whole document because a member whose values this document lists (`data.kind`, `valueType`, `effect`,
 `idempotency`, an output's `kind`, a batch item's `status`) has a value it does not know; it does not act on what
 it cannot interpret: an answer of an unknown `data.kind` is one it cannot use, a command with an unknown `effect`
-is treated as `destructive`, and an argument of an unknown `valueType` is given only as a string the caller already
-has. A caller refuses a document whose `meta.contract` names a major it does not know. Tools are held to the
+is treated as `destructive`, and an argument of an unknown `valueType` is one it cannot give (the caller leaves it
+out; when it is required, the caller cannot run the command). Only an unknown *string* is an unknown value: a
+listed member whose value is not a string, or a required listed member that is missing, is a known member of the
+wrong shape, and the caller rejects the document. A caller refuses a document whose `meta.contract` names a major
+it does not know. Tools are held to the
 opposite rule: a tool emits only what its minor defines, plus `x-<tool>` members (10.12, 15.7). [Appendix A D20]
 
 15.7. **Declaring the minor** (since 1.1). `meta.contractVersion` (6.6) is the contract version a tool implements,
@@ -1413,9 +1418,14 @@ schemas by an unknown member (15.6). A caller that validates uses them *open*: w
 read as absent, every other keyword unchanged. A value outside a listed set (an unknown `data.kind`, `valueType`,
 `effect`, output `kind` or batch item `status`) still fails the schemas read open, so a caller that validates first
 builds its view of the document as 15.6 says: an unknown `data.kind` leaves `data` unusable; an unknown `effect`
-makes the command `destructive`; an argument of an unknown `valueType` is a `string` without its typed members; an
-output of an unknown `kind` and a batch item of an unknown `status` are left out. It validates that view, and
-rejects the document only when the view fails. `scripts/check.ts` validates `examples/caller-*.json` that way:
+makes the command `destructive` (and, without a known `idempotency`, `once`); an argument of an unknown
+`valueType`, an output of an unknown `kind`, a tree entry of an unknown `kind` and a batch item of an unknown
+`status` are left out. The view can no longer meet the producer's completeness rules (at least one output or
+entry, a batch output when `input.batch` is `true`, and the other `minItems`, `contains` and `if`/`then`/`else`
+rules), so a caller reading open also drops those keywords: they are the producer's obligations, which the checker
+enforces on the tool's own documents. Types, `required` members and listed values stay. The caller validates its
+view against the schemas read that way, and rejects the document only when the view fails; it never rejects a
+document because of what it left out. `scripts/check.ts` validates `examples/caller-*.json` that way:
 documents of a later minor that a caller of this one must read. The `$id`s stay under `https://atip.dev/1/` for
 every `1.x`; a release tag holds the schemas of its version. [Appendix A D20]
 
@@ -1464,7 +1474,7 @@ registries with the one in its fixture and with the codes and reasons the tool e
 
 ## 18. Open questions
 
-Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, and D20-D27 for 1.1.0). None is
+Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, and D20-D28 for 1.1.0). None is
 open in 1.1.0.
 The two that revision 5 raised are kept here with their decisions, so that earlier references still resolve.
 
@@ -1556,6 +1566,7 @@ caller is `atip/2`.
 | D25 | New SHOULD and MAY rules: an L0 tool SHOULD offer `schema --errors` and the checker compares it with the fixture; tool-wide options SHOULD be accepted wherever `--json` is, groups included; a write whose failure point cannot be shown to be before the work MAY report it as during-the-work (exit 1), while exit 2 still means nothing changed. | 7.3.4, 8.3.1, 9.13, 17.3 |
 | D26 | Clarifications: `USAGE` SHOULD carry `field`, and without one its hint names the command's `schema`; in text mode a refusal prints nothing on stdout and exit 1 may print its result; `--input` given twice or without a value is `USAGE`; precondition and during-the-work code names; a code with two exits is split; a batch report is its own output; a signal shows as a wait status or as a launcher's 128+n; a `hint` is exactly one of its three forms; a report may keep its own paging members, `meta.page` is authoritative. | 5.3, 6.6, 6.9, 7.1.2, 7.1.3, 7.3.2, 8.3, 8.4, 11.2 |
 | D27 | A minor never makes a 1.0-conforming tool non-conforming: a 1.1 rule that would (map cut nodes, command-line hints, `--input` twice as `USAGE`) applies only to a document that declares 1.1, and a 1.0 tool keeps 1.0's behaviour; dual warning/error registration applies only to a tool that keeps a warning registry. A 1.1 tool sets `contract` and `contractVersion` everywhere, so an unmarked document is always 1.0. Callers build a view of a document with unknown listed values before validating it. | 6.10, 7.1.2, 7.5.3, 11.2, 10.13 rule 16, 15.7, 15.8 |
+| D28 | A caller's view leaves out every unknown variant (argument, output, tree entry, batch item) and drops the producer's completeness rules it can no longer meet (`minItems`, `contains`, `if`/`then`/`else`), so it never rejects a document for what it left out; a listed member that is not a string is a wrong type and is rejected. A map key containing U+0000 is not selectable. A 1.1 tool's markers are a MUST of the checker's L0.contract-version. | 6.10, 15.6, 15.8 |
 
 ## Appendix B. Prior art
 
