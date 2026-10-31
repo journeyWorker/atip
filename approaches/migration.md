@@ -203,7 +203,10 @@ and it claims "ATIP 1.1 L1".
 
 **A caller's new duty (spec 15.6, 15.8).** Ignore every member you do not know, in every object the contract
 defines, not only in reports; do not fail a document because a listed value (`data.kind`, `valueType`, `effect`) is
-one you do not know, and do not act on what you cannot interpret (an unknown `effect` is `destructive`). Validate
+one you do not know, and do not act on what you cannot interpret (an unknown `effect` is `destructive`; an argument of an unknown
+`valueType` is left out, and a command that requires one cannot be run). A listed member that is not a string is a
+wrong type, not an unknown value. When validating, drop the completeness rules your view can no longer meet
+(spec 15.8). Validate
 with the published schemas read open (`additionalProperties: false` taken as absent), or not at all. Look a warning
 code up in the warning registry first, when the tool has one, and the error registry second (7.5.3). Treat a missing `contractVersion` as
 `1.0`. A caller that branches on `code` alone keeps working with a 1.1 tool: a reason refines a code and never

@@ -186,8 +186,8 @@ keyed by id and the completeness test of §3.3 keeps it honest.
 `--fields` and the projection share one small parser, `fieldpath::parse`, so the two cannot read a path
 differently (spec 6.10). Segments are `Name(String)`, `Each` (`[]`) and a bracketed key, which is a `Name` written
 as a JSON string: `attributes["http.status-code"]`, `["x.y"].value`. Inside the quotes only `\"` and `\\` are
-escapes, every other character stands for itself, and the quotes may enclose nothing (`attributes[""]`, the
-empty key); `\n` and `\u0041` are not escapes, so this is not `serde_json::from_str`. `parse` refuses a path that is not in its one spelling: a name that is an identifier
+escapes, every other character except U+0000 stands for itself (argv cannot carry NUL, so a map key containing it
+is not selectable), and the quotes may enclose nothing (`attributes[""]`, the empty key); `\n` and `\u0041` are not escapes, so this is not `serde_json::from_str`. `parse` refuses a path that is not in its one spelling: a name that is an identifier
 (`[A-Za-z_][A-Za-z0-9_]*`) must be written with a dot, never bracketed, so `meta.fields` can be compared as text.
 `write` is the inverse and produces that spelling. The `--fields` value is split by a scanner that does not split
 at commas inside a bracketed key, not by `str::split(',')`. In a tool that declares 1.1, a key of a map the

@@ -196,7 +196,7 @@ with no value, is `USAGE` with `field` `--input` (spec 11.2), raised by the argv
    not write the minor itself (spec 15.7).
 8. **Field paths.** `--fields` and the projection share one parser for field paths (spec 6.10): dotted names,
    `[]`, and a bracketed key for a name that is not an identifier (`attributes["http.status-code"]`, `attributes[""]`;
-   only `\"` and `\\` escape inside the quotes, so it is not `JSON.parse`). It rejects a bracketed identifier, so every member has one spelling
+   only `\"` and `\\` escape inside the quotes, so it is not `JSON.parse`; U+0000 is refused, since argv cannot carry it). It rejects a bracketed identifier, so every member has one spelling
    and `meta.fields` compares as text; its writer is the inverse; the `--fields` value is split by a scanner that
    ignores commas inside brackets. In a tool that declares 1.1, a map the output schema declares (`Schema.Record`) has selectable keys and is a cut
    node; a tool that declares 1.0 keeps it whole. A
