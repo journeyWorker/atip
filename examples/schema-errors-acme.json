@@ -140,7 +140,19 @@
         "exit": 2,
         "retryable": false,
         "meaning": "No member has this number",
-        "fix": "List the members: acme member list --team <TEAM>"
+        "fix": "List the members: acme member list --team <TEAM>",
+        "reasons": [
+          {
+            "reason": "NEVER_EXISTED",
+            "meaning": "No member ever had this number",
+            "fix": "acme member list -t <TEAM> --json shows the numbers"
+          },
+          {
+            "reason": "ARCHIVED",
+            "meaning": "The member was archived",
+            "fix": "acme member restore <MEMBER> --json brings it back"
+          }
+        ]
       },
       {
         "code": "OPERATION_REUSED",

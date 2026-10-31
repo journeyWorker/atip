@@ -25,7 +25,8 @@
         "error": {
           "code": "MEMBER_NOT_FOUND",
           "message": "no member has number 8",
-          "retryable": false
+          "retryable": false,
+          "reason": "NEVER_EXISTED"
         }
       }
     ]

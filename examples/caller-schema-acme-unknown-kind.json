@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "data": {
+    "kind": "recipes",
+    "recipes": [
+      {
+        "name": "release",
+        "steps": [
+          "build",
+          "deploy start"
+        ]
+      }
+    ]
+  },
+  "meta": {
+    "command": "schema",
+    "contract": "atip/1",
+    "contractVersion": "1.2",
+    "schemaVersion": "1.2",
+    "tool": "acme",
+    "toolVersion": "1.0.0"
+  }
+}

@@ -107,7 +107,10 @@
             "badge",
             "note",
             "[\"display-name\"]",
-            "attributes"
+            "attributes",
+            "labels",
+            "labels[]",
+            "settings"
           ],
           "default": [
             "name",
@@ -211,6 +214,22 @@
                 "boolean"
               ]
             }
+          },
+          "labels": {
+            "description": "Label sets, one map per source: an array of maps, so keys are selected through labels[] (spec 6.10).",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "settings": {
+            "description": "A map written with an empty properties member, as some schema generators emit it.",
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true
           }
         },
         "additionalProperties": false

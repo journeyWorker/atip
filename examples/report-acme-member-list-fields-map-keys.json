@@ -8,7 +8,17 @@
         "display-name": "Ada L.",
         "attributes": {
           "region": "eu",
-          "http.status-code": 200
+          "http.status-code": 200,
+          "": "blank key"
+        },
+        "labels": [
+          {
+            "region": "eu"
+          },
+          {}
+        ],
+        "settings": {
+          "theme": "dark"
         }
       },
       {
@@ -16,7 +26,9 @@
         "display-name": "Grace H.",
         "attributes": {
           "region": "us"
-        }
+        },
+        "labels": [],
+        "settings": {}
       }
     ]
   },
@@ -31,7 +43,10 @@
       "id",
       "[\"display-name\"]",
       "attributes.region",
-      "attributes[\"http.status-code\"]"
+      "attributes[\"http.status-code\"]",
+      "attributes[\"\"]",
+      "labels[].region",
+      "settings.theme"
     ],
     "page": {
       "returned": 2,

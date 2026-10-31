@@ -124,9 +124,32 @@ that declares 1.0 is rejected (spec 10.13 rule 16).
 | an identifier in brackets; a malformed path | `invalid/schema-fields-bracket-identifier.json`, `invalid/schema-fields-path-malformed.json` | rejected |
 | a schema answer whose `schemaVersion` is not its contract version; `contractVersion` without `contract`; a minor this repository does not describe; a stream whose end declares another minor than its start | `invalid/schema-version-not-contract-version.json`, `invalid/envelope-contract-version-without-contract.json`, `invalid/report-acme-contract-version-unknown.json`, `invalid/stream-acme-build-start-contract-version-mismatch.ndjson` | rejected |
 
+**A synthetic tool that stays on 1.0, `ledger`** (`*-ledger-*`): it declares nothing, so every document is a 1.0
+document, and it shows what 1.1 must leave alone. Its `entry list` declares a whole map with `minProperties`
+(allowed: in 1.0 a map is kept whole and is no cut node), its failure has a prose hint that starts with the tool
+name, and its warning code lives in the error registry with exit 1, as 1.0 allowed. Selecting a map key, a
+bracketed path in its `meta`, or an unregistered warning in its schema answer is rejected.
+
+| Case | File | Result |
+|---|---|---|
+| a 1.0 whole map with `minProperties`; the same map in a 1.1 document | `schema-command-ledger-entry-list.json`; `invalid/schema-fields-map-cut-node-min-properties.json` | accepted; rejected |
+| a 1.0 prose hint that starts with the tool name; the same in a 1.1 document | `report-failure-ledger-prose-hint.json`; `invalid/report-acme-hint-prose-starting-with-tool.json` | accepted; rejected |
+| a 1.0 warning registered only in the error registry | `report-ledger-entry-list-fields.json`, `schema-errors-ledger.json` | accepted |
+| a map-key selection in 1.0 | `invalid/report-ledger-entry-list-map-key.json` | rejected |
+| a 1.0 schema answer with a bracketed `meta.fields`, or an unregistered warning | `invalid/schema-ledger-meta-bracket-field.json`, `invalid/schema-ledger-meta-warning-unregistered.json` | rejected |
+| a 1.0 batch item whose `details` carry reasons; a 1.1 batch item whose reason, or whose detail's reason, is not registered; a registered one | `invalid/report-batch-item-details-reason-in-1-0.json`, `invalid/report-acme-member-tag-batch-item-reason-unregistered.json`, `invalid/report-acme-member-tag-batch-item-details-reason-unregistered.json`; `report-acme-member-tag-batch.json` | rejected; accepted |
+| `contractVersion` written as `"1.0"`; a stream that declares an unknown minor | `invalid/report-contract-version-explicit-1-0.json`, `invalid/stream-acme-build-start-contract-version-unknown.ndjson` | rejected |
+| the empty map key `attributes[""]`, a map under `labels[]`, a map written with `properties: {}` | `report-acme-member-list-fields-map-keys.json` | accepted |
+| `labels.region` where `labels` is an array of maps; the empty key left in unselected | `invalid/report-acme-member-list-fields-map-key-without-descent.json`, `invalid/report-acme-member-list-fields-empty-key-leak.json` | rejected |
+
 **Caller documents** (`caller-*.json`) are what a tool of a later minor might print: `contractVersion` `1.2` and
 members this repository does not define (`meta.costMs`, `page.exact`, `error.severity`, a registry entry's `docs`).
 A caller of this minor must read them (spec 15.6): each passes the contract schemas read open and fails them
 closed. `invalid/caller-report-nothing-unknown.json` carries nothing unknown, and `invalid/caller-report-wrong-type.json`
-gives a known member the wrong type, so a caller reading open still rejects it.
+gives a known member the wrong type, so a caller reading open still rejects it. Values outside a listed set go
+through the caller's view of spec 15.8 first (`callerView` in `scripts/check.ts`): an unknown `data.kind`
+(`caller-schema-acme-unknown-kind.json`), `valueType`, `effect`, output `kind` and tree entry `kind`
+(`caller-schema-command-acme-unknown-*.json`, `caller-schema-tree-acme-unknown-entry-kind.json`) are accepted that
+way, while an unknown major (`invalid/caller-report-unknown-major.json`) and a known member of the wrong type
+(`invalid/caller-schema-command-wrong-known-type.json`) stay rejected.
 

@@ -821,7 +821,7 @@ function parseFieldPath(path: string): Step[] | undefined {
         }
         name += path[j]
       }
-      if (!path.startsWith('"]', j) || name === "") return undefined
+      if (!path.startsWith('"]', j)) return undefined
       bracket = true
       i = j + 2
     } else {
@@ -966,16 +966,19 @@ function pathNode(schemas: Record<string, SchemaNode>, record: SchemaNode | unde
     node = nonNull(schemas, props[step.name] as SchemaNode)
     const isArray = isObject(node) && (typesOf(node).includes("array") || node.items !== undefined)
     if (step.array !== isArray && (step.array || i < steps.length - 1)) return undefined
-    if (isArray && isObject(node)) node = nonNull(schemas, node.items as SchemaNode)
+    // Only an explicit `[]` descends into the items: a last step without it names the whole array (spec 6.10).
+    if (step.array && isObject(node)) node = nonNull(schemas, node.items as SchemaNode)
   }
   return node ?? true
 }
 const pathDeclared = (schemas: Record<string, SchemaNode>, record: SchemaNode | undefined, path: string) =>
   pathNode(schemas, record, path) !== undefined
 
-/** A map (spec 6.10): an object schema whose `additionalProperties` is a schema and that has no `properties`. */
+/** A map (spec 6.10): an object schema whose `additionalProperties` is a schema (`true` included) and whose `properties` is absent or empty. */
 const isMap = (node: SchemaNode | undefined) =>
-  isObject(node) && node.properties === undefined && node.additionalProperties !== undefined && node.additionalProperties !== false
+  isObject(node) &&
+  (node.properties === undefined || (isObject(node.properties) && Object.keys(node.properties).length === 0)) &&
+  (isObject(node.additionalProperties) || node.additionalProperties === true)
 
 /** The declared map path a selected path extends by one key, if it is a map-key selection (spec 6.10). */
 function mapKeyOf(doc: CommandDoc, output: Output, path: string): string | undefined {
@@ -1033,7 +1036,7 @@ function projectedSchema(doc: CommandDoc, output: Output, trie: Trie): ValidateF
 }
 
 // ---- self-description (spec 10.13) ----
-function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[]) {
+function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11: boolean) {
   const all = [...doc.operands, ...doc.options]
   // Rule 9: names and short letters are unique.
   const names = new Set<string>()
@@ -1147,12 +1150,12 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[]) {
     const record = recordSchema(doc.schemas, o)
     const declared = [...o.fields.paths, ...(o.fields.keep ?? [])]
     // Cut nodes (6.10): every schema from the output root to a selectable field. The trie starts with the decoded
-    // records segments; below the records it holds every proper ancestor of a declared path, and every declared
-    // map, whose keys are selectable.
+    // records segments; below the records it holds every proper ancestor of a declared path and, in a document
+    // that declares 1.1, every declared map, whose keys are selectable. A 1.0 document keeps a map whole.
     const ancestors: Trie = new Map()
     for (const p of declared) {
       const names = stepNames(p)
-      const map = isMap(pathNode(doc.schemas, record, p))
+      const map = v11 && isMap(pathNode(doc.schemas, record, p))
       let node = ancestors
       for (const segment of map ? names : names.slice(0, -1)) {
         const existing = node.get(segment)
@@ -1211,9 +1214,10 @@ const warningRegistered = (tool: string, code: string) => warningRegistries.get(
 // ---- the contract minor a document declares (spec 15.7, 10.13 rule 16) ----
 const declaredMinor = (meta: Meta) => meta.contractVersion ?? "1.0"
 /** Whether the document may use the 1.1 additions; reports a minor this repository does not describe. */
-function minorOf(meta: Meta, problems: string[]): boolean {
-  const minor = declaredMinor(meta)
-  if (!MINORS.includes(minor)) problems.push(`contractVersion ${minor} is not a minor this repository describes (spec 15.7)`)
+function minorOf(meta: { contractVersion?: string }, problems: string[]): boolean {
+  const minor = meta.contractVersion ?? "1.0"
+  if (meta.contractVersion === "1.0") problems.push('contractVersion is never written as "1.0": 1.0 is its absence (spec 15.7)')
+  else if (!MINORS.includes(minor)) problems.push(`contractVersion ${minor} is not a minor this repository describes (spec 15.7)`)
   return minor !== "1.0"
 }
 const since11 = (allowed: boolean, what: string, problems: string[]) =>
@@ -1234,6 +1238,7 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
   }
   const { data, meta } = value as { data: SchemaData; meta: Meta }
   const v11 = minorOf(meta, problems)
+  checkMeta(meta, v11, problems)
   if (meta.schemaVersion !== declaredMinor(meta))
     problems.push(`a schema answer's schemaVersion ${meta.schemaVersion} is not its contract version ${declaredMinor(meta)} (spec 10.1.4)`)
   if (data.kind === "warnings" || data.kind === "warning") since11(v11, `data.kind ${data.kind}`, problems)
@@ -1241,7 +1246,7 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
     for (const o of data.outputs)
       for (const p of [...(o.fields?.paths ?? []), ...(o.fields?.keep ?? []), ...(o.fields?.default ?? [])])
         if (parseFieldPath(p)?.some((s) => s.bracket)) since11(v11, `the bracketed field path ${p}`, problems)
-    checkCommandDoc(data, meta.tool, problems)
+    checkCommandDoc(data, meta.tool, problems, v11)
   }
   if (data.kind === "group" && data.command !== data.path.join(" ")) problems.push(`group ${data.command} is not its path ${data.path.join(" ")}`)
   if (data.kind === "tree" || data.kind === "group") {
@@ -1341,42 +1346,66 @@ function checkReason(tool: string, error: { code: string; reason?: string }, at:
     problems.push(`${at}reason ${error.reason} is not registered under ${error.code} (spec 7.6.2)`)
 }
 
+/**
+ * The checks every ATIP-owned `meta` gets, whatever the document (spec 6, 7.5, 10.13 rule 16): `next` and paging,
+ * registered warnings, and the field paths of `meta.fields` against the declared minor.
+ */
+function checkMeta(meta: Meta, v11: boolean, problems: string[]) {
+  checkNext(meta, problems)
+  // Spec 7.5.1: every warning code is registered, in the warning registry or the error registry.
+  for (const w of meta.warnings ?? [])
+    if (!warningRegistered(meta.tool, w.code) && !registered(meta.tool, w.code)) problems.push(`warning ${w.code} is registered in neither registry (spec 7.5.1)`)
+  for (const f of meta.fields ?? []) {
+    const problem = fieldPathProblem(f)
+    if (problem) problems.push(problem)
+    else if (parseFieldPath(f)?.some((s) => s.bracket)) since11(v11, `the bracketed field path ${f}`, problems)
+  }
+}
+
+/**
+ * The checks every ATIP error object gets, at the top of a failure or in a batch item (spec 7.1, 7.3, 7.6, 10.13
+ * rule 16): its code and reason are registered, its `details` too, and a 1.1 document's command hints split.
+ * Returns the code's registered exit.
+ */
+function checkError(meta: Meta, error: ErrorBody, v11: boolean, at: string, problems: string[]): number | undefined {
+  const exit = checkCode(meta.tool, error, at, problems)
+  if (error.reason !== undefined) since11(v11, `${at}error.reason`, problems)
+  for (const [i, d] of (error.details ?? []).entries()) {
+    if (!registered(meta.tool, d.code)) problems.push(`${at}details ${i}: ${d.code} is not registered`)
+    if (d.reason !== undefined) since11(v11, `${at}details ${i} reason`, problems)
+    checkReason(meta.tool, d, `${at}details ${i}: `, problems)
+  }
+  // Spec 7.1.2: in a 1.1 document, a hint that starts with the tool name is a command line that splits like
+  // next[].command. A 1.0 document's prose hint may start with the tool name.
+  const hint = error.hint
+  if (v11 && hint?.startsWith(`${meta.tool} `)) {
+    try {
+      shellWords(hint)
+    } catch (e) {
+      problems.push(`${at}hint ${JSON.stringify(hint)} is not a command line (spec 7.1.2): ${(e as Error).message}`)
+    }
+  }
+  return exit
+}
+
 function checkEnvelope(value: unknown, problems: string[], stream?: { output?: Output }) {
   if (!V.envelope(value)) return void problems.push(`envelope: ${ajvErrors(V.envelope)}`)
   const env = value as Envelope
   const meta = env.meta
   const v11 = minorOf(meta, problems)
-  checkNext(meta, problems)
+  checkMeta(meta, v11, problems)
   if (env.error) {
-    const exit = checkCode(meta.tool, env.error, "", problems)
+    const exit = checkError(meta, env.error, v11, "", problems)
     if (exit === 2 && env.data !== undefined) problems.push(`refusal ${env.error.code} carries data (spec 6.4)`)
     if (env.error.code === "BATCH_INCOMPLETE" && env.data === undefined) problems.push("BATCH_INCOMPLETE without the batch report (spec 11.11)")
-    if (env.error.reason !== undefined) since11(v11, "error.reason", problems)
-    for (const [i, d] of (env.error.details ?? []).entries()) {
-      if (!registered(meta.tool, d.code)) problems.push(`details ${i}: ${d.code} is not registered`)
-      if (d.reason !== undefined) since11(v11, `details ${i} reason`, problems)
-      checkReason(meta.tool, d, `details ${i}: `, problems)
-    }
-    // Spec 7.1.2: a hint that starts with the tool name is a command line that splits like next[].command.
-    const hint = env.error.hint
-    if (hint?.startsWith(`${meta.tool} `)) {
-      try {
-        shellWords(hint)
-      } catch (e) {
-        problems.push(`hint ${JSON.stringify(hint)} is not a command line (spec 7.1.2): ${(e as Error).message}`)
-      }
-    }
     // Spec 7.3.4: `schema --error` given a code only the warning registry has points at `schema --warning`.
     const asked = env.error.received
     if (meta.command === "schema" && env.error.field === "--error" && typeof asked === "string" && warningRegistered(meta.tool, asked)
       && !registries.get(meta.tool)?.some((e) => e.code === asked)) {
       const want = `${meta.tool} schema --warning ${asked} --json`
-      if (hint !== want) problems.push(`schema --error ${asked}: a warning-only code, so the hint is ${JSON.stringify(want)} (spec 7.3.4)`)
+      if (env.error.hint !== want) problems.push(`schema --error ${asked}: a warning-only code, so the hint is ${JSON.stringify(want)} (spec 7.3.4)`)
     }
   }
-  // Spec 7.5.1: every warning code is registered, in the warning registry or the error registry.
-  for (const w of meta.warnings ?? [])
-    if (!warningRegistered(meta.tool, w.code) && !registered(meta.tool, w.code)) problems.push(`warning ${w.code} is registered in neither registry (spec 7.5.1)`)
   if (!meta.command && meta.schemaVersion !== "1.0") problems.push(`unresolved command with schemaVersion ${meta.schemaVersion}, not 1.0 (spec 6.11)`)
   const doc = meta.command ? commandDocs.get(`${meta.tool} ${meta.command}`) : undefined
   if (!doc) return
@@ -1399,10 +1428,7 @@ function checkEnvelope(value: unknown, problems: string[], stream?: { output?: O
     if (!declared) return void problems.push("meta.fields on an output without fields")
     const selectable = new Set([...declared.paths, ...(declared.keep ?? [])])
     for (const f of meta.fields) {
-      const problem = fieldPathProblem(f)
-      if (problem) problems.push(problem)
-      else if (parseFieldPath(f)?.some((s) => s.bracket)) since11(v11, `the bracketed field path ${f}`, problems)
-      if (selectable.has(f)) continue
+      if (selectable.has(f) || fieldPathProblem(f)) continue
       if (mapKeyOf(doc, output, f)) since11(v11, `the map key selection ${f}`, problems)
       else problems.push(`field ${f} is not selectable`)
     }
@@ -1416,11 +1442,11 @@ function checkEnvelope(value: unknown, problems: string[], stream?: { output?: O
     schema = projectedSchema(doc, output, trie)
   }
   if (!schema(env.data)) problems.push(`data fails ${refName(output.schemaRef)}${meta.fields ? " (projected)" : ""}: ${ajvErrors(schema)}`)
-  if (output.batch) checkBatch(env, doc, problems)
+  if (output.batch) checkBatch(env, doc, v11, problems)
 }
 
 /** Spec 11.11: the generic batch shape, one ordered status per item, nested errors registered, BATCH_INCOMPLETE exactly with a failed item. */
-function checkBatch(env: Envelope, doc: CommandDoc, problems: string[]) {
+function checkBatch(env: Envelope, doc: CommandDoc, v11: boolean, problems: string[]) {
   // The generic batch report applies whatever the command's own batch schema says.
   if (!V.batch(env.data)) problems.push(`data fails batch-report.schema.json: ${ajvErrors(V.batch)}`)
   const data = env.data as { items?: BatchItem[] }
@@ -1430,7 +1456,7 @@ function checkBatch(env: Envelope, doc: CommandDoc, problems: string[]) {
   data.items.forEach((item, i) => {
     if (item.index !== i) problems.push(`item ${i} has index ${item.index}`)
     if (item.error) {
-      checkCode(env.meta.tool, item.error, `item ${i}: `, problems)
+      checkError(env.meta, item.error, v11, `item ${i}: `, problems)
       if (!doc.errors.includes(item.error.code)) problems.push(`item ${i}: ${item.error.code} not in ${doc.command} errors`)
     }
   })
@@ -1466,6 +1492,8 @@ function checkStream(text: string, problems: string[]) {
   if (last?.type !== "end") problems.push("last line is not end: the stream was cut off (spec 13.5.2)")
   lines.slice(1, -1).forEach((l, i) => l.type !== "event" && problems.push(`line ${i + 2} is ${l.type}, not event`))
   if (first?.type !== "start") return
+  // Spec 15.7 and 10.13 rule 16: the start line declares the stream's minor, as an envelope does.
+  minorOf(first, problems)
   // Spec 13.5.1: the start line names the stream output when there are several; events are decoded by it at once.
   const doc = commandDocs.get(`${first.tool} ${first.command}`)
   const streams = doc?.outputs.filter((o) => o.kind === "stream") ?? []
@@ -1485,15 +1513,98 @@ function checkStream(text: string, problems: string[]) {
   checkEnvelope(result, problems, { output })
 }
 
+/** The values of a listed set in a contract schema, read from the schema itself so they cannot drift. */
+const schemaDocDefs = (JSON.parse(readFileSync(join(repo, "schema", "schema-doc.schema.json"), "utf8")) as { $defs: Record<string, JsonObject> }).$defs
+const listed = (node: JsonValue | undefined): JsonValue[] => (isObject(node) && Array.isArray(node.enum) ? node.enum : [])
+const KNOWN = {
+  kinds: ["tree", "group", "command", "errors", "error", "warnings", "warning"],
+  effects: listed(schemaDocDefs.effect),
+  idempotency: listed(schemaDocDefs.idempotency),
+  valueTypes: listed(isObject(schemaDocDefs.option.properties) ? schemaDocDefs.option.properties.valueType : undefined),
+  outputKinds: listed(isObject(schemaDocDefs.output.properties) ? schemaDocDefs.output.properties.kind : undefined),
+  entryKinds: listed(isObject(schemaDocDefs.treeEntry.properties) ? schemaDocDefs.treeEntry.properties.kind : undefined),
+}
+
+/**
+ * A caller's view of a schema answer (spec 15.6, 15.8): what it can act on, with every value outside a listed set
+ * replaced as 15.6 says. An unknown `data.kind` leaves `data` unusable (the view keeps `ok` and `meta` and an
+ * empty `data`, which only the envelope schema then checks); an unknown `effect` becomes
+ * `destructive` and an unknown or missing `idempotency` of such a command `once`; an argument of an unknown
+ * `valueType` becomes a `string` without its typed members; an output of an unknown `kind` and a tree entry of an
+ * unknown `kind` are left out. `notes` says what was replaced.
+ */
+function callerView(answer: JsonValue, notes: string[]): JsonValue {
+  const view = structuredClone(answer)
+  if (!isObject(view) || !isObject(view.data)) return view
+  const data = view.data
+  if (typeof data.kind === "string" && !KNOWN.kinds.includes(data.kind)) {
+    notes.push(`data.kind ${data.kind} is unknown: data unusable`)
+    view.data = {}
+    return view
+  }
+  const effect = (node: JsonObject, at: string) => {
+    if (node.effect === undefined || KNOWN.effects.includes(node.effect)) return false
+    notes.push(`${at} effect ${String(node.effect)} is unknown: treated as destructive`)
+    node.effect = "destructive"
+    return true
+  }
+  if (Array.isArray(data.commands))
+    data.commands = data.commands.filter((e) => {
+      if (!isObject(e)) return true
+      if (!KNOWN.entryKinds.includes(e.kind ?? null)) {
+        notes.push(`tree entry ${String(e.command)} of unknown kind left out`)
+        return false
+      }
+      effect(e, `tree entry ${String(e.command)}`)
+      return true
+    })
+  if (data.kind === "command") {
+    const destructive = effect(data, "the command")
+    if (destructive || (data.idempotency !== undefined && !KNOWN.idempotency.includes(data.idempotency))) {
+      if (data.idempotency !== "once") notes.push(`idempotency ${String(data.idempotency ?? "(none)")} read as once`)
+      data.idempotency = "once"
+    }
+    for (const list of [data.operands, data.options])
+      if (Array.isArray(list))
+        for (const a of list)
+          if (isObject(a) && !KNOWN.valueTypes.includes(a.valueType ?? null)) {
+            notes.push(`argument ${String(a.name)} of unknown valueType ${String(a.valueType)} read as a string`)
+            a.valueType = "string"
+            delete a.possibleValues
+            delete a.domain
+            if (a.default !== null && typeof a.default !== "string") a.default = null
+          }
+    if (Array.isArray(data.outputs))
+      data.outputs = data.outputs.filter((o) => {
+        if (!isObject(o) || KNOWN.outputKinds.includes(o.kind ?? null)) return true
+        notes.push(`output ${String(o.schemaRef)} of unknown kind ${String(o.kind)} left out`)
+        return false
+      })
+  }
+  return view
+}
+
 /**
  * Spec 15.6 and 15.8: a document of a later minor (or one with members this repository does not know) that a caller
- * of this minor must read. It passes the contract schemas read open, and fails them closed, so that it really
- * exercises what a caller must ignore.
+ * of this minor must read. The caller's view of it (unknown variants replaced, `callerView`) passes the contract
+ * schemas read open, and the document itself fails them closed, so that it really exercises what a caller must
+ * ignore. A document whose `meta.contract` names another major stays rejected.
  */
 function checkCallerDocument(name: string, value: unknown, problems: string[]) {
-  const file = name.startsWith("caller-schema-") ? "schema-doc.schema.json" : "envelope.schema.json"
-  const open = openSchema(file)
-  if (!open(value)) problems.push(`a caller reading ${file} open rejects it: ${ajvErrors(open)}`)
+  const schemaAnswer = name.startsWith("caller-schema-")
+  const file = schemaAnswer ? "schema-doc.schema.json" : "envelope.schema.json"
+  const notes: string[] = []
+  const view = schemaAnswer ? callerView(value as JsonValue, notes) : value
+  const unusable = notes.some((n) => n.endsWith("data unusable"))
+  const open = openSchema(unusable ? "envelope.schema.json" : file)
+  if (!open(view)) {
+    // Report the errors of the branch `data.kind` selects, as checkSchemaAnswer does.
+    const data = isObject(view as JsonValue) ? (view as JsonObject).data : undefined
+    const kind = isObject(data) && typeof data.kind === "string" && KNOWN.kinds.includes(data.kind) ? data.kind : undefined
+    const branch = schemaAnswer && !unusable && kind ? openAjv.compile({ $ref: `https://atip.dev/1/schema-doc.schema.json#/$defs/${kind}` }) : undefined
+    const detail = branch && !branch(data) ? `/data: ${ajvErrors(branch)}` : ajvErrors(open)
+    problems.push(`a caller reading ${file} open rejects it: ${detail}`)
+  }
   if (contractSchema(file)(value)) problems.push(`it passes ${file} closed, so it carries nothing a caller must ignore`)
 }
 
