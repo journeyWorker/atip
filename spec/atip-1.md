@@ -2,7 +2,7 @@
 
 Status: **1.1.0** (release candidate). Version 1.0.0 was adopted 2026-10-30 after six rounds of independent review;
 1.1.0 adds optional members and SHOULD/MAY rules from implementer feedback and fixes how the contract is versioned
-(15, Appendix A D20-D26). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
+(15, Appendix A D20-D27). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
 2026-10-28 (Appendix A, D13).
 
 ## Abstract
@@ -176,7 +176,9 @@ write progress or heartbeat lines to stderr. Callers MUST NOT parse stderr.
 
 5.3. In text mode, stdout holds only the result; errors, warnings and progress go to stderr. A refusal (exit 2)
 prints nothing on stdout. A command that ran and exits 1 MAY print its result, partial or negative (the findings of
-a check), on stdout, with the error on stderr. [Appendix A D26]
+a check), on stdout, with the error on stderr. This sentence is a relaxation added in 1.1, not a reading of 1.0,
+which said that a failure prints nothing on stdout; a tool that still prints nothing conforms, and 15.9 lists the
+change for callers. [Appendix A D26]
 
 5.4. The JSON document SHOULD be compact (no indentation). It MUST be UTF-8.
 
@@ -215,7 +217,7 @@ follows one of the command's output schemas, named by `meta.output` (6.6).
 | `tool` | REQUIRED | The executable name. |
 | `toolVersion` | REQUIRED | The tool release. Never part of `schemaVersion`. |
 | `command` | REQUIRED when resolved | The id of the command, or the longest path resolved before the failure (`finding` when the verb is unknown). Omitted when not even the first word resolved. |
-| `contract` | REQUIRED on `schema` answers, SHOULD elsewhere | `"atip/1"`. [Appendix A D11.12] |
+| `contract` | REQUIRED on `schema` answers and, for a tool that declares 1.1 (15.7), on every envelope; SHOULD elsewhere | `"atip/1"`. [Appendix A D11.12, D20] |
 | `contractVersion` | REQUIRED with `contract` for a tool that implements 1.1 or later (15.7); absent otherwise | The contract version the tool implements, `<major>.<minor>` (`"1.1"`). Absent means `"1.0"`. Since 1.1. [Appendix A D20] |
 | `output` | REQUIRED when `data` is present and the command declares more than one output; OPTIONAL otherwise | The name of the output schema `data` follows (the key in the command's `schemas`, 10.9), so a caller can pick the decoder without inferring it. Each output of a command has its own `schemaRef`, so the name identifies exactly one output. The batch report of a batch input (11.11) is an output of its own, with its own name, even when every item yields the same report type. [Appendix A D12.1, D26] |
 | `context` | OPTIONAL | 6.7. |
@@ -267,17 +269,23 @@ When the value there is an array, each element is a record.
 
 **Escaped keys** (since 1.1). A member whose name is not an identifier (`[A-Za-z_][A-Za-z0-9_]*`), such as an
 attribute key `http.status-code`, is written as a bracketed JSON string instead of `.name`: `["http.status-code"]`.
-Inside the quotes only `\"` and `\\` are escapes; every other character stands for itself. A path may start with a
+Inside the quotes only `\"` and `\\` are escapes; every other character, control characters included, stands for
+itself, and the quotes may enclose nothing (`attributes[""]` selects the key that is the empty string). This is
+the grammar of the bracketed key, not JSON's: `\n`, `\u0041` and the other JSON escapes are not escapes here. A path may start with a
 bracketed key, and a bracketed key may be followed by `[]` and by further steps: `attributes["http.status-code"]`,
 `["x.y"].value`. A member whose name is an identifier is always written with a dot, never in brackets, so each
 member has exactly one spelling and `meta.fields` can be compared as text. Paths without brackets mean what they
 meant in 1.0. In the `--fields` value, commas inside a bracketed key do not separate paths.
 
-**Map keys** (since 1.1). A declared path whose schema is a *map*, an object schema whose `additionalProperties`
-is a schema and that has no `properties`, also makes each of its keys selectable: `attributes.region` or
-`attributes["http.status-code"]` when `attributes` is declared. Such a path selects the whole value under that
-key and goes no deeper. A key the record does not have is simply absent from the projection. The map's schema is
-then a cut node.
+**Map keys** (since 1.1, for a document that declares 1.1). A declared path whose schema is a *map*, an object
+schema whose `additionalProperties` is a schema (`true` included) and whose `properties` is absent or empty, also
+makes each of its keys selectable: `attributes.region`, `attributes["http.status-code"]` or `attributes[""]` when
+`attributes` is declared. The map is the schema the declared path itself names: `labels` declared as an array of
+maps names the array, so its keys are selected through `labels[]` (`labels[].region`), never `labels.region`.
+Such a path selects the whole value under that key and goes no deeper. A key the record does not have is simply
+absent from the projection. The map's schema is then a cut node. In a command document that declares 1.0, a
+declared map is a member kept whole, exactly as in 1.0: its keys are not selectable and its schema is not a cut
+node, so a 1.0 tool's map may keep keywords such as `minProperties` (rule 16).
 
 **Projection.** For each record:
 
@@ -363,14 +371,18 @@ Normative shapes: `schema/error.schema.json`, `schema/registry-entry.schema.json
 | `details` | Only when one input yields several errors. Each item has `code`, `message` and the optional members above except `retryable` and `details`; the top-level `code` summarises. |
 
 7.1.2. **Hint forms.** A `hint` is exactly one of: a runnable invocation; a command template whose missing values
-are `<UPPER_CASE>` placeholders; or one sentence of prose. A hint that starts with the tool name followed by a space
-is an invocation or a template: it splits as a POSIX shell would, like `meta.next[].command` (6.8), and holds
-nothing but that command line. Prose that explains it belongs in `message`. [Appendix A D26]
+are `<UPPER_CASE>` placeholders; or one sentence of prose. In a document that declares 1.1, a hint that starts with
+the tool name followed by a space is an invocation or a template: it splits as a POSIX shell would, like
+`meta.next[].command` (6.8), and holds nothing but that command line, so a caller can tell the forms apart; a
+1.1 tool words a prose hint so that it does not start with the tool name and a space, and prose that explains a
+command belongs in `message`. In a document that declares 1.0 a prose hint may start with the tool name, as 1.0
+allowed, and a caller does not read such a hint as a command. [Appendix A D26]
 
 7.1.3. **`USAGE` names the argument.** A `USAGE` error SHOULD carry `field`. When the tool cannot map the problem
 to an argument (a backend rejects a request built from several arguments and does not say which), it omits
 `field`, and its `hint` SHOULD be `<tool> schema <command> --json` for the command that was run, or that command's
-`--help` when the tool has no `schema`. [Appendix A D26]
+`--help` when the tool has no `schema`; when no command was resolved, `<tool> schema --json` (or `<tool> --help`).
+[Appendix A D26]
 
 ### 7.2. Reserved codes
 
@@ -472,9 +484,10 @@ unknown code refuses with `USAGE`, `field` `--warning`. A tool that implements 1
 code there; a warning registered only in the error registry with `exit: 1`, as in 1.0, stays valid.
 [Appendix A D22]
 
-7.5.3. A situation that the tool reports as a warning in some invocations and as an error in others is registered
-in both registries under the same code, with the same meaning. A caller that looks up a warning code reads the
-warning registry first and falls back to the error registry.
+7.5.3. A tool that keeps a warning registry registers a situation that it reports as a warning in some
+invocations and as an error in others in both registries, under the same code, with the same meaning. A tool
+without a warning registry registers such a code once, in the error registry, as 1.0 allowed. A caller that looks
+up a warning code reads the warning registry first, when the tool has one, and falls back to the error registry.
 
 ### 7.6. Reasons
 
@@ -1050,11 +1063,17 @@ this repository and by the conformance checker (17). Every rule has at least one
     in both registries (7.5.3).
 15. A field path, in `fields` and in `meta.fields`, writes a member in brackets exactly when its name is not an
     identifier (6.10); a path that names a map key extends a declared path whose schema is a map, by one key.
-16. A document whose `meta.contractVersion` is absent (`"1.0"`) carries no member, document kind or path syntax
-    that this document marks "since 1.1" (`meta.contractVersion` itself, `error.reason`, registry `reasons`, the
-    `warnings` and `warning` kinds, bracketed field paths and map keys), and a `schema` answer's
-    `meta.schemaVersion` equals the contract version it declares (10.1.4). This rule applies to every document a
-    tool prints, not only to `schema` answers.
+16. A document declares its minor by `meta.contractVersion` (a stream by its start line), absent meaning `"1.0"`;
+    the value is never `"1.0"` written out and is a minor this document describes, and a stream's end result
+    declares the same as its start. A document that declares 1.0 carries no member, document kind or path syntax
+    that this document marks "since 1.1" (`meta.contractVersion` itself, also on a start line; `error.reason`,
+    at the top, in `details` and in batch items; registry `reasons`; the `warnings` and `warning` kinds; bracketed
+    field paths in `fields` and `meta.fields`; map-key selections). The rules that are meanings rather than shapes
+    apply only to a document that declares 1.1: a declared map's keys are selectable and its schema is a cut node
+    (6.10); a hint that starts with the tool name is a command line (7.1.2). In a document that declares 1.0 a
+    declared map is kept whole and is no cut node, and a hint may be prose that starts with the tool name. A
+    `schema` answer's `meta.schemaVersion` equals the contract version it declares (10.1.4). This rule applies to
+    every document a tool prints, `schema` answers, reports, failures, batch reports and streams alike.
 
 ## 11. JSON input: `--input`
 
@@ -1068,8 +1087,9 @@ command MAY. The option carries the command's arguments as a JSON document. [App
 anything else is a file path relative to the working directory (a file whose name starts with `{` or `[` is
 passed as `./{name}`). An empty value, a file that cannot be read, and an empty source refuse with
 `INPUT_INVALID`, `field` `--input`. `--input` given twice, or as the last word with no value, is a malformed
-command line, not a bad value: it refuses with `USAGE`, `field` `--input`. `INPUT_INVALID` is only for a value that
-was given (steps 1-2 of 11.7). [Appendix A D26]
+command line, not a bad value. A tool that declares 1.1 refuses it with `USAGE` (or the finer parse code it
+registers for that situation instead of `USAGE`, 7.2.2), `field` `--input`; `INPUT_INVALID` is then only for a
+value that was given (steps 1-2 of 11.7). A tool that declares 1.0 SHOULD do the same. [Appendix A D26]
 
 11.3. `--input -` with stdin attached to a terminal refuses with `INPUT_INVALID`, `field` `--input`.
 
@@ -1374,29 +1394,40 @@ has. A caller refuses a document whose `meta.contract` names a major it does not
 opposite rule: a tool emits only what its minor defines, plus `x-<tool>` members (10.12, 15.7). [Appendix A D20]
 
 15.7. **Declaring the minor** (since 1.1). `meta.contractVersion` (6.6) is the contract version a tool implements,
-`<major>.<minor>`; absent, it is `"1.0"`. A tool that implements 1.1 or later MUST set it on every envelope on which
-it sets `meta.contract`, and SHOULD set both on every envelope (including the `result` of a stream's `end` line).
-It is the same on every document one build of the tool prints. A tool emits no member, document kind or syntax
+`<major>.<minor>`; absent, it is `"1.0"`, and it is never written as `"1.0"`. A tool that implements 1.1 or later
+MUST set `meta.contract` and `meta.contractVersion` on every envelope (the `result` of a stream's `end` line
+included) and `contract` and `contractVersion` on every stream start line, so that a document without the marker
+is always a 1.0 document. It is the same on every document one build of the tool prints. A tool emits no member, document kind or syntax
 added in a later minor than the one it declares (10.13 rule 16). Conformance is stated with the minor:
 "ATIP 1.1 L1 conformant". The checker (17) reads the claimed minor from the fixture, as it reads an L0 tool's
 level, and checks that the tool's documents declare it. [Appendix A D20]
 
 15.8. **The published schemas.** The JSON Schemas in `schema/` describe what a tool of the current minor may emit,
 and they are closed (`additionalProperties: false`): the checker validates tool output against them. Every member,
-document kind and pattern added after 1.0 carries the annotation `"x-atip-since": "1.1"`, which tells a checker
-what a tool that declares `"1.0"` must not emit. A caller MUST NOT reject a document only because it fails these
+document kind and pattern added after 1.0 carries the annotation `"x-atip-since": "1.1"` (a widened pattern keeps
+its 1.0 form as a separate branch, and the annotation marks the added branch), which tells a checker what a tool
+that declares `"1.0"` must not emit. Some 1.1 additions are meanings, not shapes, and no annotation can carry them:
+map-key selection (6.10), the hint forms of 7.1.2 and 11.2's `USAGE`; 10.13 rule 16 lists every such rule and
+`scripts/check.ts` applies each by the declared minor. A caller MUST NOT reject a document only because it fails these
 schemas by an unknown member (15.6). A caller that validates uses them *open*: with `additionalProperties: false`
-read as absent, every other keyword unchanged. A value outside a listed set (an unknown `data.kind` or
-`valueType`) still fails the schemas read open; a caller that validates treats that failure as 15.6 says, by not
-acting on that part, rather than rejecting the whole document. `scripts/check.ts` validates `examples/caller-*.json` that way:
+read as absent, every other keyword unchanged. A value outside a listed set (an unknown `data.kind`, `valueType`,
+`effect`, output `kind` or batch item `status`) still fails the schemas read open, so a caller that validates first
+builds its view of the document as 15.6 says: an unknown `data.kind` leaves `data` unusable; an unknown `effect`
+makes the command `destructive`; an argument of an unknown `valueType` is a `string` without its typed members; an
+output of an unknown `kind` and a batch item of an unknown `status` are left out. It validates that view, and
+rejects the document only when the view fails. `scripts/check.ts` validates `examples/caller-*.json` that way:
 documents of a later minor that a caller of this one must read. The `$id`s stay under `https://atip.dev/1/` for
 every `1.x`; a release tag holds the schemas of its version. [Appendix A D20]
 
 15.9. **The change from 1.0 to 1.1.** 1.0.0's 15.1 said that a later 1.x would never change what a 1.0 caller must
 accept. 1.1.0 breaks that promise once. A 1.0 caller that validated tool output against the closed 1.0 schemas
-rejects the members 1.1 adds (`meta.contractVersion`, `error.reason`, registry `reasons`) and the `warnings` and
-`warning` document kinds; and a 1.1 tool may keep a warning code only in its warning registry, where a 1.0 caller
-looking in `schema --errors` does not find it. This was accepted because, when it was decided, no conforming
+rejects the members 1.1 adds (`meta.contractVersion`, also on stream start lines, `error.reason`, registry
+`reasons`) and the `warnings` and `warning` document kinds; it rejects the bracketed field paths of 6.10
+(`attributes["http.status-code"]`) in `fields` and `meta.fields`, and reads a map-key selection
+(`attributes.region`) as a path its command does not declare; a 1.1 tool may keep a warning code only in its
+warning registry, where a 1.0 caller looking in `schema --errors` does not find it; and in text mode, a tool
+(of either minor) may print the result of a command that exits 1 on stdout (5.3), where a 1.0 script may have
+relied on empty stdout for every failure. This was accepted because, when it was decided, no conforming
 caller existed outside the two early adopters of 1.0, and both moved to 1.1. Nothing a 1.0 tool emits changes
 meaning, and a 1.0 tool stays conforming without a change. From 1.1.0 on, 15.1 and 15.6 hold for every later 1.x,
 and this exception is not repeated. [Appendix A D20]
@@ -1433,7 +1464,7 @@ registries with the one in its fixture and with the codes and reasons the tool e
 
 ## 18. Open questions
 
-Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, and D20-D26 for 1.1.0). None is
+Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, and D20-D27 for 1.1.0). None is
 open in 1.1.0.
 The two that revision 5 raised are kept here with their decisions, so that earlier references still resolve.
 
@@ -1524,6 +1555,7 @@ caller is `atip/2`.
 | D24 | No per-command member saying whether a command accepts `--json`. The command document already lists `json` in `options`, and 4.2 requires it on every command with a report or artifact output, so the member would repeat `options` and could disagree with it. A tool that builds `next` knows its own parser; a caller gets `argv` ready-made. To be revisited if a tool shows a case that `options` does not answer. | 4.2, 6.8, 10.5 |
 | D25 | New SHOULD and MAY rules: an L0 tool SHOULD offer `schema --errors` and the checker compares it with the fixture; tool-wide options SHOULD be accepted wherever `--json` is, groups included; a write whose failure point cannot be shown to be before the work MAY report it as during-the-work (exit 1), while exit 2 still means nothing changed. | 7.3.4, 8.3.1, 9.13, 17.3 |
 | D26 | Clarifications: `USAGE` SHOULD carry `field`, and without one its hint names the command's `schema`; in text mode a refusal prints nothing on stdout and exit 1 may print its result; `--input` given twice or without a value is `USAGE`; precondition and during-the-work code names; a code with two exits is split; a batch report is its own output; a signal shows as a wait status or as a launcher's 128+n; a `hint` is exactly one of its three forms; a report may keep its own paging members, `meta.page` is authoritative. | 5.3, 6.6, 6.9, 7.1.2, 7.1.3, 7.3.2, 8.3, 8.4, 11.2 |
+| D27 | A minor never makes a 1.0-conforming tool non-conforming: a 1.1 rule that would (map cut nodes, command-line hints, `--input` twice as `USAGE`) applies only to a document that declares 1.1, and a 1.0 tool keeps 1.0's behaviour; dual warning/error registration applies only to a tool that keeps a warning registry. A 1.1 tool sets `contract` and `contractVersion` everywhere, so an unmarked document is always 1.0. Callers build a view of a document with unknown listed values before validating it. | 6.10, 7.1.2, 7.5.3, 11.2, 10.13 rule 16, 15.7, 15.8 |
 
 ## Appendix B. Prior art
 
