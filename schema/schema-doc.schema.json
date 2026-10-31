@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://atip.dev/1/schema-doc.schema.json",
   "title": "atip/1 self-description (`<tool> schema ... --json`)",
-  "description": "A successful `schema` answer (spec section 10). `data.kind` selects one of five documents. Level-neutral: rules that apply only at L2 (spec 12.4) are checked by the L2 checker, not here (spec 3.2). Rules JSON Schema cannot express are listed in spec 10.13.",
+  "description": "A successful `schema` answer (spec section 10). `data.kind` selects one of seven documents (`warnings` and `warning` since 1.1). Closed for tools of the current minor; callers read it open (spec 15.8). Level-neutral: rules that apply only at L2 (spec 12.4) are checked by the L2 checker, not here (spec 3.2). Rules JSON Schema cannot express are listed in spec 10.13.",
   "allOf": [
     { "$ref": "envelope.schema.json#/$defs/success" },
     {
@@ -21,7 +21,9 @@
             { "$ref": "#/$defs/group" },
             { "$ref": "#/$defs/command" },
             { "$ref": "#/$defs/errors" },
-            { "$ref": "#/$defs/error" }
+            { "$ref": "#/$defs/error" },
+            { "$ref": "#/$defs/warnings" },
+            { "$ref": "#/$defs/warning" }
           ]
         }
       }
@@ -133,6 +135,32 @@
       "properties": {
         "kind": { "const": "error" },
         "error": { "$ref": "registry-entry.schema.json" }
+      },
+      "additionalProperties": false
+    },
+    "warnings": {
+      "description": "The warning registry (spec 7.5.2).",
+      "x-atip-since": "1.1",
+      "type": "object",
+      "required": ["kind", "warnings"],
+      "properties": {
+        "kind": { "const": "warnings" },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "warning-entry.schema.json" },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "warning": {
+      "description": "One warning registry entry (spec 7.5.2).",
+      "x-atip-since": "1.1",
+      "type": "object",
+      "required": ["kind", "warning"],
+      "properties": {
+        "kind": { "const": "warning" },
+        "warning": { "$ref": "warning-entry.schema.json" }
       },
       "additionalProperties": false
     },

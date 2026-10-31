@@ -1,7 +1,9 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.0**, adopted 2026-10-30 after six rounds of independent review (Appendix A). Until revision 2 this
-contract was called `agent-cli/1`; it was renamed by owner decision 2026-10-28 (Appendix A, D13).
+Status: **1.1.0** (release candidate). Version 1.0.0 was adopted 2026-10-30 after six rounds of independent review;
+1.1.0 adds optional members and SHOULD/MAY rules from implementer feedback and fixes how the contract is versioned
+(15, Appendix A D20-D26). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
+2026-10-28 (Appendix A, D13).
 
 ## Abstract
 
@@ -21,7 +23,7 @@ tools built with Rust and clap and with TypeScript and Effect 4, but nothing in 
 4. Output selection
 5. Output streams
 6. Envelope and meta
-7. Errors, warnings and the error registry
+7. Errors, warnings and the registries
 8. Exit codes
 9. Grammar, naming and argv syntax
 10. Self-description: `schema`
@@ -58,7 +60,8 @@ problems in different ways: different envelope shapes, error shapes and default 
 authorise a destructive act, different self-description formats or none. An agent that learns one tool learns
 nothing reusable about the next. The contract makes that knowledge transfer.
 
-1.5. Conformance is stated as "ATIP L1 conformant" (or L0, L2) for a tool and a release (3.4).
+1.5. Conformance is stated as "ATIP 1.1 L1 conformant" (contract minor, then level L0, L1 or L2) for a tool and a
+release (3.4, 15.7).
 
 1.6. **Non-goals and related work.** ATIP is not a general CLI description format and does not align with or
 export to OpenCLI (opencli.org): no consumer of OpenCLI documents exists for the tools ATIP was written for, and
@@ -117,7 +120,8 @@ only to tools that offer that feature. In particular: an L0 tool need not have `
 (an L1 tool with `--input` follows section 11).
 
 3.4. **Declaration.** A tool at L1 or L2 declares its level as `data.level` of its `schema` tree (10.3). An L0
-tool has no machine declaration beyond `meta.contract` (6.6); its level is configured in the checker (17).
+tool has no machine declaration beyond `meta.contract` (6.6); its level is configured in the checker (17). The
+contract minor a tool implements is declared by `meta.contractVersion` (15.7) at every level.
 
 3.5. A tool MUST NOT claim a level whose MUST-level checks it does not pass (17).
 
@@ -170,8 +174,9 @@ document.
 5.2. In JSON mode, stderr MUST NOT carry the result or the error, and SHOULD be empty. A long-running command MAY
 write progress or heartbeat lines to stderr. Callers MUST NOT parse stderr.
 
-5.3. In text mode, stdout holds only the result; errors, warnings and progress go to stderr. A failure in text
-mode prints nothing on stdout.
+5.3. In text mode, stdout holds only the result; errors, warnings and progress go to stderr. A refusal (exit 2)
+prints nothing on stdout. A command that ran and exits 1 MAY print its result, partial or negative (the findings of
+a check), on stdout, with the error on stderr. [Appendix A D26]
 
 5.4. The JSON document SHOULD be compact (no indentation). It MUST be UTF-8.
 
@@ -206,12 +211,13 @@ follows one of the command's output schemas, named by `meta.output` (6.6).
 
 | Member | | Meaning |
 |---|---|---|
-| `schemaVersion` | REQUIRED | `<major>.<minor>` of the output `data` follows (6.11). |
+| `schemaVersion` | REQUIRED | `<major>.<minor>` of the output `data` follows (6.11). On a `schema` answer, the version of the self-description format (10.1.4). |
 | `tool` | REQUIRED | The executable name. |
 | `toolVersion` | REQUIRED | The tool release. Never part of `schemaVersion`. |
 | `command` | REQUIRED when resolved | The id of the command, or the longest path resolved before the failure (`finding` when the verb is unknown). Omitted when not even the first word resolved. |
 | `contract` | REQUIRED on `schema` answers, SHOULD elsewhere | `"atip/1"`. [Appendix A D11.12] |
-| `output` | REQUIRED when `data` is present and the command declares more than one output; OPTIONAL otherwise | The name of the output schema `data` follows (the key in the command's `schemas`, 10.9), so a caller can pick the decoder without inferring it. Each output of a command has its own `schemaRef`, so the name identifies exactly one output. [Appendix A D12.1] |
+| `contractVersion` | REQUIRED with `contract` for a tool that implements 1.1 or later (15.7); absent otherwise | The contract version the tool implements, `<major>.<minor>` (`"1.1"`). Absent means `"1.0"`. Since 1.1. [Appendix A D20] |
+| `output` | REQUIRED when `data` is present and the command declares more than one output; OPTIONAL otherwise | The name of the output schema `data` follows (the key in the command's `schemas`, 10.9), so a caller can pick the decoder without inferring it. Each output of a command has its own `schemaRef`, so the name identifies exactly one output. The batch report of a batch input (11.11) is an output of its own, with its own name, even when every item yields the same report type. [Appendix A D12.1, D26] |
 | `context` | OPTIONAL | 6.7. |
 | `next` | OPTIONAL | 6.8. |
 | `warnings` | OPTIONAL | 7.5. |
@@ -245,10 +251,11 @@ present exactly when more items follow) and `total` (when known). When `nextCurs
 contain an entry for the next page: the same invocation with `--cursor <nextCursor>` (at any position in `next`).
 A cursor is bound to the arguments of the invocation that produced it, except `--limit`, `--cursor` and
 `--fields`: given with different arguments, or not produced by this command, it refuses with `CURSOR_INVALID`
-(exit 2, 7.2.1), so changing a filter can never skip or repeat records silently. An answer cut by size (not by
-paging) carries `meta.truncated`: `path`
-(JSON pointer of the list or value cut), `kept`, and `total`, `bytes`, `maxBytes` when known, plus a `next` entry
-that reaches the rest. [Appendix A D11.5, D16.1]
+(exit 2, 7.2.1), so changing a filter can never skip or repeat records silently. A report MAY also keep paging
+members of its own in `data` (a cursor in the report's schema from before the tool adopted ATIP); `meta.page` is the
+contract's paging and is authoritative when the two differ. An answer cut by size (not by paging) carries
+`meta.truncated`: `path` (JSON pointer of the list or value cut), `kept`, and `total`, `bytes`, `maxBytes` when
+known, plus a `next` entry that reaches the rest. [Appendix A D11.5, D16.1, D26]
 
 6.10. **Field selection.** A command whose output declares `fields` (10.9) takes the reserved option
 `--fields <FIELDS>`: a comma-separated list of field paths from that declaration. A field path is a dot path into
@@ -257,6 +264,20 @@ A path goes through an array only with `[]`: `owners.email` is not a path when `
 without `[]` may name a whole array (`owners`). The records are the values at `fields.records`, an RFC 6901 pointer
 into `data` decoded as RFC 6901 says (`~1` is `/`, `~0` is `~`). The pointer goes through object members only.
 When the value there is an array, each element is a record.
+
+**Escaped keys** (since 1.1). A member whose name is not an identifier (`[A-Za-z_][A-Za-z0-9_]*`), such as an
+attribute key `http.status-code`, is written as a bracketed JSON string instead of `.name`: `["http.status-code"]`.
+Inside the quotes only `\"` and `\\` are escapes; every other character stands for itself. A path may start with a
+bracketed key, and a bracketed key may be followed by `[]` and by further steps: `attributes["http.status-code"]`,
+`["x.y"].value`. A member whose name is an identifier is always written with a dot, never in brackets, so each
+member has exactly one spelling and `meta.fields` can be compared as text. Paths without brackets mean what they
+meant in 1.0. In the `--fields` value, commas inside a bracketed key do not separate paths.
+
+**Map keys** (since 1.1). A declared path whose schema is a *map*, an object schema whose `additionalProperties`
+is a schema and that has no `properties`, also makes each of its keys selectable: `attributes.region` or
+`attributes["http.status-code"]` when `attributes` is declared. Such a path selects the whole value under that
+key and goes no deeper. A key the record does not have is simply absent from the projection. The map's schema is
+then a cut node.
 
 **Projection.** For each record:
 
@@ -319,26 +340,37 @@ names when there are several). On a failure without `data`, it is the version of
 have produced: the batch output for a batch input (11.11), otherwise the command's first output without `batch`. Before a
 command is resolved it is `"1.0"`.
 
-## 7. Errors, warnings and the error registry
+## 7. Errors, warnings and the registries
 
-Normative shapes: `schema/error.schema.json`, `schema/registry-entry.schema.json`.
+Normative shapes: `schema/error.schema.json`, `schema/registry-entry.schema.json`, `schema/warning-entry.schema.json`.
 
 ### 7.1. The error object
 
-7.1.1. `error` has REQUIRED `code`, `message`, `retryable`, and OPTIONAL `hint`, `field`, `expected`, `received`,
-`suggestions`, `details`, `x-<tool>`. [Appendix A D2]
+7.1.1. `error` has REQUIRED `code`, `message`, `retryable`, and OPTIONAL `reason`, `hint`, `field`, `expected`,
+`received`, `suggestions`, `details`, `x-<tool>`. [Appendix A D2, D21]
 
 | Member | Meaning |
 |---|---|
 | `code` | UPPER_SNAKE_CASE, registered (7.3). Callers branch on it. |
+| `reason` | Since 1.1. UPPER_SNAKE_CASE: which of the situations registered under `code` this is (7.6). Callers MAY branch on `code` and `reason` together; a caller that does not know the reason treats the error by its code alone. |
 | `message` | One sentence for a person. Not stable; callers MUST NOT parse it. |
 | `retryable` | `true` only when repeating the same invocation unchanged can succeed (busy, timeout, unavailable backend). Equal to the registry's. |
-| `hint` | Advice for the next attempt: a runnable invocation, a command template whose missing values are `<UPPER_CASE>` placeholders, or one sentence. Callers MUST NOT run a hint without checking it for placeholders; a literal runnable command belongs in `meta.next` (6.8). |
+| `hint` | Advice for the next attempt, in exactly one of three forms (7.1.2). Callers MUST NOT run a hint without checking it for placeholders; a literal runnable command belongs in `meta.next` (6.8). |
 | `field` | The argument at fault: the option as written on argv (`--round`), an operand's value name (`CHANGE_ID`), `command` for a command word, `--input` for the input value as a whole, or a JSON pointer into the `--input` document when the value came from it (11.8). |
 | `expected` | The valid set, when there is one. |
 | `received` | What was given, redacted when it may hold a secret (16.1). Never null. |
 | `suggestions` | Close matches from `expected`, best first. Omitted when empty. |
 | `details` | Only when one input yields several errors. Each item has `code`, `message` and the optional members above except `retryable` and `details`; the top-level `code` summarises. |
+
+7.1.2. **Hint forms.** A `hint` is exactly one of: a runnable invocation; a command template whose missing values
+are `<UPPER_CASE>` placeholders; or one sentence of prose. A hint that starts with the tool name followed by a space
+is an invocation or a template: it splits as a POSIX shell would, like `meta.next[].command` (6.8), and holds
+nothing but that command line. Prose that explains it belongs in `message`. [Appendix A D26]
+
+7.1.3. **`USAGE` names the argument.** A `USAGE` error SHOULD carry `field`. When the tool cannot map the problem
+to an argument (a backend rejects a request built from several arguments and does not say which), it omits
+`field`, and its `hint` SHOULD be `<tool> schema <command> --json` for the command that was run, or that command's
+`--help` when the tool has no `schema`. [Appendix A D26]
 
 ### 7.2. Reserved codes
 
@@ -367,26 +399,55 @@ self-description: a command that can produce it lists it like any other code. [A
 
 7.2.2. A tool MAY register finer codes for parse failures (`UNKNOWN_OPTION`, `OPTION_REQUIRED`) only if it never
 emits `USAGE` for the same situation; one situation has one code within a tool. Callers treat any exit-2 code whose
-`field` names an argument as a usage problem.
+`field` names an argument as a usage problem. Under every other reserved code a tool tells situations apart with
+registered reasons (7.6), never with finer codes, so that a caller branching on the reserved code still sees it.
+
+7.2.3. **Reserved reasons** (since 1.1). When a tool registers a reason (7.6) for one of these situations under a
+reserved code, it SHOULD use the name given here, so that callers can branch on it across tools. A tool MAY
+register other reasons under a reserved code for situations this table does not name. [Appendix A D21]
+
+| Code | Reason | Situation |
+|---|---|---|
+| `INPUT_INVALID` | `UNREADABLE` | The file named by `--input` cannot be read. |
+| `INPUT_INVALID` | `STDIN_TTY` | `--input -` with stdin attached to a terminal (11.3). |
+| `INPUT_INVALID` | `EMPTY` | The value or the source is empty (11.2). |
+| `INPUT_INVALID` | `NOT_JSON` | The source is not JSON, nor NDJSON where that is allowed (11.4). |
+| `INPUT_INVALID` | `NOT_OBJECT` | A document, or an item of a batch, is not a JSON object (11.4, 11.5). |
+| `INPUT_INVALID` | `BATCH_UNSUPPORTED` | A batch for a command whose `input.batch` is not `true` (11.4). |
+| `INPUT_INVALID` | `UNKNOWN_KEY` | A document key that is not a document key of the command (11.5). |
+| `INPUT_INVALID` | `FLAG_ONLY_KEY` | A document key that names a flag-only option (11.6). |
+| `INPUT_INVALID` | `INVALID_VALUE` | A value of the wrong type, outside its enum, or `null` (11.5, 11.7 step 2). |
+| `INPUT_TOO_LARGE` | `TOO_MANY_BYTES` | The source exceeds `input.maxBytes`. |
+| `INPUT_TOO_LARGE` | `TOO_MANY_ITEMS` | A batch exceeds `input.maxItems`. |
+| `CURSOR_INVALID` | `FOREIGN` | The cursor was not produced by this command, or is not a cursor. |
+| `CURSOR_INVALID` | `ARGUMENTS_CHANGED` | The cursor was produced with other arguments (6.9). |
+| `CURSOR_INVALID` | `EXPIRED` | The cursor was produced by this command with these arguments but is no longer valid. |
 
 ### 7.3. The registry
 
-7.3.1. Every tool has one registry: entries `{code, exit, retryable, meaning, fix}`. Every code the tool can emit
-as an error or a warning MUST be in it. A code MUST NOT be reused with another meaning. `fix` is prose and MAY
-contain `<PLACEHOLDER>`s. [Appendix A D2]
+7.3.1. Every tool has one error registry: entries `{code, exit, retryable, meaning, fix}`, plus OPTIONAL
+`reasons` (7.6, since 1.1). Every code the tool can emit as an error MUST be in it; a code emitted as a warning is
+registered as 7.5 says. A code MUST NOT be reused with another meaning. `fix` is prose and MAY contain
+`<PLACEHOLDER>`s. [Appendix A D2]
 
 7.3.2. The exit status of a failure is the `exit` of its code. It MUST NOT be overridden at a call site. A
-situation that needs another exit needs another code (8.3). [Appendix A D11.8, D15]
+situation that needs another exit needs another code (8.3): a code that would need two exits is split into two
+registered codes, never kept as one code with a per-call-site exit, and a reason (7.6) never changes the exit.
+[Appendix A D11.8, D15, D26]
 
 7.3.3. `retryable` in an error MUST equal the registry entry's.
 
 7.3.4. (L1) The registry is printed by `<tool> schema --errors --json` (`data.kind: "errors"`) and one entry by
 `<tool> schema --error <CODE> --json` (`data.kind: "error"`). An unknown code refuses with `USAGE`, `field`
-`--error`.
+`--error`. A code that is registered only in the warning registry (7.5) refuses the same way, with the `hint`
+`<tool> schema --warning <CODE> --json` naming that code. An L0 tool SHOULD offer `schema --errors --json` and
+`schema --error <CODE> --json` (3.3): they are what lets a caller, and the checker (17), see the registry the
+tool really uses. A tool that keeps a warning registry (7.5.2) offers `schema --warnings` and `--warning` with
+them. When it offers them, they follow this paragraph and 7.5.2. [Appendix A D25]
 
 ### 7.4. Errors in text mode
 
-7.4.1. In text mode an error is printed on stderr; stdout stays empty. The RECOMMENDED form is:
+7.4.1. In text mode an error is printed on stderr, never on stdout (5.3). The RECOMMENDED form is:
 
 ```
 <tool>: <CODE>: <message>
@@ -399,9 +460,34 @@ with absent members left out.
 
 ### 7.5. Warnings
 
-7.5.1. `meta.warnings` is `[{code, message, field?}]`. Warning codes are registered like error codes; a warning
-code's registry `exit` applies only if the same situation is ever reported as the error, never to a success that
-carries the warning. [Appendix A D11.16]
+7.5.1. `meta.warnings` is `[{code, message, field?}]`. Every code emitted as a warning MUST be registered, in the
+warning registry (7.5.2) or, as 1.0 required, in the error registry. A warning code's registry `exit` applies only
+if the same situation is ever reported as the error, never to a success that carries the warning.
+[Appendix A D11.16]
+
+7.5.2. **The warning registry** (since 1.1). A tool MAY keep its warning codes in a registry of their own: entries
+`{code, meaning, fix}`, with no `exit` and no `retryable`, printed by `<tool> schema --warnings --json`
+(`data.kind: "warnings"`) and one entry by `<tool> schema --warning <CODE> --json` (`data.kind: "warning"`). An
+unknown code refuses with `USAGE`, `field` `--warning`. A tool that implements 1.1 SHOULD register every warning
+code there; a warning registered only in the error registry with `exit: 1`, as in 1.0, stays valid.
+[Appendix A D22]
+
+7.5.3. A situation that the tool reports as a warning in some invocations and as an error in others is registered
+in both registries under the same code, with the same meaning. A caller that looks up a warning code reads the
+warning registry first and falls back to the error registry.
+
+### 7.6. Reasons
+
+7.6.1. A registry entry MAY list `reasons`: `[{reason, meaning, fix}]`, the situations under its code that need
+different next actions (the source is not JSON, or the shell removed the document's quotes). A reason is
+UPPER_SNAKE_CASE and unique within its code; the same name under another code is another reason.
+
+7.6.2. An error carries `reason` only when that reason is registered under the error's `code`; a tool never emits
+a reason outside its registry. The same holds for each item of `details`. A reason shares its code's `exit` and
+`retryable`. An error without `reason` is still complete: a reason refines a code and never replaces it.
+
+7.6.3. Reasons are part of the command surface (15.5): adding one is compatible, removing or renaming one is not.
+[Appendix A D21]
 
 ## 8. Exit codes
 
@@ -423,11 +509,13 @@ it applies from L0.
 Its preconditions are: parsing argv and `--input` (11.7 steps 1-6), resolving the context and the configuration it
 needs (6.7), checking its prerequisites (a backend reachable, a login present), resolving every object the
 invocation names (an id, a file, a plan digest), and reserving an operation key (13.4). A failure of a
-precondition is a refusal (exit 2) whatever the command's effect class. Anything that goes wrong after the work
-started is exit 1. Hence:
+precondition is a refusal (exit 2) whatever the command's effect class, except as 8.3.1 allows. Anything that goes
+wrong after the work started is exit 1. Hence:
 
 - A failure category that can happen both as a precondition and during the work (I/O, an unavailable backend, an
-  expired login) has two registered codes, one for each (`STORE_UNAVAILABLE` exit 2, `WRITE_FAILED` exit 1).
+  expired login) has two registered codes, one for each (`STORE_UNAVAILABLE` exit 2, `WRITE_FAILED` exit 1). Names
+  SHOULD show the stage: `*_UNAVAILABLE`, `*_UNREACHABLE` or `*_REFUSED` for the precondition code (exit 2) and
+  `*_FAILED` for the code of a failure during the work (exit 1). [Appendix A D26]
 - A `read` command can exit 1 (a check with findings, an `UNVERIFIABLE` check, a wait that timed out), although it
   makes no effect: exit 1 says the answer is negative or incomplete, not that something changed.
 - A batch's preconditions are the batch preflight (11.11: steps 1-6 for every item). Once preflight passed, the
@@ -438,9 +526,17 @@ started is exit 1. Hence:
 
 Callers branch on `code` and `retryable`, never on the exit alone. [Appendix A D11.8, D15]
 
-8.4. **Signals.** Termination by a signal exits 128+n (130 for SIGINT, 143 for SIGTERM) and is outside this table:
-no envelope is promised, and signal exits are not registry entries. A tool SHOULD release what it claimed before
-exiting. A tool SHOULD restore the default SIGPIPE behaviour.
+8.3.1. **Conservative staging** (since 1.1). A `write` or `destructive` command whose failure point the tool cannot
+show to be before the work started (the work is a sequence of calls to backends, any of which may be the first to
+change something) MAY report that failure with its during-the-work code (exit 1). The reverse is never allowed:
+exit 2 still means that nothing changed (8.2), so a tool reports exit 2 only for a failure it knows came before
+the work. A `read` command reports its precondition failures as refusals as before. [Appendix A D25]
+
+8.4. **Signals.** Termination by a signal is outside this table: no envelope is promised, and signal exits are not
+registry entries. It shows either as a wait status that names the signal, or as exit 128+n (130 for SIGINT, 143 for
+SIGTERM) when a launcher or wrapper ran the tool and exits on its behalf; a caller and the checker treat both the
+same. A launcher SHOULD re-raise the signal or exit 128+n, never another code. A tool SHOULD release what it claimed
+before exiting. A tool SHOULD restore the default SIGPIPE behaviour. [Appendix A D26]
 
 8.5. **A check that examined nothing is not clean.** A check or listing that ran (8.3) but could examine nothing
 in its scope (the scope holds nothing of the kind the check examines, such as a project with no tests configured;
@@ -566,6 +662,15 @@ CHAR          = %x01-10FFFF                       ; any Unicode scalar value exc
 9.12.3. Conversion of an `--input` document to argv (11.9) produces only the forms above: `--name=value` for every
 valued option, `--name` for a switch that is `true`, the count's name repeated, and every operand after one `--`.
 
+### 9.13. Tool-wide options
+
+9.13.1. A tool-wide option is one that every command of the tool accepts with the same meaning (`--json`, and
+options such as `--repo` or `--actor` that select context for every command). A tool SHOULD accept its tool-wide
+options wherever it accepts `--json`: after a group word as well as after a command, so that
+`canon finding --repo . --json` is answered with `COMMAND_REQUIRED` in JSON mode rather than with `USAGE` for an
+option the group "does not take". Such an option does nothing on a group but is not an error there. Where it is
+accepted before the path (4.5), the same holds. [Appendix A D25]
+
 ## 10. Self-description: `schema`
 
 Normative shapes: `schema/schema-doc.schema.json`, plus the semantic rules of 10.13.
@@ -575,15 +680,17 @@ Normative shapes: `schema/schema-doc.schema.json`, plus the semantic rules of 10
 ```
 <tool> schema --json                       the tree (10.3)
 <tool> schema <PATH>... --json             one group (10.4) or one command (10.5)
-<tool> schema --errors --json              the registry (7.3.4)
-<tool> schema --error <CODE> --json        one registry entry
+<tool> schema --errors --json              the error registry (7.3.4)
+<tool> schema --error <CODE> --json        one error registry entry
+<tool> schema --warnings --json            the warning registry (7.5.2, since 1.1)
+<tool> schema --warning <CODE> --json      one warning registry entry (since 1.1)
 <tool> schema --search "<TASK>" --json     ranked commands (10.11, OPTIONAL)
 ```
 
 10.1.1. Path words MAY be given as separate words or as one quoted string (`schema "finding close"`); both MUST be
 accepted.
 
-10.1.2. A path, `--errors`, `--error` and `--search` are mutually exclusive (`USAGE`). An unknown path refuses
+10.1.2. A path, `--errors`, `--error`, `--warnings`, `--warning` and `--search` are mutually exclusive (`USAGE`). An unknown path refuses
 with `UNKNOWN_COMMAND`, `expected` the valid words at the first unknown position. A tool MAY give `schema` further
 options of its own (canon's `--as`).
 
@@ -591,8 +698,9 @@ options of its own (canon's `--as`).
 document itself. [Appendix A D11.2]
 
 10.1.4. The answer is a success envelope whose `meta.command` is `"schema"`, `meta.contract` is `"atip/1"` and
-`meta.schemaVersion` is the version of the self-description format, `"1.0"` in this version. `data.kind` is one of
-`tree`, `group`, `command`, `errors`, `error`.
+`meta.schemaVersion` is the version of the self-description format, which is the contract version the tool
+implements: `"1.0"`, or `"1.1"` with `meta.contractVersion` `"1.1"` (15.7). `data.kind` is one of `tree`, `group`,
+`command`, `errors`, `error`, and since 1.1 `warnings` and `warning`. [Appendix A D20, D22]
 
 ### 10.2. Works without state
 
@@ -844,9 +952,9 @@ refuses it. [Appendix A D17]
 
 OPTIONAL members: `batch: true` for the report a batch input returns (11.11); `when`, which invocation selects this
 output when there are several; `fields` (6.10): `{records, paths, keep?, default?}`, where `records` is the JSON
-pointer of the record array inside `data` (`""` when `data` is the record), `paths` the selectable dot paths,
-`keep` the paths always kept (not selectable themselves), `default` the selection without `--fields` (a subset of
-`paths`). [Appendix A D11.13]
+pointer of the record array inside `data` (`""` when `data` is the record), `paths` the selectable field paths
+(a declared map also makes its keys selectable, 6.10), `keep` the paths always kept (not selectable themselves),
+`default` the selection without `--fields` (a subset of `paths`). [Appendix A D11.13, D23]
 
 10.9.2. `schemaRef`, `eventRef`, `input.schemaRef` and `input.argumentsRef` have the form `#/schemas/<Name>`: a
 JSON pointer resolved against the command document (`data`). References between schemas in `schemas` use the same
@@ -882,9 +990,11 @@ commands SHOULD offer it. How well a search ranks is not part of the contract.
 ### 10.12. Extensions
 
 Members whose name matches `^x-[a-z][a-z0-9-]*$` MAY appear on tree entries, `tree`, `group`, `command`,
-operands, options, constraints, outputs, the error object, registry entries, `next` entries and `meta`. By
-convention the name is `x-<tool>` (`"x-canon": {"roles": ["reviewer"]}`). Callers MUST ignore extensions they do
-not know. No other unknown members are allowed.
+operands, options, constraints, outputs, the error object, registry entries (error and warning registries, and
+reasons), `next` entries and `meta`. By convention the name is `x-<tool>` (`"x-canon": {"roles": ["reviewer"]}`).
+Callers MUST ignore extensions they do not know. A tool emits no member that neither this document, for the
+minor the tool implements (15.7), nor this convention defines; a caller ignores every member it does not know
+(15.6).
 
 ### 10.13. Rules beyond JSON Schema
 
@@ -935,6 +1045,16 @@ this repository and by the conformance checker (17). Every rule has at least one
     each of its `rejects` invocations parses and satisfies `required`, `constraints` and every `domain` (so that
     only a validator can refuse it), without being checked against `argumentsRef`, and none of them is in
     `examples`.
+14. In an `errors` answer every code appears once, a reserved code has its reserved exit and retryability, and
+    within one entry every `reason` appears once; in a `warnings` answer every code appears once. A code may appear
+    in both registries (7.5.3).
+15. A field path, in `fields` and in `meta.fields`, writes a member in brackets exactly when its name is not an
+    identifier (6.10); a path that names a map key extends a declared path whose schema is a map, by one key.
+16. A document whose `meta.contractVersion` is absent (`"1.0"`) carries no member, document kind or path syntax
+    that this document marks "since 1.1" (`meta.contractVersion` itself, `error.reason`, registry `reasons`, the
+    `warnings` and `warning` kinds, bracketed field paths and map keys), and a `schema` answer's
+    `meta.schemaVersion` equals the contract version it declares (10.1.4). This rule applies to every document a
+    tool prints, not only to `schema` answers.
 
 ## 11. JSON input: `--input`
 
@@ -947,7 +1067,9 @@ command MAY. The option carries the command's arguments as a JSON document. [App
 11.2. **The value.** After leading whitespace, a value starting with `{` or `[` is inline JSON; `-` reads stdin;
 anything else is a file path relative to the working directory (a file whose name starts with `{` or `[` is
 passed as `./{name}`). An empty value, a file that cannot be read, and an empty source refuse with
-`INPUT_INVALID`, `field` `--input`.
+`INPUT_INVALID`, `field` `--input`. `--input` given twice, or as the last word with no value, is a malformed
+command line, not a bad value: it refuses with `USAGE`, `field` `--input`. `INPUT_INVALID` is only for a value that
+was given (steps 1-2 of 11.7). [Appendix A D26]
 
 11.3. `--input -` with stdin attached to a terminal refuses with `INPUT_INVALID`, `field` `--input`.
 
@@ -1167,7 +1289,7 @@ each with a `type`:
 
 | Line | Shape | When |
 |---|---|---|
-| start | `{"type": "start", "contract": "atip/1", "tool", "toolVersion", "command", "schemaVersion", "output"?}` | first line, exactly once |
+| start | `{"type": "start", "contract": "atip/1", "contractVersion"?, "tool", "toolVersion", "command", "schemaVersion", "output"?}` | first line, exactly once; `contractVersion` as on every envelope (15.7, since 1.1) |
 | event | `{"type": "event", "data": <follows eventRef>}` | zero or more times |
 | end | `{"type": "end", "result": <an ordinary envelope (6)>}` | last line, exactly once |
 
@@ -1213,10 +1335,17 @@ outside this rule. Text from other people and systems is data; guides SHOULD tel
 
 ## 15. Versioning
 
-15.1. **The contract.** This document is `atip/1`. A change that makes a conforming tool non-conforming, or
-that a conforming caller cannot read, is a new major (`atip/2`). This document is version 1.0 of `atip/1`. A later
-1.x may only clarify text, correct examples, checks and the regex record, and add examples; it never changes what
-a 1.0-conforming tool or caller must produce or accept. `CHANGELOG.md` lists each version.
+15.1. **The contract.** This document is `atip/1`: the contract identifier names the major. Its versions are
+`MAJOR.MINOR.PATCH` (this one is `1.1.0`), and `CHANGELOG.md` lists each. A change belongs to the smallest class
+that holds it:
+
+| Class | What it may do | What it never does |
+|---|---|---|
+| PATCH (`1.1.x`) | Clarify text without changing what conforming tools and callers do; correct examples, checks and the regex record; add examples. | Change a rule. |
+| MINOR (`1.x.0`) | Add OPTIONAL members, options, document kinds and enum values to the objects this document defines; add SHOULD and MAY rules; add MUST rules that govern only something the same minor adds, so that a tool which does not use the addition cannot fail them; relax a rule only where every answer the relaxed rule permits is one a caller already handles safely (8.3.1). | Make a conforming tool non-conforming: a tool that conformed to `1.0` still conforms, as a `1.0` tool (15.7). |
+| MAJOR (`atip/2`) | Remove or rename a member, option, code or document kind; change a type or a meaning; make an OPTIONAL member REQUIRED; add a MUST that an existing tool can fail. | |
+
+[Appendix A D20]
 
 15.2. **The tool.** `meta.toolVersion` is the release. It says nothing about compatibility of any document.
 
@@ -1226,11 +1355,51 @@ value bumps the minor; removing or renaming a member, changing its type or meani
 accepts unknown members within a major it knows and refuses an unknown major. A release that does not change an
 output keeps its version.
 
-15.4. **The self-description** is versioned the same way by its own `meta.schemaVersion` (`"1.0"`).
+15.4. **The self-description** is versioned by its own `meta.schemaVersion`, which is the contract version the
+tool implements (10.1.4): `"1.0"` or `"1.1"`.
 
-15.5. **The command surface.** Removing or renaming a command, an option or an error code is a breaking change for
-callers; it is done as a clean cutover (9.10) and recorded in the tool's changelog. An error code is never reused
-with another meaning.
+15.5. **The command surface.** Removing or renaming a command, an option, an error code, a warning code or a
+registered reason is a breaking change for callers; it is done as a clean cutover (9.10) and recorded in the
+tool's changelog. A code or a reason is never reused with another meaning.
+
+15.6. **Unknown members and values.** A caller MUST ignore a member it does not know in every object this document
+defines, as 15.3 says for reports: the envelope and `meta` with every object inside it (`next` entries, `page`,
+`truncated`, `warnings` items), `error` and its `details` items, error and warning registry entries and their
+reasons, every `schema` document and everything inside it, stream lines, batch reports and guides. A caller MUST NOT
+fail a whole document because a member whose values this document lists (`data.kind`, `valueType`, `effect`,
+`idempotency`, an output's `kind`, a batch item's `status`) has a value it does not know; it does not act on what
+it cannot interpret: an answer of an unknown `data.kind` is one it cannot use, a command with an unknown `effect`
+is treated as `destructive`, and an argument of an unknown `valueType` is given only as a string the caller already
+has. A caller refuses a document whose `meta.contract` names a major it does not know. Tools are held to the
+opposite rule: a tool emits only what its minor defines, plus `x-<tool>` members (10.12, 15.7). [Appendix A D20]
+
+15.7. **Declaring the minor** (since 1.1). `meta.contractVersion` (6.6) is the contract version a tool implements,
+`<major>.<minor>`; absent, it is `"1.0"`. A tool that implements 1.1 or later MUST set it on every envelope on which
+it sets `meta.contract`, and SHOULD set both on every envelope (including the `result` of a stream's `end` line).
+It is the same on every document one build of the tool prints. A tool emits no member, document kind or syntax
+added in a later minor than the one it declares (10.13 rule 16). Conformance is stated with the minor:
+"ATIP 1.1 L1 conformant". The checker (17) reads the claimed minor from the fixture, as it reads an L0 tool's
+level, and checks that the tool's documents declare it. [Appendix A D20]
+
+15.8. **The published schemas.** The JSON Schemas in `schema/` describe what a tool of the current minor may emit,
+and they are closed (`additionalProperties: false`): the checker validates tool output against them. Every member,
+document kind and pattern added after 1.0 carries the annotation `"x-atip-since": "1.1"`, which tells a checker
+what a tool that declares `"1.0"` must not emit. A caller MUST NOT reject a document only because it fails these
+schemas by an unknown member (15.6). A caller that validates uses them *open*: with `additionalProperties: false`
+read as absent, every other keyword unchanged. A value outside a listed set (an unknown `data.kind` or
+`valueType`) still fails the schemas read open; a caller that validates treats that failure as 15.6 says, by not
+acting on that part, rather than rejecting the whole document. `scripts/check.ts` validates `examples/caller-*.json` that way:
+documents of a later minor that a caller of this one must read. The `$id`s stay under `https://atip.dev/1/` for
+every `1.x`; a release tag holds the schemas of its version. [Appendix A D20]
+
+15.9. **The change from 1.0 to 1.1.** 1.0.0's 15.1 said that a later 1.x would never change what a 1.0 caller must
+accept. 1.1.0 breaks that promise once. A 1.0 caller that validated tool output against the closed 1.0 schemas
+rejects the members 1.1 adds (`meta.contractVersion`, `error.reason`, registry `reasons`) and the `warnings` and
+`warning` document kinds; and a 1.1 tool may keep a warning code only in its warning registry, where a 1.0 caller
+looking in `schema --errors` does not find it. This was accepted because, when it was decided, no conforming
+caller existed outside the two early adopters of 1.0, and both moved to 1.1. Nothing a 1.0 tool emits changes
+meaning, and a 1.0 tool stays conforming without a change. From 1.1.0 on, 15.1 and 15.6 hold for every later 1.x,
+and this exception is not repeated. [Appendix A D20]
 
 ## 16. Security
 
@@ -1259,9 +1428,13 @@ failing). A tool claiming a level MUST pass every MUST check of that level in it
 `effects` are complete, operation-key atomicity) are obligations of the tool's own test suite;
 `approaches/checker.md` §8 lists them, and a level claim includes them.
 
+17.3. Whenever a tool offers `schema --errors` (and `schema --warnings`), at any level, the checker compares those
+registries with the one in its fixture and with the codes and reasons the tool emits during the run (7.3.4, 7.6).
+
 ## 18. Open questions
 
-Every open question so far has been decided (Appendix A: D11, D12, D16, D17 and D18). None is open in 1.0.
+Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, and D20-D26 for 1.1.0). None is
+open in 1.1.0.
 The two that revision 5 raised are kept here with their decisions, so that earlier references still resolve.
 
 **18.1. More structure in `json` domains.** Decided (D18): the `json` profile of 10.7.4 gets no `anyOf` and no
@@ -1276,8 +1449,8 @@ one failing input cannot be tested from outside, and an agent cannot learn what 
 
 ## Appendix A. Decisions
 
-Decisions taken by the owner. A reason to change one after 1.0 goes through 15.1: a change that breaks a conforming
-tool or caller is `atip/2`.
+Decisions taken by the owner. A reason to change one goes through 15.1: a change that breaks a conforming tool or
+caller is `atip/2`.
 
 | # | Decision | Where |
 |---|---|---|
@@ -1340,7 +1513,17 @@ tool or caller is `atip/2`.
 
 | # | Owner decision 2026-10-30, release | Where |
 |---|---|---|
-| D19 | 1.0 adopted 2026-10-30 after six rounds of independent review. | status, 15.1 |
+| D19 | 1.0.0 adopted 2026-10-30 after six rounds of independent review. | status, 15.1 |
+
+| # | Owner decision 2026-10-31 to 2026-11-01, version 1.1.0, from implementer feedback from two early adopters | Where |
+|---|---|---|
+| D20 | Versions are `MAJOR.MINOR.PATCH` of `atip/1`, with the change classes of 15.1. Callers ignore unknown members of every object the contract defines, not only of reports. A tool declares its minor in `meta.contractVersion` and emits only what that minor defines. The published schemas stay closed for tools; callers read them open; members added after 1.0 carry `x-atip-since`. 1.1.0 changes 1.0.0's 15.1 once, stated in 15.9, because no conforming caller outside the two early adopters existed. | 6.6, 10.1.4, 10.12, 10.13 rule 16, 15 |
+| D21 | `error.reason`: an optional UPPER_SNAKE sub-reason registered under its code (`reasons: [{reason, meaning, fix}]` on registry entries), unique within the code, never emitted unregistered, sharing the code's exit. Callers may branch on code and reason. Reserved reason names for the reserved codes that cover several situations. Finer codes stay allowed only instead of `USAGE`. | 7.1, 7.2.2, 7.2.3, 7.6 |
+| D22 | A warning registry of its own: `schema --warnings` and `schema --warning <CODE>`, entries `{code, meaning, fix}`. A 1.1 tool SHOULD register warning codes there; a warning in the error registry with exit 1 stays valid. A situation reported both ways is registered in both. `--error` given a warning-only code refuses with a hint to `--warning`. | 7.3.4, 7.5, 10.1 |
+| D23 | Field paths write a member whose name is not an identifier as a bracketed JSON string (`attributes["http.status-code"]`); a declared map makes its keys selectable. Paths without brackets are unchanged. | 6.10, 10.13 rules 11 and 15 |
+| D24 | No per-command member saying whether a command accepts `--json`. The command document already lists `json` in `options`, and 4.2 requires it on every command with a report or artifact output, so the member would repeat `options` and could disagree with it. A tool that builds `next` knows its own parser; a caller gets `argv` ready-made. To be revisited if a tool shows a case that `options` does not answer. | 4.2, 6.8, 10.5 |
+| D25 | New SHOULD and MAY rules: an L0 tool SHOULD offer `schema --errors` and the checker compares it with the fixture; tool-wide options SHOULD be accepted wherever `--json` is, groups included; a write whose failure point cannot be shown to be before the work MAY report it as during-the-work (exit 1), while exit 2 still means nothing changed. | 7.3.4, 8.3.1, 9.13, 17.3 |
+| D26 | Clarifications: `USAGE` SHOULD carry `field`, and without one its hint names the command's `schema`; in text mode a refusal prints nothing on stdout and exit 1 may print its result; `--input` given twice or without a value is `USAGE`; precondition and during-the-work code names; a code with two exits is split; a batch report is its own output; a signal shows as a wait status or as a launcher's 128+n; a `hint` is exactly one of its three forms; a report may keep its own paging members, `meta.page` is authoritative. | 5.3, 6.6, 6.9, 7.1.2, 7.1.3, 7.3.2, 8.3, 8.4, 11.2 |
 
 ## Appendix B. Prior art
 

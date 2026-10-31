@@ -15,6 +15,7 @@
       "properties": {
         "type": { "const": "start" },
         "contract": { "const": "atip/1" },
+        "contractVersion": { "$ref": "envelope.schema.json#/$defs/meta/properties/contractVersion" },
         "tool": { "$ref": "envelope.schema.json#/$defs/meta/properties/tool" },
         "toolVersion": { "type": "string", "minLength": 1 },
         "command": { "$ref": "envelope.schema.json#/$defs/meta/properties/command" },
