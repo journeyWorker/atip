@@ -1,6 +1,39 @@
 # Changelog
 
-## 1.0 (2026-10-30)
+## 1.1.0 (release candidate)
+
+Optional additions and SHOULD/MAY rules from implementer feedback from two early adopters, and a fix to how the
+contract is versioned. A tool that conformed to 1.0.0 still conforms, as a 1.0 tool; a tool that uses anything new
+declares `meta.contractVersion: "1.1"`.
+
+- **Versioning (15, D20).** Versions are `MAJOR.MINOR.PATCH`, with three change classes (15.1). Callers ignore
+  unknown members in every object the contract defines, not only in reports, and do not reject a document for an
+  unknown enum value (15.6). A tool declares the minor it implements in `meta.contractVersion` and emits only what
+  that minor defines (15.7, 10.13 rule 16). The schemas stay closed for tools; callers read them open; members added
+  after 1.0 carry `"x-atip-since": "1.1"` (15.8). **This release breaks 1.0.0's promise once:** a 1.0 caller that
+  validated output against the closed 1.0 schemas rejects the new members, and a warning code may live only in the
+  new warning registry. The exception and its reason are in 15.9; it is not repeated in a later 1.x.
+- **Reasons (7.1, 7.2.3, 7.6, D21).** `error.reason`, an optional sub-reason registered under its code in
+  `reasons: [{reason, meaning, fix}]`; reserved reason names for `INPUT_INVALID`, `INPUT_TOO_LARGE` and
+  `CURSOR_INVALID`.
+- **Warning registry (7.5, D22).** `schema --warnings` and `schema --warning <CODE>`, entries `{code, meaning,
+  fix}`; new `data.kind` values `warnings` and `warning`; `schema/warning-entry.schema.json`.
+- **Field paths (6.10, D23).** Bracketed keys for member names that are not identifiers
+  (`attributes["http.status-code"]`); keys of a declared map are selectable.
+- **New SHOULD and MAY rules (D25).** An L0 tool SHOULD offer `schema --errors` (7.3.4), and the checker compares it
+  with the fixture (17.3); tool-wide options SHOULD be accepted after group words (9.13); a write whose failure
+  point cannot be shown to precede the work MAY report it with its during-the-work code (8.3.1).
+- **Clarifications (D26).** `USAGE` SHOULD carry `field` (7.1.3); hint forms (7.1.2); text-mode stdout for refusals
+  and exit 1 (5.3); `--input` given twice or without a value is `USAGE` (11.2); stage names of precondition and
+  during-the-work codes (8.3); a code with two exits is split (7.3.2); a batch report is its own output (6.6);
+  signals as a wait status or a launcher's 128+n (8.4); a report may keep its own paging members (6.9).
+- **Declined (D24).** No per-command member saying whether a command accepts `--json`: `options` already says it.
+- **Examples and validator.** The synthetic tool `acme` now declares 1.1: registry reasons, a warning registry,
+  map and escaped field paths. `examples/caller-*.json` are documents of a later minor that a caller must read;
+  `scripts/check.ts` validates them against the schemas read open and checks every tool document against the
+  minor it declares.
+
+## 1.0.0 (2026-10-30)
 
 First version of ATIP, the Agent Terminal Invocation Protocol (`atip/1`): a contract for command-line tools whose
 main callers are coding agents, built with Rust/clap or TypeScript/Effect 4 and checked against their built binaries.

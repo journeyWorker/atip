@@ -5,11 +5,12 @@ envelope, errors and their registry, exit codes, the command grammar and argv sy
 self-description, whole-command JSON input, preview/commit for destructive commands, long-running work and
 streams, and the guide shipped in the binary. It is written for tools built with Rust/clap and with
 TypeScript/Effect 4, but nothing in it depends on either, and it is checked against built binaries. A tool that
-passes is "ATIP L1 conformant" (or L0, L2) for a release.
+passes is "ATIP 1.1 L1 conformant" (contract minor, then level L0, L1 or L2) for a release.
 
-**Status: 1.0**, adopted 2026-10-30 after six rounds of independent review. The decisions behind it are in
-Appendix A of the spec; no question is open. `CHANGELOG.md` lists the versions; spec 15.1 says what a 1.x may
-change. Until its second revision the contract was called `agent-cli/1`.
+**Status: 1.1.0, release candidate.** 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
+adds optional members and SHOULD/MAY rules from implementer feedback. The decisions behind both are in Appendix A of
+the spec; no question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, and 15.9 states
+the one place where 1.1.0 changes what 1.0.0 promised callers. Until its second revision the contract was called `agent-cli/1`.
 
 **Names.** Contract id `atip/1` (`meta.contract`); schema `$id`s under `https://atip.dev/1/` (placeholders); the
 checker command `atip check`; the TypeScript package `@journeykit/atip` and the Rust crate `atip`. OpenCLI is out of
@@ -23,13 +24,15 @@ scope (spec 1.6).
 | `schema/` | JSON Schemas, draft 2020-12, normative for wire shapes. `$id`s under `https://atip.dev/1/` are placeholders. |
 | `schema/envelope.schema.json` | Success and failure envelope, `meta` (incl. `output`, `page`, `fields`, `truncated`). |
 | `schema/error.schema.json` | The `error` object. |
-| `schema/registry-entry.schema.json` | One error registry row. |
-| `schema/schema-doc.schema.json` | A `<tool> schema --json` answer: `tree`, `group`, `command`, `errors`, `error`. |
+| `schema/registry-entry.schema.json` | One error registry row, with its reasons (since 1.1). |
+| `schema/warning-entry.schema.json` | One warning registry row (since 1.1). |
+| `schema/schema-doc.schema.json` | A `<tool> schema --json` answer: `tree`, `group`, `command`, `errors`, `error`, and since 1.1 `warnings`, `warning`. |
 | `schema/input-document.schema.json` | The generic fragment shape of an `--input` document or batch. |
 | `schema/batch-report.schema.json` | The shape every batch output's `data` has, whatever the command's own batch schema says. |
 | `schema/stream-line.schema.json` | One line of a stream command's NDJSON protocol. |
 | `schema/guide.schema.json` | The JSON data of `skills show --json`. |
-| `examples/` | Documents that must pass: canon `finding close`, `finding list`, `purge` and `skills show` command documents translated from canon; a synthetic reference tool `acme` (`member list`, `member show`, `member tag`, `member roster`, `member export`, `page label`, `deploy start`, `deploy status`, `filter test`, `lint`, `build`) for what the translations do not exercise; tree, search, group, registries, one entry; reports (success, failures, input error, preview, stale plan, three batch cases, projected pages, guide); `--input` documents; streams. `examples/README.md` says where every translated field comes from and which are proposed or unverified. |
+| `examples/` | Documents that must pass (canon's as a 1.0 tool, acme's as a 1.1 tool): canon `finding close`, `finding list`, `purge` and `skills show` command documents translated from canon; a synthetic reference tool `acme` (`member list`, `member show`, `member tag`, `member roster`, `member export`, `page label`, `deploy start`, `deploy status`, `filter test`, `lint`, `build`) for what the translations do not exercise; tree, search, group, error and warning registries with reasons, one entry; reports (success, failures, input error, preview, stale plan, three batch cases, projected pages, guide); `--input` documents; streams. `examples/README.md` says where every translated field comes from and which are proposed or unverified. |
+| `examples/caller-*.json` | Documents of a later minor, with members this one does not define, that a caller must read: they pass the schemas read open and fail them closed (spec 15.6, 15.8). |
 | `examples/invalid/` | Documents that must be rejected, one broken rule each (shape, every rule of spec 10.13, projection, domains, patterns, validators, batch, stream, input). |
 | `scripts/validate.sh` | Runs `scripts/check.ts`: every example against its JSON Schema and the rules beyond JSON Schema (spec 10.13, 6.x, 7.3, 11.x, 13.5), report and stream data against the output and event schemas of the example command documents, the spec's section cross-references, and the ECMAScript side of `scripts/regex-cases.json`. With cargo it also runs `scripts/regex-parity`, which checks the Rust side of that record. |
 | `scripts/regex-cases.json` | Patterns and values with the answers of ECMAScript (`u`) and the Rust `regex` crate: the evidence that the pattern form of spec 10.7.4 reads the same in both. |
