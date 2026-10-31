@@ -1,7 +1,7 @@
 # TypeScript and Effect 4: spec-first commands
 
 Not normative. How a TypeScript tool built on Effect 4 can become ATIP conformant, and what the shared package
-`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.0.
+`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.0.
 
 ## 1. Where a TypeScript tool starts
 
@@ -109,6 +109,45 @@ export const findingClose = defineCommand(
 (or defects, mapped to `INTERNAL`), so `errors` in the self-description is exact by construction. Constraint names
 are field names of `input` (or operand names), checked by the type of `requires`/`forbids`/`atMostOne`.
 
+**Reasons and warnings (since 1.1).** `defineError` takes `reasons`, an object keyed by reason name, and the failure
+constructor takes `reason` typed as the union of that error's keys, so a reason that is not registered under the
+code does not type-check. A reason has no exit of its own: it shares its code's (spec 7.6.2).
+
+```ts
+export const InputInvalid = defineError({
+  code: "INPUT_INVALID", exit: 2, retryable: false,
+  meaning: "--input cannot be read or framed, or a document fails its fragment schema",
+  fix: "Run <tool> schema <COMMAND> --json and send a document that matches input.schemaRef",
+  reasons: {
+    NOT_JSON: { meaning: "The source is not JSON", fix: "Quote the document so the shell keeps its quotes" },
+    UNREADABLE: { meaning: "The file named by --input cannot be read", fix: "Check the path, relative to the working directory" },
+  },
+})
+
+InputInvalid.fail({ message: "…", field: "--input", reason: "NOT_JSON" })  // type-checks
+InputInvalid.fail({ message: "…", field: "--input", reason: "NOT_OBJECT" }) // does not: not a key of `reasons`
+
+export const LegacyAlias = defineWarning({
+  code: "LEGACY_ALIAS",
+  meaning: "A deprecated spelling of an option was used",
+  fix: "Use the current option name: <tool> schema <COMMAND> --json",
+})
+```
+
+`defineWarning({ code, meaning, fix })` returns the value a handler puts into `meta.warnings`, so a warning code
+that is not defined cannot be emitted. `defineTool` collects every defined warning reachable from `commands` into
+the warning registry printed by `schema --warnings --json` and `schema --warning <CODE> --json` (spec 7.5.2), and
+answers `schema --error <CODE>` for a warning-only code with `USAGE`, `field` `--error`, and the hint
+`<tool> schema --warning <CODE> --json`. A situation that is a warning in some invocations and an error in others
+is defined as both, with one `meaning`; a test compares the two. Reserved reason names (spec 7.2.3) ship as
+ready-made `reasons` objects the tool spreads into its own `INPUT_INVALID` definition.
+
+**Parser behaviour that is a contract.** Tool-wide options (`--json`, `--repo`, `--actor`, any option declared on
+`defineTool`) are accepted after group words as well as after commands (spec 9.13), so
+`canon finding --repo . --json` is answered with `COMMAND_REQUIRED`. `--input` given twice, or as the last word
+with no value, is `USAGE` with `field` `--input` (spec 11.2), raised by the argv parser before any decoder runs;
+`INPUT_INVALID` is only for a value that was given.
+
 ### 3.2 What is generated from the declaration
 
 1. **Three schemas from one Struct.** The *argument* schema is the Struct as declared (required keys, defaults,
@@ -143,14 +182,24 @@ are field names of `input` (or operand names), checked by the type of `requires`
    argv-only and are handled by `defineTool` before either decoder runs.
 4. **Help.** Usage line, the agent line (spec 4.7), operands, options with value names and defaults.
 5. **`schema`.** Tree, group, command (§3.3 mapping), errors and error from the registry built from every
-   `defineError` reachable from `commands`.
+   `defineError` reachable from `commands`, with their `reasons`; warnings and warning from every `defineWarning`
+   reachable the same way.
 6. **Output JSON Schemas.** `Schema.toJsonSchemaDocument(schema)` (draft 2020-12) of every output, with
    `definitions` lifted into the command document's `schemas` and refs rewritten to `#/schemas/<Name>`. An
    artifact output declares its JSON representation Schema (`skills show` → `Guide`), a stream output its event
    and result Schemas.
 7. **Envelope and exit.** The handler's success becomes `{ok: true, data, meta}`; the output is checked against
    its Schema (`onExcessProperty: "error"`) before printing, so a report can never drift from what `schema`
-   publishes; a typed failure becomes the error object and the registry's exit.
+   publishes; a typed failure becomes the error object, with its `reason` when it has one, and the registry's
+   exit. `meta.contract` and `meta.contractVersion` come from one constant of the package
+   (`CONTRACT_VERSION = "1.1"`), set on every envelope including the `result` of a stream's `end` line; a tool does
+   not write the minor itself (spec 15.7).
+8. **Field paths.** `--fields` and the projection share one parser for field paths (spec 6.10): dotted names,
+   `[]`, and a bracketed JSON string for a key that is not an identifier (`attributes["http.status-code"]`, only
+   `\"` and `\\` escape inside the quotes). It rejects a bracketed identifier, so every member has one spelling
+   and `meta.fields` compares as text; its writer is the inverse; the `--fields` value is split by a scanner that
+   ignores commas inside brackets. A map the output schema declares (`Schema.Record`) has selectable keys. A
+   test round-trips every path of the examples and one with a quote, a backslash and a comma in the key.
 
 ### 3.3 Schema → self-description mapping
 
@@ -241,6 +290,37 @@ is `optionalKey` with a `defaultNote`, and the handler computes it.
 
 B keeps A's best property (one hand-written source, no framework parser) and removes the duplicated typing.
 
+### 3.7 Conservative staging (spec 8.3, 8.3.1)
+
+A write leaf that can fail both before and during the work has two registered codes (`STORE_UNAVAILABLE`, exit 2;
+`WRITE_FAILED`, exit 1). Which one a failure gets depends on whether the work began. For Effect use cases:
+
+- **With a marker.** The use case reaches its ports through a `Work` service. `Work.begin` runs immediately before
+  the first port call that can change state (a `Ref<boolean>` is set there, nothing else happens), and the
+  library's error mapper reads the `Ref`: a failure before `begin` maps to the precondition code, a failure after
+  it to the `_FAILED` code. Port wrappers for writes call `begin` themselves, so a use case cannot forget it. A
+  test per write leaf injects a fault at the port before and after the first write and asserts exit 2 with no
+  change, and exit 1.
+- **Without a marker.** The leaf uses 8.3.1: it cannot show where the failure point is, so it reports every
+  failure after argument parsing and object resolution with the `_FAILED` code, exit 1. Exit 2 stays reserved for
+  what it knows came before the work. The reverse is never done: an exit 2 after a change breaks spec 8.2 and is
+  what the checker's `L0.refusal-effects` catches.
+
+A `read` leaf reports its precondition failures as refusals either way.
+
+### 3.8 Cursors over keyset backends (spec 6.9)
+
+A backend's own cursor (the last key of a keyset page, a continuation token) does not know the CLI's arguments.
+The CLI wraps it: the cursor it prints is the backend cursor plus a digest of the normalised arguments of the
+invocation (JCS + SHA-256 of every argument except `--limit`, `--cursor` and `--fields`), encoded as one opaque
+string. On `--cursor`, the CLI decodes it, recomputes the digest from the current arguments, and refuses with
+`CURSOR_INVALID` before the backend is called: reason `FOREIGN` when the string is not one of its cursors,
+`ARGUMENTS_CHANGED` on a digest mismatch, `EXPIRED` when the backend then refuses the token. Binding on the
+argument text as given, without normalising, is conservative: it can refuse a cursor given with another spelling
+of the same arguments (`--round=1` against `--round 1`), and it
+never accepts changed ones. Normalised binding is better, and the argument object of spec 11.7 step 6 is already
+the normalised form.
+
 ## 4. A tool on `effect/cli` in the meantime
 
 A tool whose parser is `effect/cli` can reach L1 from its existing tree before it moves to `defineCommand`:
@@ -275,5 +355,8 @@ should not stop there.
    `data.planDigest`; an idempotency key option is `--operation` (spec 13.4); several values of one kind are a
    repeatable option, never a second operand of another kind (spec 9.4); a refusal or a `schema` call writes no
    log file (spec 12.2).
+5. A tool that adopts 1.1 members (reasons, a warning registry, escaped field paths) sets `CONTRACT_VERSION` to
+   `"1.1"` from the package and claims "ATIP 1.1" with its level (spec 15.7); `approaches/migration.md` §6 lists
+   the steps.
 
 `approaches/migration.md` lists the steps for any tool and two worked examples.

@@ -3,7 +3,7 @@
 Not normative. How an existing command-line tool moves to ATIP, level by level, with canon 0.31.0 and lute 0.52.0
 (both Rust, clap) as worked examples. Their status below is from their source and their read-only `schema`
 output; anything not established that way is marked *unmeasured*. Section numbers ("spec 11.7") refer to
-`spec/atip-1.md`, version 1.0.
+`spec/atip-1.md`, version 1.1.0.
 
 The contract is not softened to ease adoption; where a rule costs a tool real work, the cost is recorded here (§4).
 
@@ -17,7 +17,7 @@ Legend: ✅ conforms · 🟡 close, mechanical change · 🔴 missing or differe
 |---|---|---|---|
 | Text default, `--json` selects (4.1-4.3) | JSON by default, or an environment variable or TTY check that switches it | ✅ | ✅ |
 | JSON mode from argv before parsing (4.4) | a parse error printed as text although `--json` was given | ✅ | ✅ |
-| One document on stdout, stderr empty (5.1-5.2) | diagnostics repeated on stderr; load failures printed on stdout | ✅ | 🔴 diagnostics duplicated on stderr |
+| One document on stdout; stderr never carries the result or the error (5.1-5.2) | diagnostics repeated on stderr; load failures printed on stdout | ✅ | 🔴 diagnostics duplicated on stderr |
 | Compact (5.4) | pretty-printed JSON | ✅ | 🔴 pretty |
 | Nested `{ok,data,meta}` (6.1) | a flat document with the payload beside `ok` | ✅ | 🔴 flat |
 | `meta.tool`, `toolVersion`, `contract` (6.6) | a tool-named version key, version at the root | 🟡 `canonVersion`, no `tool` | 🔴 |
@@ -33,6 +33,12 @@ Legend: ✅ conforms · 🟡 close, mechanical change · 🔴 missing or differe
 | Registry `{code,exit,retryable,meaning,fix}` (7.3) | codes without an exit or a fix | ✅ 175 codes | 🔴 no exit/retryable per code |
 | Exit from registry only; precondition and during-the-work codes (7.3.2, 8.3) | call sites that set an exit; one I/O code for both stages | 🔴 `with_exit`, batch overrides; `WRITE_FAILED` exit 2 | 🔴 |
 | Exits 0/1/2 only (8.6) | exit 3 and up; a successful change reported as a failure | ✅ | 🔴 exit 3; accepted patch exit 1 |
+| Stage names: `*_UNAVAILABLE`/`*_UNREACHABLE`/`*_REFUSED` exit 2, `*_FAILED` exit 1 (8.3, SHOULD) | one I/O code for both stages | 🟡 `WRITE_FAILED` exit 2 today | 🔴 |
+| A refusal prints nothing on stdout in text mode; exit 1 may print its result (5.3) | a refusal that prints partial output | *unmeasured* | *unmeasured* |
+| Signals: a wait status or a launcher's 128+n, never another code (8.4, SHOULD) | a JavaScript or shell launcher that exits 1 when the binary is killed | *unmeasured* | *unmeasured* |
+| `schema --errors` and `--error <CODE>` at L0 (7.3.4, SHOULD) | an L0 tool whose registry the checker cannot see | ✅ | 🔴 `--explain` text |
+| `USAGE` carries `field`, else its hint names `<tool> schema <command> --json` (7.1.3, SHOULD) | a parse error that names no argument and has no hint | *unmeasured* | 🔴 no `field` |
+| `meta.contractVersion` on every envelope of a tool that uses a 1.1 member (15.7) | a 1.1 member with no declaration | *unmeasured* | 🔴 |
 
 ### L1: grammar and `schema`
 
@@ -60,6 +66,10 @@ Legend: ✅ conforms · 🟡 close, mechanical change · 🔴 missing or differe
 | `--errors`/`--error` (7.3.4) | | ✅ | 🔴 `--explain` text |
 | Help points at `schema` (4.7) | | *unmeasured* | 🔴 |
 | Paging, fields (6.9, 6.10) | offsets, paging fields inside `data` | 🟡 `--limit/--cursor/--all/--fields`, paging in flattened meta, `UNKNOWN_FIELD`, snake_case accepted | 🟡 `context --max-items` |
+| Tool-wide options accepted after a group word wherever `--json` is (9.13, SHOULD) | `<tool> <group> --repo . --json` answered `USAGE` | *unmeasured* | *unmeasured* |
+| Reasons under codes (7.6, optional) | finer codes for one situation, or prose that callers parse | 🟡 nine `INPUT_*` variants are the natural reasons of `INPUT_INVALID` | *unmeasured* |
+| Warning registry, `schema --warnings` / `--warning` (7.5.2, optional) | warning codes registered only as error entries with `exit` 1 | *unmeasured* | *unmeasured* |
+| Escaped field paths `attributes["http.status-code"]` and map keys (6.10, optional) | a `--fields` that cannot name a key with a dot | *unmeasured* | *unmeasured* |
 
 ### L2: input, safety, long-running, guides
 
@@ -70,6 +80,7 @@ Legend: ✅ conforms · 🟡 close, mechanical change · 🔴 missing or differe
 | Pointers for input-sourced errors (11.8) | | ✅ for document errors; *unmeasured* for parser errors | — |
 | Conversion with operands after `--` (11.9) | | *unmeasured* | — |
 | Batches (11.11) | a per-item failure code, exit overrides | 🟡 `INPUT_ELEMENT_FAILED`, exit overrides; pointer `/items/<i>/…` | — |
+| `--input` twice, or last with no value, is `USAGE` with `field` `--input` (11.2) | `INPUT_INVALID` for a malformed command line | *unmeasured* | — |
 | Refusals and previews write nothing (12.2) | logs, telemetry or caches written before the command ran | 🟡 `read_effects.rs` whitelists `subject show` writes | 🔴 telemetry |
 | Preview + digest (12.4-12.7) | `--yes`, prompts, `--dry-run` as the only safety | ✅ 5 leaves; bare-hex digest; `PLAN_CHANGED` | 🟡 `tag --renumber --commit`, no digest |
 | Commit `next` from normalised arguments (12.5) | | *unmeasured* | — |
@@ -155,3 +166,58 @@ Callers: the website and every harness that parses lute JSON. approaches/rust.md
 - A tool's changelog lists every renamed command, option and error code with its replacement.
 - The checker runs in CI from the release that claims the level; before that it can run in report-only mode to
   show the remaining gaps.
+
+## 6. From 1.0 to 1.1
+
+For the author of a tool that conforms to 1.0, and for the author of a caller. 1.1.0 (spec 15.9) is the only
+release that changes what a 1.0 caller must accept; every later 1.x keeps 15.1 and 15.6.
+
+**Nothing is forced.** A 1.0 tool stays conforming without a change. It declares nothing, the checker's default
+claim is `1.0`, and its documents carry no 1.1 member. The additions are optional or SHOULD:
+
+| Addition | Spec | Strength |
+|---|---|---|
+| `error.reason` and registry `reasons` (reserved names for the reserved codes) | 7.1.1, 7.2.3, 7.6 | optional |
+| A warning registry: `schema --warnings`, `schema --warning <CODE>` | 7.5.2, 7.5.3 | optional; SHOULD for a 1.1 tool's warning codes |
+| Escaped keys in field paths, map keys selectable | 6.10 | optional |
+| `schema --errors` and `--error` at L0 | 7.3.4 | SHOULD |
+| Tool-wide options accepted after a group word | 9.13 | SHOULD |
+| `USAGE` with `field`, or a hint naming `<tool> schema <command> --json` | 7.1.3 | SHOULD |
+| Precondition and during-the-work code names; a code with two exits split in two | 7.3.2, 8.3 | naming SHOULD |
+| Conservative staging: a write leaf reports a failure it cannot place as exit 1 | 8.3.1 | MAY |
+| A launcher re-raises the signal or exits 128+n | 8.4 | SHOULD |
+
+**If the tool uses any 1.1 member, it declares 1.1.** It sets `meta.contractVersion` to `"1.1"` on every envelope
+that sets `meta.contract` (and should set both everywhere, including a stream's end result), and its `schema`
+answers carry `meta.schemaVersion` `"1.1"` (spec 15.7, 10.1.4, 10.13 rule 16). The value is the same on every
+document one build prints; in a Rust or TypeScript tool it is one constant of the shared package
+(approaches/rust.md §3.1, approaches/typescript.md §3.2). The reverse holds as well: a tool that declares `1.0`
+emits no reason, no `warnings` or `warning` document and no bracketed path, and the checker fails it if it does
+(L0.contract-version). The tool's fixture gets `contractVersion: "1.1"` and a `registry` (approaches/checker.md §5),
+and it claims "ATIP 1.1 L1".
+
+**A caller's new duty (spec 15.6, 15.8).** Ignore every member you do not know, in every object the contract
+defines, not only in reports; do not fail a document because a listed value (`data.kind`, `valueType`, `effect`) is
+one you do not know, and do not act on what you cannot interpret (an unknown `effect` is `destructive`). Validate
+with the published schemas read open (`additionalProperties: false` taken as absent), or not at all. Look a warning
+code up in the warning registry first and the error registry second (7.5.3). Treat a missing `contractVersion` as
+`1.0`. A caller that branches on `code` alone keeps working with a 1.1 tool: a reason refines a code and never
+replaces it. The one-time break (15.9): a 1.0 caller that validated tool output against the closed 1.0 schemas
+rejects the members 1.1 adds, and must be changed before it meets a 1.1 tool.
+
+**Checklist for a tool author moving to 1.1**
+
+1. Pick the additions that earn their place: reasons where one code hides situations that need different next
+   actions (canon's `INPUT_*` variants, folded into `INPUT_INVALID`, are the example); a warning registry where
+   the tool emits warnings (lute's diagnostics registry is the example, approaches/rust.md §7).
+2. Add `contractVersion` from one constant; add `reasons` and `WarningInfo`/`defineWarning` rows so that an
+   unregistered reason or warning does not compile or type-check (approaches/rust.md §3.1,
+   approaches/typescript.md §3.1).
+3. Offer `schema --errors` and `--error` at any level, and `--warnings` and `--warning` when there is a warning
+   registry. A warning-only code given to `--error` refuses with the `--warning` hint.
+4. Accept tool-wide options after group words; make `USAGE` carry `field`; answer `--input` twice or without a
+   value with `USAGE`, `field` `--input`.
+5. Name the stages of failure codes; decide per write leaf between a work-begins marker and conservative staging
+   (approaches/rust.md §3.6, approaches/typescript.md §3.7).
+6. Add the fixture's `contractVersion`, `registry`, `warnings`, `globalOptions` and `missingValue`, run the checker
+   at the claimed level, and record in the changelog what changed.

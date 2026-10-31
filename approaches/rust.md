@@ -1,7 +1,7 @@
 # Rust: clap stays the source, the self-description is generated
 
 Not normative. How a Rust tool built on clap 4 derive, such as canon and lute, can become ATIP conformant without a second
-description of their command trees. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.0.
+description of their command trees. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.0.
 
 ## 1. The principle
 
@@ -36,9 +36,10 @@ The crate is `atip` (the name is free on crates.io).
 atip
 ├── envelope   Meta, Success<R>, Failure<R>, NextStep, Warning, Page; print_success / print_failure (one compact line)
 ├── argv       json_mode(&[OsString]) -> bool (the word `--json` before `--`, spec 4.4); the argv writer of spec 9.12.3
-├── error      Code (static registry row), CliError (builder), reserved codes, text rendering (spec 7.4)
+├── error      Code (registry row with its reasons), ReasonInfo, WarningInfo, CliError (builder), reserved codes, text rendering (spec 7.4)
+├── fieldpath  the parser and writer of field paths: dotted names, `[]`, bracketed keys (spec 6.10); used by `--fields` and the projection
 ├── spec       CommandMeta table, project(&clap::Command, &Table) -> Vec<Node>, valueType, typed defaults, constraints
-├── schema     the `schema` subcommand: Args (path, --errors, --error, --search, --json) and its handler
+├── schema     the `schema` subcommand: Args (path, --errors, --error, --warnings, --warning, --search, --json) and its handler
 ├── input      InputArgs (--input): read, frame, fragment-validate, conflict-check, merge, batch runner (spec 11)
 ├── safety     SafetyArgs (--commit, --plan-digest), Plan, Effect, digest (JCS + SHA-256), commit `next` builder
 ├── stream     StreamWriter: start line, event lines, end line (spec 13.5)
@@ -56,16 +57,23 @@ pub struct Code {
     pub retryable: bool,
     pub meaning: &'static str,
     pub fix: &'static str,
+    pub reasons: &'static [ReasonInfo], // spec 7.6; empty for most codes
 }
+
+/// A situation under one code that needs a different next action. It has no exit: it shares its code's.
+pub struct ReasonInfo { pub reason: &'static str, pub meaning: &'static str, pub fix: &'static str }
+
+/// A warning code (spec 7.5.2): no exit, no retryability.
+pub struct WarningInfo { pub code: &'static str, pub meaning: &'static str, pub fix: &'static str }
 
 pub const USAGE: Code = Code { code: "USAGE", exit: Exit::Refused, retryable: false,
     meaning: "The command line does not parse or does not satisfy the command's requirements",
     fix: "Run <tool> schema <COMMAND> --json" };
 // … the other reserved codes of spec 7.2
 
-pub struct CliError { code: &'static Code, message: String, hint: Option<String>, field: Option<Field>,
-                      expected: Vec<String>, received: Option<Value>, suggestions: Vec<String>,
-                      details: Vec<Detail> }
+pub struct CliError { code: &'static Code, reason: Option<&'static ReasonInfo>, message: String,
+                      hint: Option<String>, field: Option<Field>, expected: Vec<String>,
+                      received: Option<Value>, suggestions: Vec<String>, details: Vec<Detail> }
 
 /// Where the fault is: an argv argument, or a JSON pointer into the --input document (spec 11.8).
 pub enum Field { Argv(String), Pointer(String) }
@@ -75,12 +83,58 @@ No `with_exit`: the exit is `self.code.exit`. A tool's registry is `&'static [&'
 the reserved ones it can produce; a test asserts every code a `CliError` is built with is in it (canon's
 `schema_codes.rs` does this by scanning source).
 
+**Reasons (since 1.1).** The builder gains `.reason(…)`, which sets `error.reason` (spec 7.1.1, 7.6). A reason is
+registered under its code, so the builder must not accept one that is not. The recommended form is typed: the
+registry table is a macro input, and for every code that lists reasons the macro generates an enum and ties it to
+the code, so an unregistered reason does not compile.
+
+```rust
+codes! {
+    INPUT_INVALID { exit: Refused, retryable: false, meaning: "…", fix: "…",
+        reasons: { NotJson = "NOT_JSON": ("The source is not JSON", "Quote the document"), Empty = "EMPTY": (…), /* … */ } },
+}
+// generated: pub enum InputInvalidReason { NotJson, Empty, … }, and
+impl CliError<InputInvalid> { pub fn reason(self, r: InputInvalidReason) -> Self }
+// so  CliError::new(INPUT_INVALID, msg).reason(InputInvalidReason::NotJson)  compiles, and a reason of another
+// code, or a string, does not. A code without reasons has no `reason` method.
+```
+
+`CliError` carries a marker type per code (`CliError<InputInvalid>`), erased by `.into()` where errors are
+collected. Where the table is plain data, `.reason("NOT_JSON")` with a source-scan test is the fallback: the test
+asserts that every `.reason(..)` call site names a reason listed under the code of the same builder chain. The
+reserved reason names of spec 7.2.3 are ready-made rows in the shared crate, so a tool that registers a reason
+for one of those situations takes the name from there. A reason never changes the exit: the exit is still
+`self.code.exit`.
+
+**Warnings.** A warning is built from a `&'static WarningInfo` (code, meaning, fix), never from a string, so an
+unregistered warning code does not compile. A tool's warning registry is its own `&'static [&'static WarningInfo]`,
+printed by `schema --warnings` (`data.kind` `warnings`) and `schema --warning <CODE>` (`warning`). `schema
+--error <CODE>` for a code that is only in the warning table refuses with `USAGE`, `field` `--error`, and the
+`hint` `<tool> schema --warning <CODE> --json`. A situation reported as a warning in one invocation and as an error
+in another has a row in both tables; a test asserts the two `meaning`s are equal (spec 7.5.3).
+
+**The contract constant.** `pub const CONTRACT_VERSION: &str = "1.1"` in the crate is the one place the minor is
+written. `Meta` sets `contractVersion` from it on every envelope, the `result` of a stream's `end` line included,
+and `schema` uses it for the self-description's `meta.schemaVersion` (spec 10.1.4, 15.7). A tool does not copy it.
+
 clap's own errors are mapped once: `clap::error::ErrorKind::{UnknownArgument, InvalidValue, MissingRequiredArgument,
 ArgumentConflict, …}` → `USAGE` with `field` (the argument), `expected` (`ContextKind::ValidValue`), `received`
 (`ContextKind::InvalidValue`), `suggestions` (`ContextKind::SuggestedArg`/`SuggestedValue`);
 `InvalidSubcommand` → `UNKNOWN_COMMAND`; `MissingSubcommand`/`DisplayHelpOnMissingArgumentOrSubcommand` →
 `COMMAND_REQUIRED`. canon already extracts these contexts. When the invocation used `--input`, the mapper rewrites `Field::Argv` to the
 document pointer the argument came from (§6).
+
+**Tool-wide options on groups (spec 9.13).** Declare `--json`, `--repo`, `--actor` and the like with
+`Arg::global(true)` on the root command. clap then accepts them after a group word as well, and
+`canon finding --repo . --json` parses and ends in `MissingSubcommand`, which the mapper turns into
+`COMMAND_REQUIRED`, instead of `USAGE` for an option the group "does not take". The checker's advisory
+`L0.global-on-group` tests this.
+
+**`--input` given twice, or without a value (spec 11.2).** clap reports the repeat of a single-valued option as
+`ArgumentConflict` and a trailing option without its value as `InvalidValue` (clap 4.6.7, checked with
+`Parser::try_parse_from`); the exact kinds are clap's to change, so a test pins them. The mapper decides by the argument (`ContextKind::InvalidArg` names `input`), not by
+the kind: both become `USAGE` with `field` `--input`, and never `INPUT_INVALID`, which is for a value that was
+given. The `--input` loader runs only after clap has parsed.
 
 ### 3.2 The per-command table
 
@@ -118,6 +172,53 @@ keyed by id and the completeness test of §3.3 keeps it honest.
 - `destructive_has_safety`, `input_on_writes`: the L2 shape rules (spec 11.1, 12.4).
 - `no_effect_on_refusal`: runs each command's refusals in a temporary directory and asserts nothing was written
   (spec 12.2), including telemetry and logs.
+- `reasons_registered`: every `.reason(..)` call site (or, with the typed form, nothing to test: it does not
+  compile) names a reason registered under the code of its chain; every reason registered under a reserved code
+  that is one of the situations of spec 7.2.3 uses the reserved name.
+- `warnings_registered`: every `meta.warnings` code the tool can emit has a `WarningInfo` row, or an error-registry
+  row; every code in both tables has the same meaning.
+- `staging_per_write_leaf`: for each write leaf, a fault injected before the first backend call gives the
+  precondition code (exit 2, nothing changed) and one after it the `_FAILED` code (exit 1); see §3.6.
+
+### 3.4 Field paths
+
+`--fields` and the projection share one small parser, `fieldpath::parse`, so the two cannot read a path
+differently (spec 6.10). Segments are `Name(String)`, `Each` (`[]`) and a bracketed key, which is a `Name` written
+as a JSON string: `attributes["http.status-code"]`, `["x.y"].value`. Inside the quotes only `\"` and `\\` are
+escapes. `parse` refuses a path that is not in its one spelling: a name that is an identifier
+(`[A-Za-z_][A-Za-z0-9_]*`) must be written with a dot, never bracketed, so `meta.fields` can be compared as text.
+`write` is the inverse and produces that spelling. The `--fields` value is split by a scanner that does not split
+at commas inside a bracketed key, not by `str::split(',')`. A key of a map the output schema declares
+(`additionalProperties` with a value schema) is selectable; the projection descends into every member the path
+names and keeps the rest out. Tests: `write(parse(p)) == p` for every path in the examples, a path with `"` and
+`\` in a key, and a comma inside brackets.
+
+### 3.5 Signals and launchers (spec 8.4)
+
+A Rust binary killed by a signal needs no envelope and no registry row. Restore the default SIGPIPE behaviour at
+startup (`libc::signal(SIGPIPE, SIG_DFL)`, since Rust ignores it by default), and release what the tool claimed (a
+lock file, a temporary directory) from a handler that sets a flag, not from the handler itself. A launcher that
+spawns the binary (an npm package whose `bin` is a JavaScript file, a shell wrapper) must re-raise the child's
+signal (`process.kill(process.pid, signal)` after cleaning up) or exit 128+n (130 for SIGINT, 143 for SIGTERM),
+never a fixed code of its own. The checker accepts either form.
+
+### 3.6 Conservative staging (spec 8.3, 8.3.1)
+
+A write leaf has two codes for a failure category that can happen before or during the work (`STORE_UNAVAILABLE`
+exit 2, `WRITE_FAILED` exit 1). Which one a given failure gets depends on whether the work began. Two ways, chosen
+per leaf in the table (`staging: Marked | Conservative`):
+
+- **Marked (preferred where it is cheap).** The handler's context has `ctx.begin_work()`, called immediately
+  before the first backend call that can change something. The error conversion reads the marker: a failure before
+  it maps to the precondition code, one after it to the `_FAILED` code. Nothing that can change state runs before
+  the call, and the `staging_per_write_leaf` test of §3.3 proves it for each leaf.
+- **Conservative (spec 8.3.1).** When the work is a sequence of backend calls and the leaf cannot show which one
+  failed first, every failure after parsing and object resolution is reported with the `_FAILED` code, exit 1.
+  Exit 2 is then reserved for what the leaf knows came before the work (parsing, resolving the named objects). The
+  reverse is never done: an exit 2 after anything changed is a violation of spec 8.2 that the checker catches as
+  `L0.refusal-effects`.
+
+A `read` command reports its precondition failures as refusals, as before.
 
 ## 4. Projecting clap
 
@@ -283,7 +384,7 @@ Version 0.52.0; clap derive; `schema` already walks the same clap tree and is pa
 | Area | Today | Work |
 |---|---|---|
 | Envelope | Flat `{command, schemaVersion, ok, …payload}`, pretty-printed; `schemaVersion` `0.48.0.check` encodes the release; `project_diagnostics` snake_case | Nest under `data`/`meta`; compact; per-output `1.0`; camelCase. Every consumer of lute JSON changes (website, harness scripts). |
-| Errors | `E-CLI-USAGE`, `E-CLI-IO`, `E-CLI-INPUT`; `{code, message, argument?, hint?, path?}`; diagnostics duplicated on stderr in JSON mode; patch refusals use a second shape | `USAGE`, `INPUT_INVALID`, I/O codes split by stage (spec 8.3); `field` replaces `argument`/`path`; `retryable`; stderr empty in JSON; patch refusals use the error object. The diagnostic registry (`codes/registry.rs`) gains `exit`, `retryable`, `fix` for CLI codes. |
+| Errors | `E-CLI-USAGE`, `E-CLI-IO`, `E-CLI-INPUT`; `{code, message, argument?, hint?, path?}`; diagnostics duplicated on stderr in JSON mode; patch refusals use a second shape | `USAGE`, `INPUT_INVALID`, I/O codes split by stage (spec 8.3); `field` replaces `argument`/`path`; `retryable`; no diagnostics on stderr in JSON mode (spec 5.2); patch refusals use the error object. The diagnostic registry (`codes/registry.rs`) gains `exit`, `retryable`, `fix` for CLI codes. The reasons of its input errors (an unreadable request file, a request that is not JSON) become registered reasons under `INPUT_INVALID` with the reserved names of spec 7.2.3. |
 | Exits | 0/1/2 plus 3 for incomplete walks; an accepted patch with semantic changes exits 1 with `ok: false` | Decided (spec 8.6): the incomplete walk is exit 1 with a registered code; the accepted patch is exit 0 with the changes in `data`. |
 | `schema` | Always JSON; refuses `--json`; no effect, idempotency, errors, examples, report schemas, constraints | Accept `--json`; text mode may keep printing JSON (spec 10.1.3); adopt the crate's projection; derive `JsonSchema` on reports; table rows. The hand-written outputs table (`envelope.rs:114-212`) becomes `CommandMeta.outputs`; `compile --stream` and `play --events` become `stream` outputs with the protocol of spec 13.5. |
 | Grammar | Toolchain verbs, `--project`, bare-noun ids, vocabulary TSVs with mutation tests; `scenario` is runnable and a group; `-o` short | Split `scenario` (spec 9.2); `-o` stays, listed as `short`; keep the TSV gates. |
@@ -291,3 +392,4 @@ Version 0.52.0; clap derive; `schema` already walks the same clap tree and is pa
 | Safety | `tag --renumber` previews and acts with `--commit`, not digest-bound | Add `--plan-digest`; plan = the renumbering; `PLAN_STALE` on drift. |
 | Guide | None in the binary; `llms.txt` on the website | `skills show` over embedded Markdown generated from the same sources as `llms.txt`. |
 | Telemetry | Every invocation, `schema` and `--help` included, writes local telemetry unless opted out | Record nothing for refusals, `schema`, `--help`, `--version` and previews (spec 12.2); successful runs may record, declared in `effectNote`. |
+| Warnings (1.1) | A diagnostics registry (`codes/registry.rs`) whose entries are mostly diagnostics reported next to a result rather than refusals | Those codes are the natural content of the warning registry (spec 7.5.2): `WarningInfo` rows generated from the same registry, printed by `schema --warnings` and `--warning`. A diagnostic that is a warning in one invocation and an error in another has a row in both registries with one meaning (spec 7.5.3). *Unmeasured:* which of its codes are reported both ways. |
