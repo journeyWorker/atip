@@ -32,6 +32,10 @@ declares `meta.contractVersion: "1.1"`.
   1.1: map keys and map cut nodes (6.10), command-line hints (7.1.2), `--input` twice as `USAGE` (11.2); dual
   warning/error registration applies only to a tool with a warning registry (7.5.3). A second synthetic tool,
   `ledger`, stays on 1.0 in the examples to show it.
+- **Callers keep what they understand.** A caller leaves out an argument, output, tree entry or batch item of an
+  unknown variant, drops the completeness rules its view can then no longer meet, and never rejects a document for
+  what it left out; a listed member that is not a string is still a wrong type (15.6, 15.8, D28).
+- **Map keys with NUL** are not selectable, since argv cannot carry them (6.10, D28).
 - **Examples and validator.** The synthetic tool `acme` now declares 1.1: registry reasons, a warning registry,
   map and escaped field paths. `examples/caller-*.json` are documents of a later minor that a caller must read;
   `scripts/check.ts` validates them against the schemas read open and checks every tool document against the
