@@ -1,7 +1,7 @@
 # The conformance checker
 
 Not normative in its implementation; spec 17 makes passing its MUST checks at the claimed level a requirement.
-Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.0.
+Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.1.
 
 ## 1. What it is
 
@@ -45,7 +45,8 @@ Every check has an id, the rule it enforces, and a **strength**: `MUST` (a failu
 
 A level is passed when no MUST check fails **and** no MUST check of that level is `unprovided`: a tool cannot
 pass by withholding fixtures. `unsupported` is decided from the self-description (a command without `input.batch`
-is `unsupported` for batch checks), never from the fixture. `entailed` is decided from the self-description too,
+is `unsupported` for batch checks) or from observing the binary itself (a command shown not to page, L0.page),
+never from the fixture alone: a fixture can name what to run, not declare a feature absent. `entailed` is decided from the self-description too,
 and it does not fail the level when every rule it names has the result `pass` in the same run: a rule with its own
 isolated witness. A rule that is itself `entailed` does not count as support, so a cycle of entailments with no
 passed rule in it is `unprovided`, never a pass. `entailed` is never reported as `pass`, because nothing exercised
@@ -67,8 +68,10 @@ failure", `L0.one-document` owns "exactly one document", `L0.refusal-effects` ow
 `L0.registry` owns "every emitted code, reason and warning is registered". So a seeded violation of one rule fails
 exactly its owner check (§7.2). Ownership decides where a finding is reported, never whether it is: when one run
 breaks several independent rules, each owner check reports its own failure, and a finding that schema validation
-surfaces is attributed to the check that owns the rule, not dropped. Two consequences for reading the tables: an `exit 2` in a row is shorthand for
-"refused with a code whose registered exit is 2"; the row asserts the code and `L0.ok-exit` asserts the number. And
+surfaces is attributed to the check that owns the rule, not dropped. Three consequences for reading the tables: an `exit 2` in a row is shorthand for
+"refused with a code whose registered exit is 2"; the row asserts the code and `L0.ok-exit` asserts the number. A
+`USAGE` in a row's expected result stands for "`USAGE` or its registered finer replacement (spec 7.2.2)", as
+L1.registry says: a tool that registers `UNKNOWN_OPTION` and never emits `USAGE` for that situation passes. And
 every envelope is validated against `schema/envelope.schema.json` once, by `L0.envelope`; a finding that belongs to
 another rule (a `null`, a member added in a later minor than the claim) is reported by that rule's check, not by
 the schema check.
@@ -157,6 +160,7 @@ A tool supplies a fixture file:
     "finding list": {
       "ok": [["finding", "list", "--change", "add-login", "--json"]],
       "fields": [["round", "summary"]],
+      "paged": [["finding", "list", "--change", "add-login", "--limit", "1", "--json"]],
       "allowedEffects": [".canon/audit/access.jsonl"]
     },
     "purge": { "preview": [["purge", "--kind", "session", "--before", "2030-01-01", "--json"]] },
@@ -170,11 +174,22 @@ A tool supplies a fixture file:
 `write` or `destructive` command that the fixture does not list. A command with no fixture entry makes its stateful
 checks `unprovided`.
 
+`paged` lists invocations of a command that return `meta.page.nextCursor` in the fixture state; L0.page and
+L1.paging run them. Without it, L0.page judges every envelope the run observes, and a command is shown not to page
+by observation: one of its `ok` invocations with `--cursor x` added is refused with exit 2, `field: "--cursor"`
+and a code other than `CURSOR_INVALID` (the option does not exist). When every listed command is shown not to
+page, L0.page and L1.paging are `unsupported`; a command that takes `--cursor` but has no observed `nextCursor`
+and no `paged` entry makes them `unprovided`.
+
 `contractVersion` is the minor the tool claims (spec 15.7); it is what `--contract` overrides, and absent means
 `"1.0"`. `registry` lists the codes the tool registers, with `exit`, `retryable` and the names of the reasons under
 each code; `warnings` lists the warning codes. The prose of `meaning` and `fix` is not part of the fixture. It is
 the checker's independent copy of the registry (spec 17.3): the tool's `schema --errors` is compared with it, so a
-code or reason the tool adds or loses without the fixture noticing fails. `globalOptions` lists tool-wide options
+code or reason the tool adds or loses without the fixture noticing fails. `"registry": "from-schema"` instead
+takes the registry (and the warning codes) from the tool's own `schema --errors --json` (and `schema --warnings
+--json`): a fixture generated from the tool only proves the generator ran, so with `from-schema` the comparison
+checks only that every emitted code, reason and warning is in what the tool prints; an explicit list still pins
+the registry (spec 17.3). `globalOptions` lists tool-wide options
 with a value (spec 9.13); `missingValue` is an invocation of a command with one required value left out
 (L0.no-prompt); both are needed at L0, where there is no `schema` to read them from.
 
@@ -222,17 +237,17 @@ prints none. Each finding is reported by the check that owns its rule (§2).
 | L0.no-env-switch | M | `<probe> --json` with `CI=1`, `CLAUDECODE=1`, `OUTPUT_FORMAT=text`, `NO_COLOR=1`, `TERM=dumb`, and with stdout on a pty | each prints an envelope with the same `ok`, `error.code` (if any), `meta.command`, `meta.schemaVersion` and the same top-level key set of `data`; a run that prints no envelope where the plain run did fails | 4.3 | `probe` |
 | L0.no-env-switch-text | M | `<probe>` (text mode) under the same variations | the output kind is the same under every variation: when the plain run's stdout is not an envelope, no variation's is; colour codes may differ. `schema` is not used as the probe, since its text mode may be the JSON document (spec 10.1.3) | 4.3 | `probe` |
 | L0.contract | S, for a `1.0` claim only | every envelope | `meta.contract` present on every envelope, not only on `schema` answers (for a `1.1` claim, L0.contract-version owns presence) | 6.6 | — |
-| L0.contract-version | M | every envelope, `schema` answers included; every stream start line and end result | for a claim of `1.1` or later, every envelope and every stream start line carries both `contract` and `contractVersion`, and `contractVersion` equals the claim (an otherwise ordinary answer without the markers fails); for a `1.0` claim, `contractVersion` is absent everywhere; a `1.0` claim carries no member, document kind or path syntax annotated `x-atip-since` in `schema/` (`error.reason`, registry `reasons`, `warnings`/`warning` kinds, bracketed field paths); a `schema` answer's `meta.schemaVersion` equals the claim | 6.6, 10.1.4, 10.13 rule 16, 15.7, 15.8 | — |
+| L0.contract-version | M | every JSON document the tool prints: every envelope, `schema` answers included, and every stream line (a tool prints no other JSON document, spec 5.1, 13.5) | for a claim of `1.1` or later, every envelope and every stream start line carries both `contract` and `contractVersion`, and `contractVersion` equals the claim (an otherwise ordinary answer without the markers fails); for a `1.0` claim, `contractVersion` is absent everywhere; a `1.0` claim carries no member, document kind or path syntax annotated `x-atip-since` in `schema/` (`error.reason`, registry `reasons`, `warnings`/`warning` kinds, bracketed field paths); a `schema` answer's `meta.schemaVersion` equals the claim | 6.6, 10.1.4, 10.13 rule 16, 15.7, 15.8 | — |
 | L0.stderr-result | M | every JSON-mode run | stderr carries neither the error object nor the result: no stderr line parses as an envelope or equals the stdout document | 5.2 | — |
 | L0.stderr-quiet | S | every JSON-mode run | stderr is empty (progress and heartbeat lines of a long-running command are allowed, spec 5.2) | 5.2 | — |
 | L0.next | M | every `meta.next` entry observed | `argv` non-empty; no placeholder; `--json` in `argv` when the run that produced it was in JSON mode and the target accepts it (a target that `schema` shows without `json` is exempt); `command` splits (POSIX, no expansion) into the tool name followed by `argv` | 6.8 | — |
-| L0.page | M | every answer with `meta.page.nextCursor` | some `meta.next` entry carries `--cursor <that cursor>` (at any position) | 6.9 | `commands` |
+| L0.page | M | the fixture's `paged` invocations, and every other answer observed with `meta.page.nextCursor` | the answer carries `meta.page.nextCursor`, and some `meta.next` entry carries `--cursor <that cursor>` (at any position). Without `paged`, decided by observation as §5 says: `unsupported` when every listed command is shown not to page, `unprovided` for a paging command with no observed `nextCursor` | 6.9 | `commands` |
 | L0.refusal-effects | M | every refusal (exit 2) of every run | the directory and `HOME` snapshots (§4) are unchanged, and so is the remote state the `probe` reports, if any | 8.2, 12.2 | — |
-| L0.no-prompt | M | the fixture's `missingValue` invocation with `--json`, run twice: a control run with stdin at end-of-file (`/dev/null`), then a run with stdin and stdout on a pty in canonical input mode (§3), the fixture's timeout | pass: the pty run exits, refusing, as the control run does. fail: the control run refuses, but the pty run is still running at a deadline (twice the control run's time plus two seconds, at most the timeout) and, when the checker then writes `VEOF` at the start of a line, exits or prints within two seconds: it was waiting on the terminal for input that end-of-file then ended. Also fail: output on the pty that asks for a value. Still running at the timeout with no output and no reaction to end-of-file: `unprovided` (slow, not shown to be waiting for input), with both elapsed times in the report. The checker's own tests (§7.2) run a canonical-mode reader, a raw-mode reader and a slow non-reader | 5.5 | `commands` |
-| L0.registry | M (when `schema --errors` is offered, at any level) | `schema --errors --json`; `schema --error <CODE> --json` for each; `schema --warnings --json` and `schema --warning <CODE> --json` when offered; `schema --error <a warning-only code> --json`; every code, reason and warning code any run emitted | entries validate against `registry-entry.schema.json` and `warning-entry.schema.json`; the tool's registry equals the fixture's (codes, `exit`, `retryable`, and `reasons` when the fixture lists them), and its warning registry the fixture's `warnings`; every error code, every `reason` (under its own code) and every `meta.warnings` code (in the warning or the error registry) emitted during the run is registered; `--error` given a warning-only code refuses with `USAGE`, `field: "--error"`, `hint` `<tool> schema --warning <CODE> --json` | 7.3.4, 7.5, 7.6.2, 17.3 | `registry` |
-| L0.usage-hint | S | every `USAGE` error observed | one without `field` carries the `hint` `<tool> schema <command> --json` for the command that was run (`<command> --help` when the tool has no `schema`), or `<tool> schema --json` (`<tool> --help`) when no command was resolved (`meta.command` absent) | 7.1.3 | — |
-| L0.hint-form | M for a tool that declares 1.1, not run for one that declares 1.0 | every `hint` observed | a hint that starts with the tool name and a space splits like `next[].command` and holds nothing but that command line; from L1, after placeholder substitution (§7.1), it parses as an invocation of a known command (S). A 1.0 tool's prose hint may start with its name, so the check does not apply to it | 7.1.2 | — |
-| L0.global-on-group | S | for each fixture `globalOptions` entry and one group: `<tool> <group> --json`, then `<tool> <group> <global-option> --json` | both refuse with `COMMAND_REQUIRED`, never `USAGE` for the option | 9.13 | `commands` |
+| L0.no-prompt | M | the fixture's `missingValue` invocation with `--json`, run twice: a control run with stdin at end-of-file (`/dev/null`), then a run with stdin and stdout on a pty in canonical input mode (§3), the fixture's timeout | pass: the pty run exits, refusing, as the control run does. fail: the control run refuses, but the pty run is still running at a deadline (twice the control run's time plus two seconds, at most the timeout) and, when the checker then writes `VEOF` at the start of a line, exits or prints within two seconds: it was waiting on the terminal for input that end-of-file then ended. Also fail: output on the pty that asks for a value. Still running at the timeout with no output and no reaction to end-of-file: `unprovided` (slow, not shown to be waiting for input), with both elapsed times in the report. The checker's own tests (§7.2) run a canonical-mode reader, a raw-mode reader and a slow non-reader. Scope: the check covers a prompt read from stdin when stdin is a terminal. The pty is not made the process's controlling terminal, so a tool that opens `/dev/tty` directly is outside what it detects; that stays an obligation of the tool's own tests (§8) | 5.5 | `commands` |
+| L0.registry | M (when `schema --errors` is offered, at any level) | `schema --errors --json`; `schema --error <CODE> --json` for each; `schema --warnings --json` and `schema --warning <CODE> --json` when offered; `schema --error <a warning-only code> --json`; every code, reason and warning code any run emitted | entries validate against `registry-entry.schema.json` and `warning-entry.schema.json`; the tool's registry equals the fixture's (codes, `exit`, `retryable`, and `reasons` when the fixture lists them; not compared when the fixture says `"registry": "from-schema"`, §5), and its warning registry the fixture's `warnings`; every error code, every `reason` (under its own code) and every `meta.warnings` code (in the warning or the error registry) emitted during the run is registered; `--error` given a warning-only code refuses as an unknown code does (spec 7.3.4): exit 2, `USAGE`, `field: "--error"`, `hint` `<tool> schema --warning <CODE> --json` | 7.3.4, 7.5, 7.6.2, 17.3 | `registry` |
+| L0.usage-hint | S | every `USAGE` error observed | one without `field` carries the `hint` `<tool> schema <command> --json` for the command that was run (`<command> --help` when the tool has no `schema`), or `<tool> schema --json` (`<tool> --help`) when no command was resolved (`meta.command` absent). When no field-less `USAGE` was observed the rule has no subject and the result is `unsupported` (not applicable); no fixture entry triggers one | 7.1.3 | — |
+| L0.hint-form | M for a tool that declares 1.1, not run for one that declares 1.0 | every `hint` observed | a hint that starts with the tool name and a space splits like `next[].command` and holds nothing but that command line. Whether it names a real command needs the `schema` document and is L1.hint-command's. A 1.0 tool's prose hint may start with its name, so the check does not apply to it | 7.1.2 | — |
+| L0.global-on-group | S | for each fixture `globalOptions` entry and one group: `<tool> <group> --json`, then `<tool> <group> <global-option> --json` | both refuse with `COMMAND_REQUIRED`, never `USAGE` for the option. No group known from the fixture's commands: `unprovided`; `unsupported` only when `schema` shows the tool has no groups | 9.13 | `commands` |
 
 `<probe>` is the fixture's `probe` command: any command that runs without state. L0.registry is the only check
 that compares the tool's registry with the fixture; L1.registry, L1.reasons and L1.warnings check what the
@@ -258,19 +273,20 @@ registry says and need no fixture.
 | L1.depth | S | tree | no path longer than two words | 9.1 | — |
 | L1.one-meaning | M | all command documents | an option name has one `valueName` and one `valueType` across commands | 9.6 | — |
 | L1.one-meaning-values | S | all command documents | for an `enum` option name, report the commands whose `possibleValues` sets are disjoint, as a hint of two meanings; disjoint subsets of one shared set are allowed by spec 9.6, so this is an advisory | 9.6 | — |
-| L1.examples | M | every `examples[]` entry | starts with the tool name; parses against the command document by the 9.12 grammar (§7.1 tokenising); values in their domains; satisfies `required` and `constraints`; when `argumentsRef` is present, the argument object (spec 11.7 step 6) validates against it; no placeholder | 10.5, 10.10 | — |
+| L1.examples | M | every `examples[]` entry | starts with the tool name; parses against the command document by the 9.12 grammar (§7.1 tokenising); values in their domains; satisfies `required` and `constraints`; when `argumentsRef` is present, the argument object (spec 11.7 step 6) validates against it; no placeholder. Guide lines (L2.guide-commands) and `meta.next` are held to the same portable form (spec 9.12.1): a value that starts with `-` is written `--name=value` there too, never as a separate word | 9.12.1, 10.5, 10.10 | — |
 | L1.example-runs | M | every example of a `read` command | run in the fixture: exit 0 or a registered code; never `USAGE` | 10.5 | `commands` |
 | L1.constraints | M | for each constraint of a `read` command, and for writes listed in the fixture: one generated invocation that satisfies `required` and every other constraint and violates only this one (built from a passing fixture invocation, changing the fewest arguments) | refused, exit 2, with the declared `code` (or `USAGE`); a generated invocation that would also break another rule is not used; when every violating invocation also breaks another declared rule, the result is `entailed`, naming those rules (§2) | 10.8 | `commands` |
 | L1.domains | M | for each argument with a `domain`, on a `read` command or a write listed in the fixture: a passing fixture invocation with that one argument changed to values generated from the profile (spec 10.7.4): each bound and the nearest value beyond it (`minimum - 1`, `maximum + 1`, the exclusive bounds themselves), a non-multiple for `multipleOf`, strings of `minLength - 1` and `maxLength + 1` characters, a value of a JSON type outside `type`; for `pattern` and the other structural keywords, the fixture's `domainRejects` values for that argument | the in-range values are accepted; each out-of-range value is refused with exit 2 and `USAGE` or the command's code for that argument, `field` naming the argument. A `pattern` or structural keyword without `domainRejects` is `unprovided` | 10.7.4 | `commands` |
 | L1.patterns | M | every `pattern` in every command document's domains, with the `domainRejects` values and the fixture's accepted values for that argument | the pattern has the restricted I-Regexp form (spec 10.7.4); it compiles with ECMAScript `u` and with the Rust `regex` crate at its default limits (the checker ships a small Rust helper, built from the same code as this repository's `scripts/regex-parity`); both engines give the same answer for each value. A different answer passes only as a verified Unicode-version difference: the value is one code point, the pattern uses a category, and each engine's own tables give that code point a different general category; the report names both Unicode versions and the code point. Any other difference fails. A TypeScript tool cannot see Rust's size limit from its own build, so this is where an oversized pattern is caught | 10.7.4 | `commands` |
 | L1.numbers | M | for an `integer` argument, the passing invocation with `9007199254740992` and `-9007199254740992` (one beyond the safe range) on argv, and at L2 as a JSON number and as a string in a document | refused with exit 2 (`USAGE` or the argument's code on argv, `INPUT_INVALID` in a document); never accepted as `9007199254740991` or any other rounded value | 10.7.5 | `commands` |
-| L1.validators | M | every `rejects` invocation of every validator, run in the fixture state, for `read` commands and writes listed in the fixture | exit 2 with the validator's `code`, `field` naming one of its `arguments` | 10.8.3 | `commands` |
+| L1.validators | M | every `rejects` invocation of every validator, for `read` commands and writes listed in the fixture, run in a copy of the fixture state made **without** `setup` (the fixture's environment only) | exit 2 with the validator's `code`, `field` naming one of its `arguments`. A validator reads no state and runs before any precondition, with or without `--input` (spec 10.8.3), so a precondition code (an uninitialised store, a missing record) in place of the validator's is a failure | 10.8.3 | `commands` |
 | L1.output-data | M | every `ok` fixture invocation and every example of a `read` command | `data` validates against the output schema `meta.output` names (or the only output); `meta.schemaVersion` equals that output's | 6.6, 6.11, 10.9 | `commands` |
 | L1.next | M | every `meta.next` observed | the first words of `argv` name an existing command; for `read` commands the checker runs it in the same sequence and it does not exit with `USAGE` (placeholders, `--json` and splitting are L0.next's) | 6.8 | — |
+| L1.hint-command | M for a tool whose documents declare 1.1, not run for one that declares 1.0 (spec 7.1.2 binds only 1.1 documents) | every `hint` observed that starts with the tool name and a space | after placeholder substitution (§7.1), it parses against the `schema` document as an invocation of an existing command, as L1.examples parses an example; the split itself is L0.hint-form's | 7.1.2 | — |
 | L1.help-line | M | `--help` | first line mentions `schema` | 4.7 | — |
 | L1.defaults | S | every option with a non-null `default` | the `--help` text, when it shows a default in a recognised form (`[default: X]`, `(default X)`), shows the same value | 10.7.3 | — |
 | L1.deterministic | S | `schema --json` twice, and every command document twice | byte-identical | 10.2.4 | — |
-| L1.paging | M (when offered) | the fixture's paged command with `--limit 1` | `meta.page.returned` ≤ 1; running the `next` entry that L0.page found, in the same sequence, returns the next item; the cursor given with a changed filter argument refuses with `CURSOR_INVALID`, `field: "--cursor"` | 6.9, 7.2.1 | `commands` |
+| L1.paging | M (when offered) | the fixture's `paged` invocations (§5) with `--limit 1` | `meta.page.returned` ≤ 1; running the `next` entry that L0.page found, in the same sequence, returns the next item; the cursor given with a changed filter argument refuses with `CURSOR_INVALID`, `field: "--cursor"`. Without `paged`, `unsupported` or `unprovided` as L0.page decides (§5) | 6.9, 7.2.1 | `commands` |
 | L1.fields | M (when offered) | the fixture's `fields` selections, including a nested path and an `[]` path when declared | `meta.fields` = selection plus `keep`; no unselected member at any depth (6.10 steps 1-3); selected members present whenever the unprojected answer has them (compared with the same invocation without `--fields`, in the same sequence); data validates against the output schema with `required` reduced along the kept paths; an unknown path refuses with `USAGE`, `field: "--fields"` | 6.10 | `commands` |
 
 ### L2
@@ -281,7 +297,7 @@ registry says and need no fixture.
 | L2.input-example | M | none | `input.example` validates against the fragment schema and satisfies `required`, the domains and `constraints`; when `argumentsRef` is present, its argument object (spec 11.7 step 6, numbers as numbers, defaults applied) validates against it | 10.10 | — |
 | L2.input-refusals | M | for every command with `input`, in the fixture state: `{"bogusKey":1}`; `{"json":true}`; `{"commit":true}`; the example with one key `null`; `{"operands":[]}`; `[{}]` where `batch` is false; `./missing-xyz.json`; a value one byte over `maxBytes`; `{"bogusOne":1,"bogusTwo":2}` | exit 2; `INPUT_INVALID` (`INPUT_TOO_LARGE` for the size case); `field` a JSON pointer or `--input`; the two-key case has `details` with two entries | 11.2-11.8, 11.10 | `commands` |
 | L2.input-tty | M | `--input -` with a pty on stdin | exit 2 `INPUT_INVALID`, `field: "--input"`, within the timeout | 11.3 | — |
-| L2.input-usage | M for a tool that declares 1.1, S for one that declares 1.0 (spec 15.1: a minor adds no MUST an existing tool can fail) | an `ok` invocation with `--input '{}'` given twice; one with `--input` as its last word | `USAGE` with `field: "--input"`; never `INPUT_INVALID` | 11.2 | `commands` |
+| L2.input-usage | M for a tool that declares 1.1, S for one that declares 1.0 (spec 15.1: a minor adds no MUST an existing tool can fail) | an `ok` invocation with `--input '{}'` given twice; one with `--input` as its last word | `USAGE` or its registered finer replacement (spec 7.2.2), with `field: "--input"`; never `INPUT_INVALID` | 11.2 | `commands` |
 | L2.input-reasons | S (when the registry lists reasons under `INPUT_INVALID` or `INPUT_TOO_LARGE`) | the framing failures of L2.input-refusals and L2.input-tty | the error carries the reserved reason of spec 7.2.3 for its situation (`NOT_JSON`, `NOT_OBJECT`, `UNKNOWN_KEY`, `FLAG_ONLY_KEY`, `INVALID_VALUE`, `UNREADABLE`, `STDIN_TTY`, `TOO_MANY_BYTES`, `BATCH_UNSUPPORTED`) | 7.2.3 | `commands` |
 | L2.input-fragment | M | each `ok` fixture invocation split into argv operands + a document holding the rest | same result as the argv form | 11.7 | `commands` |
 | L2.input-normalise | M | an `ok` invocation whose integer arguments are given as numeric strings in the document | same result | 11.5 | `commands` |
@@ -296,7 +312,7 @@ registry says and need no fixture.
 | L2.destructive-preview | M | every destructive command, fixture `preview` | exit 0; `planDigest`, `effects`, `committed: false`; `meta.next[0].argv` contains `--commit`, `--plan-digest <that digest>` and `--json`; nothing written | 12.2, 12.4, 12.5 | `commands` |
 | L2.destructive-preview-stdin | M | the preview with its arguments given via `--input -` | `meta.next[0].argv` does not contain `--input -` and replays to the same plan | 12.5 | `commands` |
 | L2.destructive-stale | M | the commit argv with a digest that differs in one character | exit 2 `PLAN_STALE`, `meta.next[0]` the preview | 12.7 | `commands` |
-| L2.destructive-half | M | `--commit` alone; `--plan-digest x` alone | exit 2 `USAGE` | 12.7 | `commands` |
+| L2.destructive-half | M | `--commit` alone; `--plan-digest x` alone | exit 2 `USAGE` or its registered finer replacement (spec 7.2.2) | 12.7 | `commands` |
 | L2.destructive-commit | M | the preview's `next[0]` | exit 0, `committed: true`, the effects happened | 12.7 | `commands` |
 | L2.async | M (when offered) | the fixture's async start, then `next[0]`, with the worker set to `done`, `failed`, `timeout` | start exits 0 with `async: true` in the document and an identifier; `next[0]` waits; `done` → 0; `failed` → 1 with a registered code; `timeout` → 1, retryable, `next[0]` the same wait | 13.2, 13.3 | `commands` |
 | L2.operation-key | M (when offered) | the async start twice with the same `--operation`, then twice concurrently with a fresh key, then once with another payload | the repeats return the same identifier and start nothing (the worker sees one start per key, also under the concurrent pair); the other payload is `OPERATION_REUSED` | 13.4 | `commands` |
@@ -343,6 +359,7 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | `--limit 0` accepted although the domain says `minimum: 1` | L1.domains |
 | `9007199254740993` accepted as `9007199254740992` | L1.numbers |
 | a validator's `rejects` invocation exits 0 | L1.validators |
+| a validator whose command reads its store first, so that without `setup` it answers a precondition code | L1.validators |
 | a published domain `^[a&&b]+$`, or `^\p{L}{1,500}$` | L1.patterns |
 | the fake tool's Rust helper reports an ASCII value differently and labels it a Unicode-version difference | L1.patterns (the categories do not differ) |
 | the same `atMostOne` rule listed twice | L1.walk |
@@ -367,6 +384,8 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | a batch whose first item names a missing object refuses in preflight (exit 2, no data) | L2.batch-incomplete |
 | next-page entry not first in `meta.next` | (none: L0.page and L1.paging must still pass) |
 | `nextCursor` without a `next` entry that carries it | L0.page |
+| no `paged` entry, and every listed command refuses `--cursor x` with `USAGE`, `field: "--cursor"` | (none: L0.page and L1.paging are `unsupported`) |
+| no `paged` entry for a command that takes `--cursor`, and no run observes a `nextCursor` | (none fails: L0.page and L1.paging are `unprovided`) |
 | a command that prompts on stdin when a required value is missing, and waits | L0.no-prompt |
 | a command that sleeps for longer than the timeout without reading stdin | L0.no-prompt reports `unprovided`, not `fail` |
 | a command that reads a line from a canonical-mode terminal when a value is missing | L0.no-prompt (it exits only after `VEOF`) |
@@ -378,12 +397,16 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | an error with `reason: "NOT_JSON"` where the registry lists no such reason under that code | L0.registry |
 | a `meta.warnings` code in neither registry | L0.registry |
 | `schema --error <warning-only code>` answers with an entry | L0.registry |
+| `schema --error <warning-only code>` refused with `USAGE` but `field: "CODE"` | L0.registry |
+| fixture `"registry": "from-schema"`, and a run emits a code that `schema --errors` does not list | L0.registry |
+| `--commit` alone refused with a registered `OPTION_REQUIRED` that the tool uses instead of `USAGE` (spec 7.2.2) | (none: L2.destructive-half passes) |
 | a registry whose exit for one code differs from the fixture's | L0.registry |
 | a tool declaring 1.0 that emits `error.reason`, or a 1.1 tool whose envelope lacks `meta.contractVersion` or says `1.0` | L0.contract-version |
 | stderr holds a progress line in JSON mode | L0.stderr-quiet (advisory; no MUST check fails) |
 | `USAGE` with no `field` and no hint | L0.usage-hint (advisory) |
+| every `USAGE` the run observes carries `field` | (none: L0.usage-hint is `unsupported`) |
 | a group answers `<tool> <group> --repo . --json` with `USAGE` | L0.global-on-group (advisory) |
-| a hint `canon finding clsoe <CHANGE_ID>` that names no command | L0.hint-form (advisory) |
+| a 1.1 hint `canon finding clsoe <CHANGE_ID>` that names no command | L1.hint-command |
 | a reason listed twice under one code | L1.reasons |
 | a warning code listed twice, or with another meaning in the two registries | L1.warnings |
 | `--input` given twice answered `INPUT_INVALID` | L2.input-usage |
@@ -421,6 +444,7 @@ A green checker run does not prove these; a level claim includes them, and the t
 | Operation keys: atomic reservation, concurrent duplicates, a crash between the remote effect and recording it, retention expiry | needs fault injection and a controllable clock | tool tests against a fake backend that can lose a reply after applying the effect (spec 13.4) |
 | Streams cut off mid-way leave no half-applied state the report hides | the checker can only kill the process, not inspect the backend | tool tests that kill the stream writer between events |
 | Every example and guide line parses with the real parser | the checker approximates the parser from the document | `examples_parse` (approaches/rust.md §3.3) or the TypeScript equivalent |
+| No prompt reads the terminal through `/dev/tty` when a value is missing | the checker connects stdin and stdout to a pty but does not make it the process's controlling terminal, so a direct `/dev/tty` read is outside L0.no-prompt | a test or source scan showing the tool never opens `/dev/tty` (or does so only behind an explicit interactive command a person runs) |
 | Domains and validators match the real parser and predicate beyond the published boundary values and witnesses; when several validators share a code, each is tested in isolation so that one cannot stand in for another | the checker sees one refusal per witness, not the predicate | boundary tests against the real parser (`constraints_hold`, approaches/rust.md §4.3) and a unit test per validator predicate |
 | Conservative staging is reported correctly: a write leaf exits 2 only for a failure it knows came before the work (spec 8.3, 8.3.1) | the checker cannot see where the work started; it catches an exit 2 with a change in the snapshot, not an exit 2 after remote work, nor an exit 1 that could have been 2 | tests per write leaf that inject a failure before the first backend call and after it, asserting exit 2 and no change for the first and the during-the-work code for the second; an explicit work-begins marker makes this mechanical (approaches/rust.md §3.1, approaches/typescript.md §3.7) |
 | Reasons are emitted only when registered under their code (spec 7.6.2) | the checker sees only the reasons its runs reach | typed construction (a per-code reason enum generated from the registry, approaches/rust.md §3.1; `reasons` keys of `defineError`, approaches/typescript.md §3.1) or a source scan |

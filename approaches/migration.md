@@ -3,7 +3,7 @@
 Not normative. How an existing command-line tool moves to ATIP, level by level, with canon 0.31.0 and lute 0.52.0
 (both Rust, clap) as worked examples. Their status below is from their source and their read-only `schema`
 output; anything not established that way is marked *unmeasured*. Section numbers ("spec 11.7") refer to
-`spec/atip-1.md`, version 1.1.0.
+`spec/atip-1.md`, version 1.1.1.
 
 The contract is not softened to ease adoption; where a rule costs a tool real work, the cost is recorded here (§4).
 

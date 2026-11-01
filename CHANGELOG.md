@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.1.1 (unreleased)
+
+A patch (15.1): wording, the schema pattern of `meta.contractVersion`, approaches and checker rows, from implementer
+feedback. No member, option, rule strength or document kind is added; `meta.contractVersion` stays `"1.1"`, and a
+tool that conformed to 1.1.0 still conforms (D30).
+
+- **Schema.** `meta.contractVersion` (and a stream start line's) matches `^1\.[1-9][0-9]*$`: `"1.0"` is never
+  written, as 6.6 already said (absent means 1.0). New invalid example
+  `stream-acme-build-start-contract-version-1-0.ndjson`.
+- **Stated where it was missed.** Validators run for every invocation, with or without `--input`, before any
+  precondition or state read (10.8.3). Field selection is per output; a single union-shaped output offers no
+  `--fields` (6.10). A switch's `default` is always `false`; `defaultNote` says when configuration turns it on
+  (10.7.3). `schema`'s unknown path carries `field: "command"` and omits an empty `expected`; the field of its
+  mutual-exclusion `USAGE` (10.1.2). Previews and `--dry-run` make no effect whatever their exit (12.2). Another
+  system that makes the effects may compute the digest (12.6). A commit that cannot be rechecked where the effects
+  are made is refused with the tool's own exit-2 code, not `PLAN_STALE`; `USAGE` there includes its registered
+  finer replacement (12.7). A fixture registry taken from the tool pins nothing (17.3).
+- **Checker (`approaches/checker.md`).** `USAGE` in any row accepts its registered finer replacement (7.2.2).
+  Fixture key `commands.<id>.paged` for L0.page and L1.paging, and how a non-paging command is shown by observation.
+  `"registry": "from-schema"`. L1.validators runs without `setup`. New L1.hint-command (M for 1.1 documents);
+  L0.hint-form keeps the split. L1.examples names guides and `next`. Scope of L0.no-prompt (`/dev/tty`),
+  L0.contract-version (every JSON document), L0.usage-hint (`unsupported` without a field-less `USAGE`),
+  L0.global-on-group (`unprovided` vs `unsupported`), L0.registry (`--error` with a warning-only code). Seeded
+  violations for each.
+- **TypeScript (`approaches/typescript.md`).** The constraint member `then` makes records thenable; keep them under
+  another field name and map at emission.
+
 ## 1.1.0 (2026-11-01)
 
 Optional additions and SHOULD/MAY rules from implementer feedback from two early adopters, and a fix to how the

@@ -1,7 +1,7 @@
 # TypeScript and Effect 4: spec-first commands
 
 Not normative. How a TypeScript tool built on Effect 4 can become ATIP conformant, and what the shared package
-`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.0.
+`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.1.
 
 ## 1. Where a TypeScript tool starts
 
@@ -223,6 +223,13 @@ so it does not depend on AST node tags that may change between Effect minors.
 Annotations read: `description` → `help`; `valueName`; `defaultNote`; `env`; `flagOnly` (left out of the fragment
 schema, spec 11.6); `short`. Requirements between fields are not annotations: they are the `constraints` of the
 declaration (spec 10.8), and `defineCommand` enforces them after the merge with the codes they declare.
+
+The wire member `then` of a `requires` or `forbids` rule (spec 10.8.1) gives every object that carries it a
+property named `then`, the name JavaScript uses to recognise a promise-like value; lints such as
+`unicorn/no-thenable` reject it, and an object whose `then` were ever a function would be called by `await`. Keep
+the rule records under another field name (`targets`; the helpers above take it positionally) and write `then` only
+when the command document is emitted; parse an incoming document back into the same in-memory shape. The wire name
+cannot change within `atip/1`.
 
 Value checks become the argument's `domain` (spec 10.7.4). The generator reads them from the field's JSON Schema,
 keeps only the profile keywords of the field's valueType, and moves them out of both source decoders. They stay in

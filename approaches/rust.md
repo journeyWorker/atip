@@ -1,7 +1,7 @@
 # Rust: clap stays the source, the self-description is generated
 
 Not normative. How a Rust tool built on clap 4 derive, such as canon and lute, can become ATIP conformant without a second
-description of their command trees. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.0.
+description of their command trees. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.1.
 
 ## 1. The principle
 
