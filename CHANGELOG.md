@@ -12,18 +12,30 @@ tool that conformed to 1.1.0 still conforms (D30).
 - **Stated where it was missed.** Validators run for every invocation, with or without `--input`, before any
   precondition or state read (10.8.3). Field selection is per output; a single union-shaped output offers no
   `--fields` (6.10). A switch's `default` is always `false`; `defaultNote` says when configuration turns it on
-  (10.7.3). `schema`'s unknown path carries `field: "command"` and omits an empty `expected`; the field of its
-  mutual-exclusion `USAGE` (10.1.2). Previews and `--dry-run` make no effect whatever their exit (12.2). Another
-  system that makes the effects may compute the digest (12.6). A commit that cannot be rechecked where the effects
-  are made is refused with the tool's own exit-2 code, not `PLAN_STALE`; `USAGE` there includes its registered
+  (10.7.3). `schema`'s unknown path omits an empty `expected`, and its `field`, when present, is `command`; its
+  path/`--errors`/… exclusion is an `atMostOne` rule of `schema`'s own document, with `field` as for any
+  `atMostOne` (10.1.2). Previews and `--dry-run` make no effect whatever their exit (12.2). When another system
+  makes the effects and computes the digest, the tool passes it through (12.6). A commit whose digest only that
+  system can recompute, when it cannot, is refused with the tool's own exit-2 code, not `PLAN_STALE`; a tool that
+  recomputes the plan itself and detects changes per effect is unaffected. `USAGE` there includes its registered
   finer replacement (12.7). A fixture registry taken from the tool pins nothing (17.3).
 - **Checker (`approaches/checker.md`).** `USAGE` in any row accepts its registered finer replacement (7.2.2).
-  Fixture key `commands.<id>.paged` for L0.page and L1.paging, and how a non-paging command is shown by observation.
-  `"registry": "from-schema"`. L1.validators runs without `setup`. New L1.hint-command (M for 1.1 documents);
-  L0.hint-form keeps the split. L1.examples names guides and `next`. Scope of L0.no-prompt (`/dev/tty`),
-  L0.contract-version (every JSON document), L0.usage-hint (`unsupported` without a field-less `USAGE`),
-  L0.global-on-group (`unprovided` vs `unsupported`), L0.registry (`--error` with a warning-only code). Seeded
-  violations for each.
+  Fixture key `commands.<id>.paged` for L0.page and L1.paging; from L1 the command documents (`--cursor`) say which
+  commands page, at L0 observation of the listed commands does, and leaving a command out of the fixture never
+  makes paging `unsupported`. `"registry": "from-schema"` (errors and warnings; `unprovided` when the tool offers
+  no `schema --errors`). New L1.hint-command, an advisory (S) in 1.1.1: command words, option names and grammar,
+  not placeholder values; L0.hint-form keeps the split. Scope of L0.no-prompt (`/dev/tty`, a §8 obligation; 5.5
+  still forbids the prompt), L0.contract-version (every JSON document), L0.usage-hint (`unsupported` without a
+  field-less `USAGE`), L0.global-on-group (`unprovided` vs `unsupported`), L0.registry (`--error` with a
+  warning-only code). Seeded violations for each.
+- **Checker changes that can fail a tool that passed the 1.1.0 checker.** Each checks a rule 1.1.0 already had:
+  - *L1.validators runs without `setup`*: 10.8.1 and 11.7 step 6 already put validators before any state read.
+    A tool whose validator answers a precondition code in an empty directory must move the check before it reads
+    state.
+  - *L0.page and L1.paging are `unprovided` for a paging command with no `paged` entry and no observed
+    `nextCursor`* (6.9): add a `paged` invocation for each paging command.
+  - L1.hint-command enforces 7.1.2 but stays an advisory in 1.1.1, as its clause in L0.hint-form was in 1.1.0, so
+    it fails no tool in this patch.
 - **TypeScript (`approaches/typescript.md`).** The constraint member `then` makes records thenable; keep them under
   another field name and map at emission.
 

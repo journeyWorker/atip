@@ -9,7 +9,8 @@ passes is "ATIP 1.1 L1 conformant" (contract minor, then level L0, L1 or L2) for
 
 **Status: 1.1.1, release candidate.** 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
 (2026-11-01), after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1 is a patch
-that clarifies wording and checks only. The decisions behind all three are in Appendix A of
+that clarifies wording and checks and tightens the schema pattern of `meta.contractVersion` to exclude `"1.0"`, which
+was never written. The decisions behind all three are in Appendix A of
 the spec; no question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, and 15.9 states
 the one place where 1.1.0 changes what 1.0.0 promised callers. Until its second revision the contract was called `agent-cli/1`.
 
