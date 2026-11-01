@@ -1,12 +1,12 @@
 # Changelog
 
-## 1.1.2 (unreleased)
+## 1.1.2 (2026-11-01)
 
 A patch (15.1): wording, approaches and checker rows from implementer feedback and the round-12 notes. No member,
 option, rule strength or document kind is added; `meta.contractVersion` stays `"1.1"`, and a tool that conformed to
 1.1.1 still conforms (D31). Which arguments bind a cursor is unchanged and left for 1.2.0.
 
-- **Stated where it could be read two ways.** A caller pages with the `next` entry's arguments unchanged (6.9).
+- **Stated where it could be read two ways.** A caller pages with the `next` entry's arguments, changing at most `--limit` and `--fields` (6.9).
   `--all` asks for every remaining item, a `--limit` without a bound (9.8). A batch input selects the batch output,
   so `--fields` on argv is read against its `fields` and refuses with `USAGE` when it declares none; those paths are
   paths into the batch report, so a single-item `--fields` value does not carry over, and a batch schema written as

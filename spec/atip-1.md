@@ -1,6 +1,6 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.1.2** (release candidate). Version 1.1.1 was adopted 2026-11-01 after two rounds of independent review;
+Status: **1.1.2**, adopted 2026-11-01 after two rounds of independent review. Version 1.1.1 was adopted 2026-11-01 after two rounds;
 1.1.2 is a patch (15.1) that closes wording edges in 6.9, 6.10, 9.8 and 12.7 and adds a fixture key to the checker,
 from implementer feedback (Appendix A D31). 1.1.1 clarified wording, the schema pattern of `meta.contractVersion`
 and the checker (D30). Version 1.0.0 was adopted 2026-10-30 after six rounds and 1.1.0 on 2026-11-01 after four;
@@ -257,7 +257,7 @@ contain an entry for the next page: the same invocation with `--cursor <nextCurs
 A cursor is bound to the arguments of the invocation that produced it, except `--limit`, `--cursor` and
 `--fields`: given with different arguments, or not produced by this command, it refuses with `CURSOR_INVALID`
 (exit 2, 7.2.1), so changing a filter can never skip or repeat records silently. A caller pages with the `next`
-entry's arguments unchanged. A report MAY also keep paging members of its own in `data` (a cursor in the report's
+entry's arguments, changing at most `--limit` and `--fields`. A report MAY also keep paging members of its own in `data` (a cursor in the report's
 schema from before the tool adopted ATIP); `meta.page` is the contract's paging and is authoritative when the two
 differ. An answer cut by size (not by paging) carries `meta.truncated`: `path` (JSON pointer of the list or value
 cut), `kept`, and `total`, `bytes`, `maxBytes` when known, plus a `next` entry that reaches the rest.
@@ -1626,7 +1626,7 @@ caller is `atip/2`.
 
 | # | Owner decision 2026-11-01, version 1.1.2, a patch (15.1) from implementer feedback | Where |
 |---|---|---|
-| D31 | Wording and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.1"`. Stated where it could be read two ways: a caller pages with the `next` entry's arguments unchanged (cursor binding itself is unchanged; which arguments bind a cursor is for 1.2.0); `--all` asks for every remaining item, a `--limit` without a bound; a batch input reads `--fields` against the batch output, whose paths are paths into the batch report, and a batch schema written as `allOf` the batch-report schema declares no `fields`; a lone `--commit` or `--plan-digest` may also refuse with the `code` of the `requires` rule that states the pair; 12.7's closing sentence no longer reads as if a tool that recomputes its plan had to detect changes per effect rather than hold a lock. Checker: the fixture key `prepare` (programs that prepare the world before `setup`; a step running the tool's binary is refused, the report lists every step, and the tool's state is still made by `setup`), a failing `prepare` or `setup` step is a fixture error, L1.validators without `prepare` either, an L0 answer to `--cursor x` that shows neither absence nor `CURSOR_INVALID` counts as paging, an advisory without a subject in the run is `unsupported`, `from-schema` without `schema --errors` leaves only L0.ok-exit `unprovided`, and L2.destructive-half accepts the rule's `code`. | 6.9, 6.10, 9.8, 12.7, approaches/checker.md, approaches/typescript.md |
+| D31 | Wording and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.1"`. Stated where it could be read two ways: a caller pages with the `next` entry's arguments, changing at most `--limit` and `--fields` (cursor binding itself is unchanged; which arguments bind a cursor is for 1.2.0); `--all` asks for every remaining item, a `--limit` without a bound; a batch input reads `--fields` against the batch output, whose paths are paths into the batch report, and a batch schema written as `allOf` the batch-report schema declares no `fields`; a lone `--commit` or `--plan-digest` may also refuse with the `code` of the `requires` rule that states the pair; 12.7's closing sentence no longer reads as if a tool that recomputes its plan had to detect changes per effect rather than hold a lock. Checker: the fixture key `prepare` (programs that prepare the world before `setup`; a step running the tool's binary is refused, the report lists every step, and the tool's state is still made by `setup`), a failing `prepare` or `setup` step is a fixture error, L1.validators without `prepare` either, an L0 answer to `--cursor x` that shows neither absence nor `CURSOR_INVALID` counts as paging, an advisory without a subject in the run is `unsupported`, `from-schema` without `schema --errors` leaves only L0.ok-exit `unprovided`, and L2.destructive-half accepts the rule's `code`. | 6.9, 6.10, 9.8, 12.7, approaches/checker.md, approaches/typescript.md |
 
 ## Appendix B. Prior art
 
