@@ -1,10 +1,10 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
 Status: **1.1.2** (release candidate). Version 1.1.1 was adopted 2026-11-01 after two rounds of independent review;
-1.1.2 is a patch (15.1) that states which arguments bind a cursor, closes wording edges in 12.7 and 6.10 and adds a
-fixture key to the checker, from implementer feedback (Appendix A D31). 1.1.1 clarified wording, the schema pattern
-of `meta.contractVersion` and the checker (D30). Version 1.0.0 was adopted 2026-10-30 after six rounds and 1.1.0
-on 2026-11-01 after four; 1.1.0 added optional members and SHOULD/MAY rules and fixed how the contract is versioned
+1.1.2 is a patch (15.1) that closes wording edges in 6.9, 6.10, 9.8 and 12.7 and adds a fixture key to the checker,
+from implementer feedback (Appendix A D31). 1.1.1 clarified wording, the schema pattern of `meta.contractVersion`
+and the checker (D30). Version 1.0.0 was adopted 2026-10-30 after six rounds and 1.1.0 on 2026-11-01 after four;
+1.1.0 added optional members and SHOULD/MAY rules and fixed how the contract is versioned
 (15, Appendix A D20-D29). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
 2026-10-28 (Appendix A, D13).
 
@@ -254,18 +254,14 @@ needs a value the tool does not have is not a `next` entry (see `hint`, 7.1). [A
 and `--all` (9.8). A paged answer carries `meta.page`: `returned` (items in this answer), `nextCursor` (opaque,
 present exactly when more items follow) and `total` (when known). When `nextCursor` is present, `meta.next` MUST
 contain an entry for the next page: the same invocation with `--cursor <nextCursor>` (at any position in `next`).
-A cursor is bound to the arguments of the invocation that produced it, except the reserved options that never change
-the result set: `--limit`, `--cursor`, `--fields`, and `--json` and `--all` (a `--limit` without a bound). Given with
-different arguments, or not produced by this command, it refuses with `CURSOR_INVALID` (exit 2, 7.2.1), so changing
-a filter can never skip or repeat records silently. An argument given explicitly with its default value is given
-(10.8.1), so adding or removing it changes the arguments. Up to 1.1.1 this paragraph excepted only `--limit`,
-`--cursor` and `--fields` and did not say how a default compares, so in 1.1 a tool that also binds a cursor to
-`--json` or `--all`, or that compares an argument given with its default value as if it were left out, still
-conforms. It SHOULD do neither, and a caller relies on neither: it pages with the `next` entry's arguments unchanged.
-A report MAY also keep paging members of its own in `data` (a cursor in the report's schema from before the tool
-adopted ATIP); `meta.page` is the contract's paging and is authoritative when the two differ. An answer cut by size
-(not by paging) carries `meta.truncated`: `path` (JSON pointer of the list or value cut), `kept`, and `total`,
-`bytes`, `maxBytes` when known, plus a `next` entry that reaches the rest. [Appendix A D11.5, D16.1, D26, D31]
+A cursor is bound to the arguments of the invocation that produced it, except `--limit`, `--cursor` and
+`--fields`: given with different arguments, or not produced by this command, it refuses with `CURSOR_INVALID`
+(exit 2, 7.2.1), so changing a filter can never skip or repeat records silently. A caller pages with the `next`
+entry's arguments unchanged. A report MAY also keep paging members of its own in `data` (a cursor in the report's
+schema from before the tool adopted ATIP); `meta.page` is the contract's paging and is authoritative when the two
+differ. An answer cut by size (not by paging) carries `meta.truncated`: `path` (JSON pointer of the list or value
+cut), `kept`, and `total`, `bytes`, `maxBytes` when known, plus a `next` entry that reaches the rest.
+[Appendix A D11.5, D16.1, D26, D31]
 
 6.10. **Field selection.** A command whose output declares `fields` (10.9) takes the reserved option
 `--fields <FIELDS>`: a comma-separated list of field paths from that declaration. A field path is a dot path into
@@ -358,8 +354,10 @@ constrains only its type, its items and its length, and projection keeps the len
 `fields`, and `--fields` is read against the output the invocation selects. A single output whose root or record
 schema is a union (a `oneOf`, or an `anyOf` other than the two-branch nullable form above) has no projectable cut
 node there, so it declares no `fields` and takes no `--fields`. A batch input selects the batch output (11.11), so
-`--fields` on argv is read against that output's `fields`, never the single-item output's, and refuses with `USAGE`,
-`field` `--fields`, when the batch output declares none. [Appendix A D30, D31]
+`--fields` on argv is read against that output's `fields` and refuses with `USAGE`, `field` `--fields`, when it
+declares none. Those are paths into the batch report, so a single-item `--fields` value does not carry over, and a
+batch schema written as `allOf` `schema/batch-report.schema.json` (the form that schema describes) has no
+projectable root, so such a batch output declares no `fields`. [Appendix A D30, D31]
 
 6.11. **Version of `data`.** `meta.schemaVersion` is the version of the output `data` follows (the one `meta.output`
 names when there are several). On a failure without `data`, it is the version of the output the invocation would
@@ -626,13 +624,13 @@ A tool need not offer them; where it offers the behaviour, it uses the name.
 | `--input <JSON\|FILE\|->` | The arguments as a JSON document. Flag-only. | 11 |
 | `--commit`, `--plan-digest <DIGEST>` | Carry out a previewed destructive plan. Flag-only. | 12 |
 | `--dry-run` | Validate fully, report what would change, change nothing. | 12.10 |
-| `--limit <N>`, `--cursor <CURSOR>`, `--all` | Paging. | 6.9 |
+| `--limit <N>`, `--cursor <CURSOR>`, `--all` | Paging; `--all` asks for every remaining item, a `--limit` without a bound. | 6.9 |
 | `--fields <FIELDS>` | Field selection. | 6.10 |
 | `--operation <KEY>` | Caller-chosen operation key. | 13.4 |
 | `--help`, `--version` | | 4.6 |
 
 No option may authorise a destructive act except `--commit --plan-digest`; in particular `--yes` and `--force`
-MUST NOT (12.8). [Appendix A D7, D11.5, D11.10, D11.11]
+MUST NOT (12.8). [Appendix A D7, D11.5, D11.10, D11.11, D31]
 
 9.9. **Unknown is an error.** An unknown command, option or enum value refuses before any effect, with `expected`
 and `suggestions`; nothing is auto-corrected. An option a command cannot honour with the others refuses by name
@@ -1628,7 +1626,7 @@ caller is `atip/2`.
 
 | # | Owner decision 2026-11-01, version 1.1.2, a patch (15.1) from implementer feedback | Where |
 |---|---|---|
-| D31 | Wording and the checker only; no member, option, MUST or document kind is added, and `meta.contractVersion` stays `"1.1"`. One answer where tools diverged: a cursor is bound to every argument except the reserved options that never change the result set (`--json`, `--limit`, `--all`, `--cursor`, `--fields`), and an argument given with its default value is given. 1.1.1 excepted only `--limit`, `--cursor` and `--fields` and left the default open, so a tool that also binds `--json` or `--all`, or compares a default as left out, still conforms in 1.1: the answer is a SHOULD, and callers rely on neither. A batch input reads `--fields` against the batch output. A lone `--commit` or `--plan-digest` may also refuse with the `code` of the `requires` rule that states the pair; 12.7's closing sentence no longer reads as if a tool that recomputes its plan had to detect changes per effect rather than hold a lock. Checker: the fixture key `prepare` (programs that prepare the world before `setup`; the tool's state is still made by `setup`), L1.validators without `prepare` either, an L0 answer to `--cursor x` that shows neither absence nor `CURSOR_INVALID` counts as paging, an advisory without a subject in the run is `unsupported`, `from-schema` without `schema --errors` leaves only L0.ok-exit `unprovided`, and L2.destructive-half accepts the rule's `code`. | 6.9, 6.10, 12.7, approaches/checker.md, approaches/typescript.md |
+| D31 | Wording and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.1"`. Stated where it could be read two ways: a caller pages with the `next` entry's arguments unchanged (cursor binding itself is unchanged; which arguments bind a cursor is for 1.2.0); `--all` asks for every remaining item, a `--limit` without a bound; a batch input reads `--fields` against the batch output, whose paths are paths into the batch report, and a batch schema written as `allOf` the batch-report schema declares no `fields`; a lone `--commit` or `--plan-digest` may also refuse with the `code` of the `requires` rule that states the pair; 12.7's closing sentence no longer reads as if a tool that recomputes its plan had to detect changes per effect rather than hold a lock. Checker: the fixture key `prepare` (programs that prepare the world before `setup`; a step running the tool's binary is refused, the report lists every step, and the tool's state is still made by `setup`), a failing `prepare` or `setup` step is a fixture error, L1.validators without `prepare` either, an L0 answer to `--cursor x` that shows neither absence nor `CURSOR_INVALID` counts as paging, an advisory without a subject in the run is `unsupported`, `from-schema` without `schema --errors` leaves only L0.ok-exit `unprovided`, and L2.destructive-half accepts the rule's `code`. | 6.9, 6.10, 9.8, 12.7, approaches/checker.md, approaches/typescript.md |
 
 ## Appendix B. Prior art
 
