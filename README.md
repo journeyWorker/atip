@@ -7,7 +7,7 @@ streams, and the guide shipped in the binary. It is written for tools built with
 TypeScript/Effect 4, but nothing in it depends on either, and it is checked against built binaries. A tool that
 passes is "ATIP 1.1 L1 conformant" (contract minor, then level L0, L1 or L2) for a release.
 
-**Status: 1.1.1, release candidate.** 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
+**Status: 1.1.1** (2026-11-01). 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
 (2026-11-01), after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1 is a patch
 that clarifies wording and checks and tightens the schema pattern of `meta.contractVersion` to exclude `"1.0"`, which
 was never written. The decisions behind all three are in Appendix A of

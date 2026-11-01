@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.1 (unreleased)
+## 1.1.1 (2026-11-01)
 
 A patch (15.1): wording, the schema pattern of `meta.contractVersion`, approaches and checker rows, from implementer
 feedback. No member, option, rule strength or document kind is added; `meta.contractVersion` stays `"1.1"`, and a

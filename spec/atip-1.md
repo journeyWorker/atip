@@ -1,6 +1,6 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.1.1** (release candidate). Version 1.1.0 was adopted 2026-11-01 after four rounds of independent review;
+Status: **1.1.1**, adopted 2026-11-01 after two rounds of independent review. Version 1.1.0 was adopted 2026-11-01 after four rounds;
 1.1.1 is a patch (15.1) that clarifies wording, the schema pattern of `meta.contractVersion` and the checker from
 implementer feedback (Appendix A D30). Version 1.0.0 was adopted 2026-10-30 after six rounds; 1.1.0 added optional
 members and SHOULD/MAY rules and fixed how the contract is versioned (15, Appendix A D20-D29). Until revision 2 this
