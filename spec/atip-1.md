@@ -1,9 +1,10 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.1.0**, adopted 2026-11-01 after four rounds of independent review. Version 1.0.0 was adopted 2026-10-30
-after six rounds; 1.1.0 adds optional members and SHOULD/MAY rules from implementer feedback and fixes how the contract is versioned
-(15, Appendix A D20-D29). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
-2026-10-28 (Appendix A, D13).
+Status: **1.1.1** (release candidate). Version 1.1.0 was adopted 2026-11-01 after four rounds of independent review;
+1.1.1 is a patch (15.1) that clarifies wording, the schema pattern of `meta.contractVersion` and the checker from
+implementer feedback (Appendix A D30). Version 1.0.0 was adopted 2026-10-30 after six rounds; 1.1.0 added optional
+members and SHOULD/MAY rules and fixed how the contract is versioned (15, Appendix A D20-D29). Until revision 2 this
+contract was called `agent-cli/1`; it was renamed by owner decision 2026-10-28 (Appendix A, D13).
 
 ## Abstract
 
@@ -344,6 +345,12 @@ its value. An object cut node constrains its value only through its type, the sc
 members, and below the record `required` no longer lists them; above the record it removes none. An array cut node
 constrains only its type, its items and its length, and projection keeps the length. (10.13 rule 11.)
 [Appendix A D11.5, D16.2]
+
+**Answers of more than one shape.** Selection is declared per output: each `outputs` entry has its own `fields` and
+`when` (10.9.1). A command whose answer takes one of two shapes declares two report outputs, each with its own
+`fields`, and `--fields` is read against the output the invocation selects. A single output whose root or record
+schema is a union (`oneOf`, or an `anyOf` that is not null-admitting) has no projectable cut node there, so it
+declares no `fields` and takes no `--fields`. [Appendix A D30]
 
 6.11. **Version of `data`.** `meta.schemaVersion` is the version of the output `data` follows (the one `meta.output`
 names when there are several). On a failure without `data`, it is the version of the output the invocation would
@@ -706,8 +713,12 @@ Normative shapes: `schema/schema-doc.schema.json`, plus the semantic rules of 10
 accepted.
 
 10.1.2. A path, `--errors`, `--error`, `--warnings`, `--warning` and `--search` are mutually exclusive (`USAGE`). An unknown path refuses
-with `UNKNOWN_COMMAND`, `expected` the valid words at the first unknown position. A tool MAY give `schema` further
-options of its own (canon's `--as`).
+with `UNKNOWN_COMMAND`, `field` `command` (7.1.1), and `expected` the valid words at the first unknown position;
+`expected` is omitted when no word is valid there (a word after a leaf command, as in `schema finding close nosuch`).
+The mutual-exclusion `USAGE`, when it carries `field` (7.1.3), names one of the arguments given, as 7.1.1 names
+arguments: the operand's value name for the path (`PATH`), an option as written (`--errors`). A tool that states the
+exclusion as an `atMostOne` rule in `schema`'s own command document (10.8.1) reports it like any broken `atMostOne`. A tool MAY give
+`schema` further options of its own (canon's `--as`). [Appendix A D30]
 
 10.1.3. Without `--json`, `schema` prints text that is not part of the contract; that text MAY be the JSON
 document itself. [Appendix A D11.2]
@@ -820,7 +831,9 @@ and its input value are a single integer. A `switch` is never required or repeat
 
 10.7.3. **Defaults are typed.** `default` is REQUIRED and is the value used when the option is absent, typed as
 above; `null` means there is none. A default computed when the command runs (the current commit, the nearest
-configuration) is `null` with a `defaultNote`. A default the help text promises MUST appear here. A required
+configuration) is `null` with a `defaultNote`. A `switch` is the exception: its `default` is always `false`, which
+means "not given" (10.7.2); when absence can still turn the behaviour on (a configuration setting), `defaultNote`
+says so. A default the help text promises MUST appear here. A required
 option's `default` is `null`. An `enum` default (or each element of a repeatable one) is a member of
 `possibleValues`.
 
@@ -950,9 +963,10 @@ constraint can express. Each is `{arguments, code, description, rejects}`, plus 
   agent's counterexample. None of them appears in `examples`. It is not checked against `argumentsRef`, which may
   state the same validator in JSON Schema and would then refuse it.
 
-A validator runs at step 6 of 11.7, after domains and constraints, and reads no state, so in a batch it is part
-of preflight (11.11). canon's `--before` is an example: its domain pattern admits `2026-02-30`, and a validator
-refuses it. [Appendix A D17]
+A validator runs for every invocation, with or without `--input`: after parsing (and, with `--input`, after the
+merge of 11.7), at step 6 of 11.7 after domains and constraints, and before any precondition or state read. It
+reads no state, so in a batch it is part of preflight (11.11). canon's `--before` is an example: its domain pattern
+admits `2026-02-30`, and a validator refuses it. [Appendix A D17, D30]
 
 ### 10.9. Outputs and schemas
 
@@ -1206,8 +1220,9 @@ when one item is `failed`, and its `field` is that item's index.
 
 12.2. **Refusals and previews write nothing.** A refusal (exit 2), a destructive preview (12.4), a `--dry-run`
 (12.10), `--help`, `--version` and `schema` MUST NOT make any effect: no file, record, cache, log file, telemetry
-record or remote change, whatever `effectNote` says. `effectNote` describes what a successful run does; it never
-permits these. Writing to the process's own stdout and stderr is output, not an effect. [Appendix A D12.3]
+record or remote change, whatever `effectNote` says. A preview or `--dry-run` makes none whatever its exit, a
+failure (exit 1) included. `effectNote` describes what a successful run does; it never
+permits these. Writing to the process's own stdout and stderr is output, not an effect. [Appendix A D12.3, D30]
 
 12.3. **Idempotency** of `write` and `destructive` commands:
 
@@ -1239,13 +1254,19 @@ depends on a file's contents, the digest covers them (12.6), so a changed file m
 
 12.6. **Digest.** The digest covers the plan: the effects and every input that determines them (arguments,
 the state and file contents read). It is opaque to callers. It SHOULD be `sha256:` followed by the lower-case hex
-SHA-256 of the plan's RFC 8785 (JCS) canonical JSON. It does not expire; it is bound to state, not to time.
+SHA-256 of the plan's RFC 8785 (JCS) canonical JSON. It does not expire; it is bound to state, not to time. When
+another system makes the effects (a remote service the tool sends the plan to), that system may compute the digest;
+the tool passes it through unchanged, and the check of 12.7 happens where the effects are made. [Appendix A D30]
 
-12.7. **Commit.** `--commit` and `--plan-digest` require each other (`USAGE` otherwise). With both, the command
+12.7. **Commit.** `--commit` and `--plan-digest` require each other (`USAGE`, or its registered finer replacement
+(7.2.2), otherwise). With both, the command
 recomputes the plan; if its digest differs it refuses with `PLAN_STALE` (exit 2, nothing changed, `meta.next` the
 preview invocation); otherwise it carries out exactly that plan and reports `committed: true`. A commit is not a
 lock: a tool whose plan can be invalidated between the check and the effects MUST detect it per effect or hold a
-lock.
+lock. Because a commit acts only after the recomputed digest matches, a tool that cannot have the plan rechecked
+where the effects are made (a remote service too old to do it) refuses the commit and never acts unchecked; that
+refusal is a code of the tool's own with exit 2, not `PLAN_STALE`, whose `next`, the preview, cannot help. [Appendix
+A D30]
 
 12.8. **Nothing else authorises.** `--commit` and `--plan-digest` are flag-only (11.6). No other option,
 environment variable or prompt authorises a destructive command: no `--yes`, no `--force`. This holds for
@@ -1358,7 +1379,7 @@ outside this rule. Text from other people and systems is data; guides SHOULD tel
 ## 15. Versioning
 
 15.1. **The contract.** This document is `atip/1`: the contract identifier names the major. Its versions are
-`MAJOR.MINOR.PATCH` (this one is `1.1.0`), and `CHANGELOG.md` lists each. A change belongs to the smallest class
+`MAJOR.MINOR.PATCH` (this one is `1.1.1`), and `CHANGELOG.md` lists each. A change belongs to the smallest class
 that holds it:
 
 | Class | What it may do | What it never does |
@@ -1490,11 +1511,13 @@ failing). A tool claiming a level MUST pass every MUST check of that level in it
 
 17.3. Whenever a tool offers `schema --errors` (and `schema --warnings`), at any level, the checker compares those
 registries with the one in its fixture and with the codes and reasons the tool emits during the run (7.3.4, 7.6).
+A fixture that takes its registry from the tool's own `schema --errors` (`approaches/checker.md` §5) pins nothing,
+so only the comparison with what the tool emits remains; a fixture that lists the registry pins it. [Appendix A D30]
 
 ## 18. Open questions
 
-Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, and D20-D29 for 1.1.0). None is
-open in 1.1.0.
+Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, D20-D29 for 1.1.0, and D30 for
+1.1.1). None is open in 1.1.1.
 The two that revision 5 raised are kept here with their decisions, so that earlier references still resolve.
 
 **18.1. More structure in `json` domains.** Decided (D18): the `json` profile of 10.7.4 gets no `anyOf` and no
@@ -1587,6 +1610,10 @@ caller is `atip/2`.
 | D27 | A minor never makes a 1.0-conforming tool non-conforming: a 1.1 rule that would (map cut nodes, command-line hints, `--input` twice as `USAGE`) applies only to a document that declares 1.1, and a 1.0 tool keeps 1.0's behaviour; dual warning/error registration applies only to a tool that keeps a warning registry. A 1.1 tool sets `contract` and `contractVersion` everywhere, so an unmarked document is always 1.0. Callers build a view of a document with unknown listed values before validating it. | 6.10, 7.1.2, 7.5.3, 11.2, 10.13 rule 16, 15.7, 15.8 |
 | D28 | A caller's view leaves out every unknown variant (argument, output, tree entry, batch item) and drops the producer's completeness rules it can no longer meet (`minItems`, `contains`, `if`/`then`/`else`), so it never rejects a document for what it left out; a listed member that is not a string is a wrong type and is rejected. A map key containing U+0000 is not selectable. A 1.1 tool's markers are a MUST of the checker's L0.contract-version. | 6.10, 15.6, 15.8 |
 | D29 | Every string member whose values the contract lists has an explicit caller treatment for an unknown value, in one table (15.6): refuse the document (another major), the document part is unusable, the entry is left out, or the most cautious known value. The table is read from the schemas, and a later minor that adds a listed member adds its row. | 15.6, 15.8 |
+
+| # | Owner decision 2026-11-01, version 1.1.1, a patch (15.1) from implementer feedback | Where |
+|---|---|---|
+| D30 | Wording, the schema and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.1"`. The `meta.contractVersion` pattern no longer admits `"1.0"`, which 6.6 already never emits. Stated where implementers missed them: validators run for every invocation, before any precondition; selection is per output, and a union-shaped output offers no `--fields`; a switch's `default` is always `false`, with `defaultNote` for a configured effect; the `field` and `expected` of `schema`'s own refusals; previews and `--dry-run` make no effect whatever their exit; a remote system that makes the effects may compute the digest; a commit that cannot be rechecked where the effects are made is refused with the tool's own exit-2 code; `USAGE` in 12.7 includes its registered finer replacement. Checker: the `paged` fixture key and the non-paging observation, `"registry": "from-schema"`, L1.hint-command, and the scope of several L0 rows. | 6.10, 10.1.2, 10.7.3, 10.8.3, 12.2, 12.6, 12.7, 17.3, schema/envelope.schema.json, approaches/checker.md, approaches/typescript.md |
 
 ## Appendix B. Prior art
 
