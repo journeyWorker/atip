@@ -1,7 +1,7 @@
 # The conformance checker
 
 Not normative in its implementation; spec 17 makes passing its MUST checks at the claimed level a requirement.
-Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.1.
+Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.2.
 
 ## 1. What it is
 
@@ -47,12 +47,14 @@ A level is passed when no MUST check fails **and** no MUST check of that level i
 pass by withholding fixtures. `unsupported` is decided from the self-description (a command without `input.batch`
 is `unsupported` for batch checks) or, at L0 where there is no self-description, from observing the binary itself
 (a command shown not to page, §5), never from the fixture alone: a fixture can name what to run, not declare a
-feature absent, and leaving a command out of it never makes a check `unsupported`. `entailed` is decided from the self-description too,
-and it does not fail the level when every rule it names has the result `pass` in the same run: a rule with its own
-isolated witness. A rule that is itself `entailed` does not count as support, so a cycle of entailments with no
-passed rule in it is `unprovided`, never a pass. `entailed` is never reported as `pass`, because nothing exercised
-the rule itself. A logically redundant constraint ("`--a` requires `--b`" when `--b` is already required) is legal
-(spec 10.8), and no fixture could isolate it.
+feature absent, and leaving a command out of it never makes a check `unsupported`. One more source, at every level
+and for advisories only: an S check whose subject the run never met has nothing to judge and is `unsupported`
+(L0.usage-hint when no field-less `USAGE` was observed); a MUST check is never `unsupported` this way. `entailed`
+is decided from the self-description too, and it does not fail the level when every rule it names has the result
+`pass` in the same run: a rule with its own isolated witness. A rule that is itself `entailed` does not count as
+support, so a cycle of entailments with no passed rule in it is `unprovided`, never a pass. `entailed` is never
+reported as `pass`, because nothing exercised the rule itself. A logically redundant constraint ("`--a` requires
+`--b`" when `--b` is already required) is legal (spec 10.8), and no fixture could isolate it.
 
 Before generating witnesses, the checker groups constraints that are **equivalent**: rules with the same set of
 violating invocations, computed over the finite table of which named arguments are given and which `in` class
@@ -134,6 +136,7 @@ A tool supplies a fixture file:
 ```json
 {
   "contractVersion": "1.1",
+  "prepare": [["git", "init", "--quiet"], ["git", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "--quiet", "--message", "fixture"]],
   "setup": [["init", "--json"], ["finding", "add", "--change", "add-login", "--round", "1", "--seq", "1", "--severity", "note", "--actor", "r1", "--summary", "s", "--json"]],
   "env": { "CANON_ACTOR": "fixture" },
   "timeoutSeconds": 30,
@@ -171,9 +174,19 @@ A tool supplies a fixture file:
 }
 ```
 
-`setup` runs once into a template directory; every sequence (§3) runs in its own copy. The checker never runs a
-`write` or `destructive` command that the fixture does not list. A command with no fixture entry makes its stateful
-checks `unprovided`.
+`prepare` lists programs that make the world the tool works in, for a tool whose records need it (above, a git
+repository with one commit, which `finding add` requires). Each entry is an argv array whose first word is any
+program on `PATH`; the entries run once, in order, in the template directory, before `setup`, without a shell, with
+the environment, stdin and timeout of §3 (`HOME` in the template, the fixture's `env` included). A step that exits
+non-zero, cannot be started or exceeds the timeout is an error of the fixture, not a failure of the tool: the
+checker stops with its own error naming the step, and reports no check. `prepare` is for what the tool reads but
+does not own; the state the tool keeps is still built by `setup`, through the tool's own argv, so the checks run
+against state the tool produced itself.
+
+`setup` runs once into the template directory, after `prepare`; every sequence (§3) runs in its own copy. The
+effects check (§4) starts from that copy, so nothing `prepare` or `setup` made counts as an effect of a checked
+invocation. The checker never runs a `write` or `destructive` command that the fixture does not list. A command with
+no fixture entry makes its stateful checks `unprovided`.
 
 `paged` lists invocations of a command that return `meta.page.nextCursor` in the fixture state; L0.page and
 L1.paging run them. Which commands page is not taken from the fixture. From L1, a command pages when its command
@@ -182,10 +195,12 @@ lists: one of a command's `ok` invocations with `--cursor x` added. A refusal wi
 L0.unknown-option and `field: "--cursor"` shows the option does not exist, so the command does not page. A refusal
 with `CURSOR_INVALID` shows a refused cursor value, so the command pages. (A paging command refuses a cursor it did
 not issue with `CURSOR_INVALID`, spec 6.9, so a paging command that answers like an unknown option already breaks
-6.9; from L1 its document shows it pages.) L0.page and L1.paging are `unsupported` only when no command pages: from
-L1 when no command document declares `--cursor`, at L0 when every listed command is shown not to page. A paging
-command, by its document or by observation, with no `paged` entry and no observed `nextCursor` makes them
-`unprovided`. At L0 a command the fixture does not list is not seen at all; that limit is in §8.
+6.9; from L1 its document shows it pages.) Any other answer (exit 0, or a refusal with another code or another
+`field`) shows neither, and the checker takes the cautious reading: the command pages. L0.page and L1.paging are
+`unsupported` only when no command pages: from L1 when no command document declares `--cursor`, at L0 when every
+listed command is shown not to page. A paging command, by its document or by observation, with no `paged` entry and
+no observed `nextCursor` makes them `unprovided`. At L0 a command the fixture does not list is not seen at all;
+that limit is in §8.
 
 `contractVersion` is the minor the tool claims (spec 15.7); it is what `--contract` overrides, and absent means
 `"1.0"`. `registry` lists the codes the tool registers, with `exit`, `retryable` and the names of the reasons under
@@ -197,9 +212,10 @@ takes both the registry and the warning codes from the tool's own `schema --erro
 generator ran, so with `from-schema` nothing is compared with the fixture, and L0.registry checks only that every
 emitted code, reason and warning is in what the tool prints; an explicit list still pins the registry (spec 17.3).
 A tool that offers no `schema --errors` (allowed at L0) has nothing to take a registry from, so with `from-schema`
-every check that needs `registry` (L0.ok-exit, L0.registry) is `unprovided`. `globalOptions` lists tool-wide options
-with a value (spec 9.13); `missingValue` is an invocation of a command with one required value left out
-(L0.no-prompt); both are needed at L0, where there is no `schema` to read them from.
+L0.ok-exit, the one check that then needs `registry`, is `unprovided` (L0.registry does not run without
+`schema --errors`). `globalOptions` lists tool-wide options with a value (spec 9.13); `missingValue` is an
+invocation of a command with one required value left out (L0.no-prompt); both are needed at L0, where there is no
+`schema` to read them from.
 
 **The Needs column.** Each check in §6 names the fixture entry it needs. `probe` is the stateless command (and the
 remote-state query of §4); `registry` is the fixture's `registry` and `warnings`; `commands` is the per-command
@@ -287,14 +303,14 @@ registry says and need no fixture.
 | L1.domains | M | for each argument with a `domain`, on a `read` command or a write listed in the fixture: a passing fixture invocation with that one argument changed to values generated from the profile (spec 10.7.4): each bound and the nearest value beyond it (`minimum - 1`, `maximum + 1`, the exclusive bounds themselves), a non-multiple for `multipleOf`, strings of `minLength - 1` and `maxLength + 1` characters, a value of a JSON type outside `type`; for `pattern` and the other structural keywords, the fixture's `domainRejects` values for that argument | the in-range values are accepted; each out-of-range value is refused with exit 2 and `USAGE` or the command's code for that argument, `field` naming the argument. A `pattern` or structural keyword without `domainRejects` is `unprovided` | 10.7.4 | `commands` |
 | L1.patterns | M | every `pattern` in every command document's domains, with the `domainRejects` values and the fixture's accepted values for that argument | the pattern has the restricted I-Regexp form (spec 10.7.4); it compiles with ECMAScript `u` and with the Rust `regex` crate at its default limits (the checker ships a small Rust helper, built from the same code as this repository's `scripts/regex-parity`); both engines give the same answer for each value. A different answer passes only as a verified Unicode-version difference: the value is one code point, the pattern uses a category, and each engine's own tables give that code point a different general category; the report names both Unicode versions and the code point. Any other difference fails. A TypeScript tool cannot see Rust's size limit from its own build, so this is where an oversized pattern is caught | 10.7.4 | `commands` |
 | L1.numbers | M | for an `integer` argument, the passing invocation with `9007199254740992` and `-9007199254740992` (one beyond the safe range) on argv, and at L2 as a JSON number and as a string in a document | refused with exit 2 (`USAGE` or the argument's code on argv, `INPUT_INVALID` in a document); never accepted as `9007199254740991` or any other rounded value | 10.7.5 | `commands` |
-| L1.validators | M | every `rejects` invocation of every validator, for `read` commands and writes listed in the fixture, run in a copy of the fixture state made **without** `setup` (the fixture's environment only) | exit 2 with the validator's `code`, `field` naming one of its `arguments`. A validator reads no state and runs before any precondition, with or without `--input` (spec 10.8.3), so a precondition code (an uninitialised store, a missing record) in place of the validator's is a failure | 10.8.3 | `commands` |
+| L1.validators | M | every `rejects` invocation of every validator, for `read` commands and writes listed in the fixture, run in a copy of the fixture state made **without** `prepare` or `setup` (an empty directory, the fixture's environment only) | exit 2 with the validator's `code`, `field` naming one of its `arguments`. A validator reads no state and runs before any precondition, with or without `--input` (spec 10.8.3), so a precondition code (an uninitialised store, a missing record) in place of the validator's is a failure | 10.8.3 | `commands` |
 | L1.output-data | M | every `ok` fixture invocation and every example of a `read` command | `data` validates against the output schema `meta.output` names (or the only output); `meta.schemaVersion` equals that output's | 6.6, 6.11, 10.9 | `commands` |
 | L1.next | M | every `meta.next` observed | the first words of `argv` name an existing command; for `read` commands the checker runs it in the same sequence and it does not exit with `USAGE` (placeholders, `--json` and splitting are L0.next's). `next` is bound to the portable syntax of spec 9.12.1 too (a value that starts with `-` written `--name=value`, never as a separate word); this check does not test that, §8 | 6.8 | — |
-| L1.hint-command | S in 1.1.1 for a tool whose documents declare 1.1 (it was an advisory clause of L0.hint-form in 1.1.0), not run for one that declares 1.0 (spec 7.1.2 binds only 1.1 documents) | every `hint` observed that starts with the tool name and a space | it parses against the `schema` document as an invocation of an existing command: the command words, the option names and the 9.12 grammar (each option's arity, operand count). A value that comes from a `<UPPER_CASE>` placeholder is not checked against its domain or the constraints, since the checker cannot generate a value for an arbitrary pattern (§5). The split itself is L0.hint-form's | 7.1.2 | — |
+| L1.hint-command | S in 1.1 (since 1.1.1) for a tool whose documents declare 1.1 (it was an advisory clause of L0.hint-form in 1.1.0), not run for one that declares 1.0 (spec 7.1.2 binds only 1.1 documents) | every `hint` observed that starts with the tool name and a space | it parses against the `schema` document as an invocation of an existing command: the command words, the option names and the 9.12 grammar (each option's arity, operand count). A value that comes from a `<UPPER_CASE>` placeholder is not checked against its domain or the constraints, since the checker cannot generate a value for an arbitrary pattern (§5). The split itself is L0.hint-form's | 7.1.2 | — |
 | L1.help-line | M | `--help` | first line mentions `schema` | 4.7 | — |
 | L1.defaults | S | every option with a non-null `default` | the `--help` text, when it shows a default in a recognised form (`[default: X]`, `(default X)`), shows the same value | 10.7.3 | — |
 | L1.deterministic | S | `schema --json` twice, and every command document twice | byte-identical | 10.2.4 | — |
-| L1.paging | M (when offered) | the fixture's `paged` invocations (§5) with `--limit 1`; without `paged`, each observed invocation whose answer carried `meta.page.nextCursor`, with `--limit 1` | `meta.page.returned` ≤ 1; running the `next` entry that L0.page found, in the same sequence, returns the next item; the cursor given with a changed filter argument refuses with `CURSOR_INVALID`, `field: "--cursor"`. With neither, `unsupported` or `unprovided` as §5 decides | 6.9, 7.2.1 | `commands` |
+| L1.paging | M (when offered) | the fixture's `paged` invocations (§5) with `--limit 1`; without `paged`, each observed invocation whose answer carried `meta.page.nextCursor`, with `--limit 1` | `meta.page.returned` ≤ 1; running the `next` entry that L0.page found, in the same sequence, returns the next item; the cursor given with a filter argument changed to another value refuses with `CURSOR_INVALID`, `field: "--cursor"`. A changed `--json` or `--all`, and an argument added or removed with its default value, are never tested: spec 6.9 leaves both answers conforming in 1.1. With neither, `unsupported` or `unprovided` as §5 decides | 6.9, 7.2.1 | `commands` |
 | L1.fields | M (when offered) | the fixture's `fields` selections, including a nested path and an `[]` path when declared | `meta.fields` = selection plus `keep`; no unselected member at any depth (6.10 steps 1-3); selected members present whenever the unprojected answer has them (compared with the same invocation without `--fields`, in the same sequence); data validates against the output schema with `required` reduced along the kept paths; an unknown path refuses with `USAGE`, `field: "--fields"` | 6.10 | `commands` |
 
 ### L2
@@ -320,7 +336,7 @@ registry says and need no fixture.
 | L2.destructive-preview | M | every destructive command, fixture `preview` | exit 0; `planDigest`, `effects`, `committed: false`; `meta.next[0].argv` contains `--commit`, `--plan-digest <that digest>` and `--json`; nothing written | 12.2, 12.4, 12.5 | `commands` |
 | L2.destructive-preview-stdin | M | the preview with its arguments given via `--input -` | `meta.next[0].argv` does not contain `--input -` and replays to the same plan | 12.5 | `commands` |
 | L2.destructive-stale | M | the commit argv with a digest that differs in one character | exit 2 `PLAN_STALE`, `meta.next[0]` the preview | 12.7 | `commands` |
-| L2.destructive-half | M | `--commit` alone; `--plan-digest x` alone | exit 2 `USAGE` or its registered finer replacement (spec 7.2.2) | 12.7 | `commands` |
+| L2.destructive-half | M | `--commit` alone; `--plan-digest x` alone | exit 2 `USAGE`, its registered finer replacement (spec 7.2.2), or the `code` of the `requires` rule that states the relation (spec 10.8.1) | 12.7 | `commands` |
 | L2.destructive-commit | M | the preview's `next[0]` | exit 0, `committed: true`, the effects happened | 12.7 | `commands` |
 | L2.async | M (when offered) | the fixture's async start, then `next[0]`, with the worker set to `done`, `failed`, `timeout` | start exits 0 with `async: true` in the document and an identifier; `next[0]` waits; `done` → 0; `failed` → 1 with a registered code; `timeout` → 1, retryable, `next[0]` the same wait | 13.2, 13.3 | `commands` |
 | L2.operation-key | M (when offered) | the async start twice with the same `--operation`, then twice concurrently with a fresh key, then once with another payload | the repeats return the same identifier and start nothing (the worker sees one start per key, also under the concurrent pair); the other payload is `OPERATION_REUSED` | 13.4 | `commands` |
@@ -395,6 +411,7 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | L0 claim, no `paged` entry, and every listed command refuses `--cursor x` with the code L0.unknown-option saw and `field: "--cursor"` | (none: L0.page and L1.paging are `unsupported`) |
 | L1 claim, no `paged` entry, a command document declares `--cursor`, and no run observes a `nextCursor` | L0.page and L1.paging are `unprovided`, which fails the level, though the fixture lists no paging command |
 | no `paged` entry, and a listed command refuses `--cursor x` with `CURSOR_INVALID` but no run observes a `nextCursor` | L0.page `unprovided` (the command pages; it is not `unsupported`) |
+| L0 claim, no `paged` entry, and a listed command answers `--cursor x` with exit 0, or refuses it with a code other than L0.unknown-option's and `CURSOR_INVALID` | L0.page `unprovided` (read as paging, §5), which fails the level |
 | a command that prompts on stdin when a required value is missing, and waits | L0.no-prompt |
 | a command that sleeps for longer than the timeout without reading stdin | L0.no-prompt reports `unprovided`, not `fail` |
 | a command that reads a line from a canonical-mode terminal when a value is missing | L0.no-prompt (it exits only after `VEOF`) |
@@ -409,13 +426,15 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | `schema --error <warning-only code>` refused with `USAGE` but `field: "CODE"` | L0.registry |
 | fixture `"registry": "from-schema"`, and a run emits a code that `schema --errors` does not list | L0.registry |
 | `--commit` alone refused with a registered `OPTION_REQUIRED` that the tool uses instead of `USAGE` (spec 7.2.2) | (none: L2.destructive-half passes) |
+| `--plan-digest x` alone refused with the `code` its command's `requires` rule declares for the pair (spec 10.8.1) | (none: L2.destructive-half passes) |
+| a fixture `prepare` step exits non-zero | (none: the checker stops with a fixture error and reports no check, §5) |
 | a registry whose exit for one code differs from the fixture's | L0.registry |
 | a tool declaring 1.0 that emits `error.reason`, or a 1.1 tool whose envelope lacks `meta.contractVersion` or says `1.0` | L0.contract-version |
 | stderr holds a progress line in JSON mode | L0.stderr-quiet (advisory; no MUST check fails) |
 | `USAGE` with no `field` and no hint | L0.usage-hint (advisory) |
 | every `USAGE` the run observes carries `field` | (none: L0.usage-hint is `unsupported`) |
 | a group answers `<tool> <group> --repo . --json` with `USAGE` | L0.global-on-group (advisory) |
-| a 1.1 hint `canon finding clsoe <CHANGE_ID>` that names no command | L1.hint-command (advisory in 1.1.1) |
+| a 1.1 hint `canon finding clsoe <CHANGE_ID>` that names no command | L1.hint-command (advisory in 1.1) |
 | a 1.1 hint `canon finding close <CHANGE_ID> --json` whose `CHANGE_ID` has a `pattern` that `x` does not match | (none: placeholder values are not checked against domains) |
 | a reason listed twice under one code | L1.reasons |
 | a warning code listed twice, or with another meaning in the two registries | L1.warnings |

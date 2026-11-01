@@ -7,11 +7,12 @@ streams, and the guide shipped in the binary. It is written for tools built with
 TypeScript/Effect 4, but nothing in it depends on either, and it is checked against built binaries. A tool that
 passes is "ATIP 1.1 L1 conformant" (contract minor, then level L0, L1 or L2) for a release.
 
-**Status: 1.1.1** (2026-11-01). 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
-(2026-11-01), after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1 is a patch
-that clarifies wording and checks and tightens the schema pattern of `meta.contractVersion` to exclude `"1.0"`, which
-was never written. The decisions behind all three are in Appendix A of
-the spec; no question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, and 15.9 states
+**Status: 1.1.2, release candidate.** 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
+(2026-11-01), after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1
+(2026-11-01) is a patch that clarifies wording and checks and tightens the schema pattern of `meta.contractVersion`
+to exclude `"1.0"`, which was never written; 1.1.2 is a patch that states which arguments bind a paging cursor,
+closes wording edges and adds the checker's `prepare` fixture key. The decisions behind all four are in Appendix A
+of the spec; no question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, and 15.9 states
 the one place where 1.1.0 changes what 1.0.0 promised callers. Until its second revision the contract was called `agent-cli/1`.
 
 **Names.** Contract id `atip/1` (`meta.contract`); schema `$id`s under `https://atip.dev/1/` (placeholders); the

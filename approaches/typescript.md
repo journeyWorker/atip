@@ -1,7 +1,7 @@
 # TypeScript and Effect 4: spec-first commands
 
 Not normative. How a TypeScript tool built on Effect 4 can become ATIP conformant, and what the shared package
-`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.1.
+`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.2.
 
 ## 1. Where a TypeScript tool starts
 
@@ -319,15 +319,17 @@ A `read` leaf reports its precondition failures as refusals either way.
 ### 3.8 Cursors over keyset backends (spec 6.9)
 
 A backend's own cursor (the last key of a keyset page, a continuation token) does not know the CLI's arguments.
-The CLI wraps it: the cursor it prints is the backend cursor plus a digest of the normalised arguments of the
-invocation (JCS + SHA-256 of every argument except `--limit`, `--cursor` and `--fields`), encoded as one opaque
-string. On `--cursor`, the CLI decodes it, recomputes the digest from the current arguments, and refuses with
-`CURSOR_INVALID` before the backend is called: reason `FOREIGN` when the string is not one of its cursors,
-`ARGUMENTS_CHANGED` on a digest mismatch, `EXPIRED` when the backend then refuses the token. Binding on the
-argument text as given, without normalising, is conservative: it can refuse a cursor given with another spelling
-of the same arguments (`--round=1` against `--round 1`), and it
-never accepts changed ones. Normalised binding is better, and the argument object of spec 11.7 step 6 is already
-the normalised form.
+The CLI wraps it: the cursor it prints is the backend cursor plus a digest (JCS + SHA-256) of the normalised
+arguments of the invocation, encoded as one opaque string. The argument object of spec 11.7 step 6 is already the
+normalised form; digest it without `limit`, `all`, `cursor` and `fields`, which never change the result set (`json`
+is flag-only and never in the object), and without any value that step 5 or 6 filled in from a `default`, so that
+an argument given with its default value differs from one left out (spec 6.9). An `env` value stays in, since it
+can change the result set (spec 4.3). On `--cursor`, the CLI decodes it,
+recomputes the digest from the current arguments, and refuses with `CURSOR_INVALID` before the backend is called:
+reason `FOREIGN` when the string is not one of its cursors, `ARGUMENTS_CHANGED` on a digest mismatch, `EXPIRED`
+when the backend then refuses the token. Binding on the argument text as given, without normalising, is
+conservative: it can refuse a cursor given with another spelling of the same arguments (`--round=1` against
+`--round 1`), and it never accepts changed ones.
 
 ## 4. A tool on `effect/cli` in the meantime
 

@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.1.2 (unreleased)
+
+A patch (15.1): wording and checker rows from implementer feedback and the round-12 notes. No member, option, MUST
+or document kind is added; `meta.contractVersion` stays `"1.1"`, and a tool that conformed to 1.1.1 still conforms
+(D31).
+
+- **Which arguments bind a cursor (6.9).** Every argument of the invocation except the reserved options that never
+  change the result set: `--json`, `--limit`, `--all` (a `--limit` without a bound), `--cursor` and `--fields`. An
+  argument given explicitly with its default value is given, so adding or removing it is a change. 1.1.1 excepted
+  only `--limit`, `--cursor` and `--fields` and did not say how a default compares, so in 1.1 a tool that also binds
+  `--json` or `--all`, or compares a default as left out, still conforms; it SHOULD do neither, and a caller relies
+  on neither and pages with `next` as given. `approaches/typescript.md` §3.8 digests the argument object without
+  those options and without the values filled in from defaults.
+- **Stated where it could be read two ways.** A batch input selects the batch output, so `--fields` on argv is read
+  against its `fields` and refuses with `USAGE` when it declares none (6.10). A lone `--commit` or `--plan-digest`
+  may also refuse with the `code` of the `requires` rule that states the pair (12.7, 10.8.1). 12.7's closing
+  sentence: a tool that recomputes its plan is not affected by the refusal, whether it detects changes per effect,
+  holds a lock, or needs neither.
+- **Checker (`approaches/checker.md`).** Fixture key `prepare`: argv arrays of any program, run without a shell,
+  once, in the template directory before `setup`, with the fixture's `env`; a failing step is a fixture error, not a
+  tool failure; the effects baseline is taken after `prepare` and `setup`; the tool's own state is still built by
+  `setup`. L1.validators runs without `prepare` too (an empty directory). At L0, an answer to `--cursor x` that is
+  neither the unknown-option refusal nor `CURSOR_INVALID` is read as paging. An advisory whose subject the run never
+  met is `unsupported` at any level (§2 now says so; L0.usage-hint already did). With `from-schema` and no
+  `schema --errors`, only L0.ok-exit is `unprovided` (L0.registry does not run). L1.paging never tests a changed
+  `--json` or `--all`, or a default added or removed. L2.destructive-half accepts the `requires` rule's `code`.
+- **Checker change that can fail a tool that passed the 1.1.1 checker.** An L0 command that answers `--cursor x`
+  with exit 0, or refuses it with a code other than L0.unknown-option's and `CURSOR_INVALID`, had no defined result
+  and is now read as paging, so without a `paged` entry or an observed `nextCursor` L0.page is `unprovided`. Such an
+  answer already breaks 6.9 (a paging command refuses a foreign cursor with `CURSOR_INVALID`), or 9.9 and 7.2.2 (an
+  unknown option refuses, with one code per situation); add a `paged` entry, or answer as those sections say.
+- **Validator (`scripts/check.ts`).** The cross-reference check reads `1.x.y` as a contract version, not a section
+  (section 1 has no third level); a bare patch version in the prose passed before only when one started a line.
+
 ## 1.1.1 (2026-11-01)
 
 A patch (15.1): wording, the schema pattern of `meta.contractVersion`, approaches and checker rows, from implementer
