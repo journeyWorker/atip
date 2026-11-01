@@ -1,10 +1,12 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.1.1**, adopted 2026-11-01 after two rounds of independent review. Version 1.1.0 was adopted 2026-11-01 after four rounds;
-1.1.1 is a patch (15.1) that clarifies wording, the schema pattern of `meta.contractVersion` and the checker from
-implementer feedback (Appendix A D30). Version 1.0.0 was adopted 2026-10-30 after six rounds; 1.1.0 added optional
-members and SHOULD/MAY rules and fixed how the contract is versioned (15, Appendix A D20-D29). Until revision 2 this
-contract was called `agent-cli/1`; it was renamed by owner decision 2026-10-28 (Appendix A, D13).
+Status: **1.1.2** (release candidate). Version 1.1.1 was adopted 2026-11-01 after two rounds of independent review;
+1.1.2 is a patch (15.1) that states which arguments bind a cursor, closes wording edges in 12.7 and 6.10 and adds a
+fixture key to the checker, from implementer feedback (Appendix A D31). 1.1.1 clarified wording, the schema pattern
+of `meta.contractVersion` and the checker (D30). Version 1.0.0 was adopted 2026-10-30 after six rounds and 1.1.0
+on 2026-11-01 after four; 1.1.0 added optional members and SHOULD/MAY rules and fixed how the contract is versioned
+(15, Appendix A D20-D29). Until revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision
+2026-10-28 (Appendix A, D13).
 
 ## Abstract
 
@@ -252,13 +254,18 @@ needs a value the tool does not have is not a `next` entry (see `hint`, 7.1). [A
 and `--all` (9.8). A paged answer carries `meta.page`: `returned` (items in this answer), `nextCursor` (opaque,
 present exactly when more items follow) and `total` (when known). When `nextCursor` is present, `meta.next` MUST
 contain an entry for the next page: the same invocation with `--cursor <nextCursor>` (at any position in `next`).
-A cursor is bound to the arguments of the invocation that produced it, except `--limit`, `--cursor` and
-`--fields`: given with different arguments, or not produced by this command, it refuses with `CURSOR_INVALID`
-(exit 2, 7.2.1), so changing a filter can never skip or repeat records silently. A report MAY also keep paging
-members of its own in `data` (a cursor in the report's schema from before the tool adopted ATIP); `meta.page` is the
-contract's paging and is authoritative when the two differ. An answer cut by size (not by paging) carries
-`meta.truncated`: `path` (JSON pointer of the list or value cut), `kept`, and `total`, `bytes`, `maxBytes` when
-known, plus a `next` entry that reaches the rest. [Appendix A D11.5, D16.1, D26]
+A cursor is bound to the arguments of the invocation that produced it, except the reserved options that never change
+the result set: `--limit`, `--cursor`, `--fields`, and `--json` and `--all` (a `--limit` without a bound). Given with
+different arguments, or not produced by this command, it refuses with `CURSOR_INVALID` (exit 2, 7.2.1), so changing
+a filter can never skip or repeat records silently. An argument given explicitly with its default value is given
+(10.8.1), so adding or removing it changes the arguments. Up to 1.1.1 this paragraph excepted only `--limit`,
+`--cursor` and `--fields` and did not say how a default compares, so in 1.1 a tool that also binds a cursor to
+`--json` or `--all`, or that compares an argument given with its default value as if it were left out, still
+conforms. It SHOULD do neither, and a caller relies on neither: it pages with the `next` entry's arguments unchanged.
+A report MAY also keep paging members of its own in `data` (a cursor in the report's schema from before the tool
+adopted ATIP); `meta.page` is the contract's paging and is authoritative when the two differ. An answer cut by size
+(not by paging) carries `meta.truncated`: `path` (JSON pointer of the list or value cut), `kept`, and `total`,
+`bytes`, `maxBytes` when known, plus a `next` entry that reaches the rest. [Appendix A D11.5, D16.1, D26, D31]
 
 6.10. **Field selection.** A command whose output declares `fields` (10.9) takes the reserved option
 `--fields <FIELDS>`: a comma-separated list of field paths from that declaration. A field path is a dot path into
@@ -350,7 +357,9 @@ constrains only its type, its items and its length, and projection keeps the len
 `when` (10.9.1). A command whose answer takes one of two shapes can declare two report outputs, each with its own
 `fields`, and `--fields` is read against the output the invocation selects. A single output whose root or record
 schema is a union (a `oneOf`, or an `anyOf` other than the two-branch nullable form above) has no projectable cut
-node there, so it declares no `fields` and takes no `--fields`. [Appendix A D30]
+node there, so it declares no `fields` and takes no `--fields`. A batch input selects the batch output (11.11), so
+`--fields` on argv is read against that output's `fields`, never the single-item output's, and refuses with `USAGE`,
+`field` `--fields`, when the batch output declares none. [Appendix A D30, D31]
 
 6.11. **Version of `data`.** `meta.schemaVersion` is the version of the output `data` follows (the one `meta.output`
 names when there are several). On a failure without `data`, it is the version of the output the invocation would
@@ -1258,16 +1267,17 @@ SHA-256 of the plan's RFC 8785 (JCS) canonical JSON. It does not expire; it is b
 another system makes the effects and computes the digest (a remote service the tool sends the plan to), the tool
 passes the digest through unchanged and the check of 12.7 happens there. [Appendix A D30]
 
-12.7. **Commit.** `--commit` and `--plan-digest` require each other (`USAGE`, or its registered finer replacement
-(7.2.2), otherwise). With both, the command
-recomputes the plan; if its digest differs it refuses with `PLAN_STALE` (exit 2, nothing changed, `meta.next` the
-preview invocation); otherwise it carries out exactly that plan and reports `committed: true`. A commit is not a
-lock: a tool whose plan can be invalidated between the check and the effects MUST detect it per effect or hold a
-lock. Because a commit acts only after the recomputed digest matches, a tool whose digest only the system that
-makes the effects can recompute, when that system cannot (a remote service too old to do it), refuses the commit
-and never acts unchecked; that refusal is a code of the tool's own with exit 2, not `PLAN_STALE`, whose `next`, the
-preview, cannot help. A tool that recomputes the plan itself and detects changes per effect is not affected.
-[Appendix A D30]
+12.7. **Commit.** `--commit` and `--plan-digest` require each other: one without the other refuses with `USAGE`, its
+registered finer replacement (7.2.2), or the `code` of the `requires` rule that states the relation (10.8.1). With
+both, the command recomputes the plan; if its digest differs it refuses with `PLAN_STALE` (exit 2, nothing changed,
+`meta.next` the preview invocation); otherwise it carries out exactly that plan and reports `committed: true`. A
+commit is not a lock: a tool whose plan can be invalidated between the check and the effects MUST detect it per
+effect or hold a lock. Because a commit acts only after the recomputed digest matches, a tool whose digest only the
+system that makes the effects can recompute, when that system cannot (a remote service too old to do it), refuses
+the commit and never acts unchecked; that refusal is a code of the tool's own with exit 2, not `PLAN_STALE`, whose
+`next`, the preview, cannot help. A tool that recomputes the plan itself is not affected: it detects changes per
+effect or holds a lock as above, or needs neither when its plan cannot be invalidated between the check and the
+effects. [Appendix A D30, D31]
 
 12.8. **Nothing else authorises.** `--commit` and `--plan-digest` are flag-only (11.6). No other option,
 environment variable or prompt authorises a destructive command: no `--yes`, no `--force`. This holds for
@@ -1380,7 +1390,7 @@ outside this rule. Text from other people and systems is data; guides SHOULD tel
 ## 15. Versioning
 
 15.1. **The contract.** This document is `atip/1`: the contract identifier names the major. Its versions are
-`MAJOR.MINOR.PATCH` (this one is `1.1.1`), and `CHANGELOG.md` lists each. A change belongs to the smallest class
+`MAJOR.MINOR.PATCH` (this one is `1.1.2`), and `CHANGELOG.md` lists each. A change belongs to the smallest class
 that holds it:
 
 | Class | What it may do | What it never does |
@@ -1517,8 +1527,8 @@ so only the comparison with what the tool emits remains; a fixture that lists th
 
 ## 18. Open questions
 
-Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, D20-D29 for 1.1.0, and D30 for
-1.1.1). None is open in 1.1.1.
+Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, D20-D29 for 1.1.0, D30 for 1.1.1
+and D31 for 1.1.2). None is open in 1.1.2.
 The two that revision 5 raised are kept here with their decisions, so that earlier references still resolve.
 
 **18.1. More structure in `json` domains.** Decided (D18): the `json` profile of 10.7.4 gets no `anyOf` and no
@@ -1615,6 +1625,10 @@ caller is `atip/2`.
 | # | Owner decision 2026-11-01, version 1.1.1, a patch (15.1) from implementer feedback | Where |
 |---|---|---|
 | D30 | Wording, the schema and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.1"`. The `meta.contractVersion` pattern no longer admits `"1.0"`, which 6.6 already never emits. Stated where implementers missed them: validators run for every invocation, before any precondition; selection is per output, and a union-shaped output offers no `--fields`; a switch's `default` is always `false`, with `defaultNote` for a configured effect; the `field` and `expected` of `schema`'s own refusals; previews and `--dry-run` make no effect whatever their exit; when a remote system that makes the effects also computes the digest, the tool passes it through, and a commit whose digest only that system can recompute, when it cannot, is refused with the tool's own exit-2 code (a tool that recomputes the plan itself and detects changes per effect is unaffected); `USAGE` in 12.7 includes its registered finer replacement. Checker: the `paged` fixture key and the non-paging observation, `"registry": "from-schema"`, L1.hint-command, and the scope of several L0 rows. | 6.10, 10.1.2, 10.7.3, 10.8.3, 12.2, 12.6, 12.7, 17.3, schema/envelope.schema.json, approaches/checker.md, approaches/typescript.md |
+
+| # | Owner decision 2026-11-01, version 1.1.2, a patch (15.1) from implementer feedback | Where |
+|---|---|---|
+| D31 | Wording and the checker only; no member, option, MUST or document kind is added, and `meta.contractVersion` stays `"1.1"`. One answer where tools diverged: a cursor is bound to every argument except the reserved options that never change the result set (`--json`, `--limit`, `--all`, `--cursor`, `--fields`), and an argument given with its default value is given. 1.1.1 excepted only `--limit`, `--cursor` and `--fields` and left the default open, so a tool that also binds `--json` or `--all`, or compares a default as left out, still conforms in 1.1: the answer is a SHOULD, and callers rely on neither. A batch input reads `--fields` against the batch output. A lone `--commit` or `--plan-digest` may also refuse with the `code` of the `requires` rule that states the pair; 12.7's closing sentence no longer reads as if a tool that recomputes its plan had to detect changes per effect rather than hold a lock. Checker: the fixture key `prepare` (programs that prepare the world before `setup`; the tool's state is still made by `setup`), L1.validators without `prepare` either, an L0 answer to `--cursor x` that shows neither absence nor `CURSOR_INVALID` counts as paging, an advisory without a subject in the run is `unsupported`, `from-schema` without `schema --errors` leaves only L0.ok-exit `unprovided`, and L2.destructive-half accepts the rule's `code`. | 6.9, 6.10, 12.7, approaches/checker.md, approaches/typescript.md |
 
 ## Appendix B. Prior art
 

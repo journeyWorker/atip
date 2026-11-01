@@ -1805,6 +1805,8 @@ function checkSpecReferences(): string[] {
     .replace(/`[^`\n]*`/g, "") // code spans (versions, values)
     .replace(/\[[^\]\n]*\]/g, "") // evidence citations name sections of other files
     .replace(/D\d+(\.\d+)?|question 18\.\d+|RFC \d+ §\d+/g, "") // decision ids, earlier question numbers, RFC sections
+    // Section 1 has no third level, so `1.x.y` is a contract version (`1.1.2`), never a reference.
+    .replace(/(?<![\w.])1\.\d+\.\d+(?![\w]|\.\d)/g, "")
   const missing = new Set<string>()
   // No section is numbered `N.0`, so `1.0` is the contract's version, not a reference.
   for (const m of prose.matchAll(/(?<![\w.])([1-9]\d?\.\d{1,2}(?:\.\d{1,2})?)(?![\w]|\.\d)/g))
