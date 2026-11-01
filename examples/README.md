@@ -138,7 +138,7 @@ bracketed path in its `meta`, or an unregistered warning in its schema answer is
 | a map-key selection in 1.0 | `invalid/report-ledger-entry-list-map-key.json` | rejected |
 | a 1.0 schema answer with a bracketed `meta.fields`, or an unregistered warning | `invalid/schema-ledger-meta-bracket-field.json`, `invalid/schema-ledger-meta-warning-unregistered.json` | rejected |
 | a 1.0 batch item whose `details` carry reasons; a 1.1 batch item whose reason, or whose detail's reason, is not registered; a registered one | `invalid/report-batch-item-details-reason-in-1-0.json`, `invalid/report-acme-member-tag-batch-item-reason-unregistered.json`, `invalid/report-acme-member-tag-batch-item-details-reason-unregistered.json`; `report-acme-member-tag-batch.json` | rejected; accepted |
-| `contractVersion` written as `"1.0"`; a stream that declares an unknown minor | `invalid/report-contract-version-explicit-1-0.json`, `invalid/stream-acme-build-start-contract-version-unknown.ndjson` | rejected |
+| `contractVersion` written as `"1.0"`, on an envelope or a stream start line (the schema pattern admits only `1.1` and later, spec 6.6); a stream that declares an unknown minor | `invalid/report-contract-version-explicit-1-0.json`, `invalid/stream-acme-build-start-contract-version-1-0.ndjson`, `invalid/stream-acme-build-start-contract-version-unknown.ndjson` | rejected |
 | the empty map key `attributes[""]`, a map under `labels[]`, a map written with `properties: {}` | `report-acme-member-list-fields-map-keys.json` | accepted |
 | `labels.region` where `labels` is an array of maps; the empty key left in unselected | `invalid/report-acme-member-list-fields-map-key-without-descent.json`, `invalid/report-acme-member-list-fields-empty-key-leak.json` | rejected |
 
