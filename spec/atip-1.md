@@ -347,10 +347,10 @@ constrains only its type, its items and its length, and projection keeps the len
 [Appendix A D11.5, D16.2]
 
 **Answers of more than one shape.** Selection is declared per output: each `outputs` entry has its own `fields` and
-`when` (10.9.1). A command whose answer takes one of two shapes declares two report outputs, each with its own
+`when` (10.9.1). A command whose answer takes one of two shapes can declare two report outputs, each with its own
 `fields`, and `--fields` is read against the output the invocation selects. A single output whose root or record
-schema is a union (`oneOf`, or an `anyOf` that is not null-admitting) has no projectable cut node there, so it
-declares no `fields` and takes no `--fields`. [Appendix A D30]
+schema is a union (a `oneOf`, or an `anyOf` other than the two-branch nullable form above) has no projectable cut
+node there, so it declares no `fields` and takes no `--fields`. [Appendix A D30]
 
 6.11. **Version of `data`.** `meta.schemaVersion` is the version of the output `data` follows (the one `meta.output`
 names when there are several). On a failure without `data`, it is the version of the output the invocation would
@@ -713,11 +713,11 @@ Normative shapes: `schema/schema-doc.schema.json`, plus the semantic rules of 10
 accepted.
 
 10.1.2. A path, `--errors`, `--error`, `--warnings`, `--warning` and `--search` are mutually exclusive (`USAGE`). An unknown path refuses
-with `UNKNOWN_COMMAND`, `field` `command` (7.1.1), and `expected` the valid words at the first unknown position;
-`expected` is omitted when no word is valid there (a word after a leaf command, as in `schema finding close nosuch`).
-The mutual-exclusion `USAGE`, when it carries `field` (7.1.3), names one of the arguments given, as 7.1.1 names
-arguments: the operand's value name for the path (`PATH`), an option as written (`--errors`). A tool that states the
-exclusion as an `atMostOne` rule in `schema`'s own command document (10.8.1) reports it like any broken `atMostOne`. A tool MAY give
+with `UNKNOWN_COMMAND` and `expected` the valid words at the first unknown position, omitted when no word is valid
+there (a word after a leaf command, as in `schema finding close nosuch`); when it carries `field`, that is
+`command` (7.1.1). The exclusion is an `atMostOne` rule of `schema`'s own command document (10.8.1); when its
+`USAGE` carries `field` (7.1.3), it names the argument as for any `atMostOne` (10.8.1), as 7.1.1 names arguments:
+`PATH` for the path, an option as written (`--errors`). A tool MAY give
 `schema` further options of its own (canon's `--as`). [Appendix A D30]
 
 10.1.3. Without `--json`, `schema` prints text that is not part of the contract; that text MAY be the JSON
@@ -1255,18 +1255,19 @@ depends on a file's contents, the digest covers them (12.6), so a changed file m
 12.6. **Digest.** The digest covers the plan: the effects and every input that determines them (arguments,
 the state and file contents read). It is opaque to callers. It SHOULD be `sha256:` followed by the lower-case hex
 SHA-256 of the plan's RFC 8785 (JCS) canonical JSON. It does not expire; it is bound to state, not to time. When
-another system makes the effects (a remote service the tool sends the plan to), that system may compute the digest;
-the tool passes it through unchanged, and the check of 12.7 happens where the effects are made. [Appendix A D30]
+another system makes the effects and computes the digest (a remote service the tool sends the plan to), the tool
+passes the digest through unchanged and the check of 12.7 happens there. [Appendix A D30]
 
 12.7. **Commit.** `--commit` and `--plan-digest` require each other (`USAGE`, or its registered finer replacement
 (7.2.2), otherwise). With both, the command
 recomputes the plan; if its digest differs it refuses with `PLAN_STALE` (exit 2, nothing changed, `meta.next` the
 preview invocation); otherwise it carries out exactly that plan and reports `committed: true`. A commit is not a
 lock: a tool whose plan can be invalidated between the check and the effects MUST detect it per effect or hold a
-lock. Because a commit acts only after the recomputed digest matches, a tool that cannot have the plan rechecked
-where the effects are made (a remote service too old to do it) refuses the commit and never acts unchecked; that
-refusal is a code of the tool's own with exit 2, not `PLAN_STALE`, whose `next`, the preview, cannot help. [Appendix
-A D30]
+lock. Because a commit acts only after the recomputed digest matches, a tool whose digest only the system that
+makes the effects can recompute, when that system cannot (a remote service too old to do it), refuses the commit
+and never acts unchecked; that refusal is a code of the tool's own with exit 2, not `PLAN_STALE`, whose `next`, the
+preview, cannot help. A tool that recomputes the plan itself and detects changes per effect is not affected.
+[Appendix A D30]
 
 12.8. **Nothing else authorises.** `--commit` and `--plan-digest` are flag-only (11.6). No other option,
 environment variable or prompt authorises a destructive command: no `--yes`, no `--force`. This holds for
@@ -1613,7 +1614,7 @@ caller is `atip/2`.
 
 | # | Owner decision 2026-11-01, version 1.1.1, a patch (15.1) from implementer feedback | Where |
 |---|---|---|
-| D30 | Wording, the schema and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.1"`. The `meta.contractVersion` pattern no longer admits `"1.0"`, which 6.6 already never emits. Stated where implementers missed them: validators run for every invocation, before any precondition; selection is per output, and a union-shaped output offers no `--fields`; a switch's `default` is always `false`, with `defaultNote` for a configured effect; the `field` and `expected` of `schema`'s own refusals; previews and `--dry-run` make no effect whatever their exit; a remote system that makes the effects may compute the digest; a commit that cannot be rechecked where the effects are made is refused with the tool's own exit-2 code; `USAGE` in 12.7 includes its registered finer replacement. Checker: the `paged` fixture key and the non-paging observation, `"registry": "from-schema"`, L1.hint-command, and the scope of several L0 rows. | 6.10, 10.1.2, 10.7.3, 10.8.3, 12.2, 12.6, 12.7, 17.3, schema/envelope.schema.json, approaches/checker.md, approaches/typescript.md |
+| D30 | Wording, the schema and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.1"`. The `meta.contractVersion` pattern no longer admits `"1.0"`, which 6.6 already never emits. Stated where implementers missed them: validators run for every invocation, before any precondition; selection is per output, and a union-shaped output offers no `--fields`; a switch's `default` is always `false`, with `defaultNote` for a configured effect; the `field` and `expected` of `schema`'s own refusals; previews and `--dry-run` make no effect whatever their exit; when a remote system that makes the effects also computes the digest, the tool passes it through, and a commit whose digest only that system can recompute, when it cannot, is refused with the tool's own exit-2 code (a tool that recomputes the plan itself and detects changes per effect is unaffected); `USAGE` in 12.7 includes its registered finer replacement. Checker: the `paged` fixture key and the non-paging observation, `"registry": "from-schema"`, L1.hint-command, and the scope of several L0 rows. | 6.10, 10.1.2, 10.7.3, 10.8.3, 12.2, 12.6, 12.7, 17.3, schema/envelope.schema.json, approaches/checker.md, approaches/typescript.md |
 
 ## Appendix B. Prior art
 
