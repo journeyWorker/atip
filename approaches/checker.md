@@ -179,11 +179,15 @@ repository with one commit, which `finding add` requires). Each entry is an argv
 program on `PATH`; the entries run once, in order, in the template directory, before `setup`, without a shell, with
 the environment, stdin and timeout of §3 (`HOME` in the template, the fixture's `env` included). A step that exits
 non-zero, cannot be started or exceeds the timeout is an error of the fixture, not a failure of the tool: the
-checker stops with its own error naming the step, and reports no check. `prepare` is for what the tool reads but
-does not own; the state the tool keeps is still built by `setup`, through the tool's own argv, so the checks run
-against state the tool produced itself.
+checker stops with its own error naming the step, and reports no check, so no level is passed by that run.
+`prepare` is for what the tool reads but does not own; the state the tool keeps is still built by `setup`, through
+the tool's own argv, so the checks run against state the tool produced itself. A step whose program resolves to the
+binary under test (`--bin`) is therefore a fixture error too, and the checker's report lists every `prepare` step
+with its argv, so that whoever reviews a level claim sees what was made outside the tool.
 
-`setup` runs once into the template directory, after `prepare`; every sequence (§3) runs in its own copy. The
+`setup` runs once into the template directory, after `prepare`; every sequence (§3) runs in its own copy. A
+`setup` step that exits non-zero, cannot be started or exceeds the timeout is a fixture error in the same way: the
+checker stops, reports the step and its answer, and reports no check. The
 effects check (§4) starts from that copy, so nothing `prepare` or `setup` made counts as an effect of a checked
 invocation. The checker never runs a `write` or `destructive` command that the fixture does not list. A command with
 no fixture entry makes its stateful checks `unprovided`.
@@ -310,7 +314,7 @@ registry says and need no fixture.
 | L1.help-line | M | `--help` | first line mentions `schema` | 4.7 | — |
 | L1.defaults | S | every option with a non-null `default` | the `--help` text, when it shows a default in a recognised form (`[default: X]`, `(default X)`), shows the same value | 10.7.3 | — |
 | L1.deterministic | S | `schema --json` twice, and every command document twice | byte-identical | 10.2.4 | — |
-| L1.paging | M (when offered) | the fixture's `paged` invocations (§5) with `--limit 1`; without `paged`, each observed invocation whose answer carried `meta.page.nextCursor`, with `--limit 1` | `meta.page.returned` ≤ 1; running the `next` entry that L0.page found, in the same sequence, returns the next item; the cursor given with a filter argument changed to another value refuses with `CURSOR_INVALID`, `field: "--cursor"`. A changed `--json` or `--all`, and an argument added or removed with its default value, are never tested: spec 6.9 leaves both answers conforming in 1.1. With neither, `unsupported` or `unprovided` as §5 decides | 6.9, 7.2.1 | `commands` |
+| L1.paging | M (when offered) | the fixture's `paged` invocations (§5) with `--limit 1`; without `paged`, each observed invocation whose answer carried `meta.page.nextCursor`, with `--limit 1` | `meta.page.returned` ≤ 1; running the `next` entry that L0.page found, in the same sequence, returns the next item; the cursor given with a changed filter argument refuses with `CURSOR_INVALID`, `field: "--cursor"`. With neither, `unsupported` or `unprovided` as §5 decides | 6.9, 7.2.1 | `commands` |
 | L1.fields | M (when offered) | the fixture's `fields` selections, including a nested path and an `[]` path when declared | `meta.fields` = selection plus `keep`; no unselected member at any depth (6.10 steps 1-3); selected members present whenever the unprojected answer has them (compared with the same invocation without `--fields`, in the same sequence); data validates against the output schema with `required` reduced along the kept paths; an unknown path refuses with `USAGE`, `field: "--fields"` | 6.10 | `commands` |
 
 ### L2
@@ -427,7 +431,8 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | fixture `"registry": "from-schema"`, and a run emits a code that `schema --errors` does not list | L0.registry |
 | `--commit` alone refused with a registered `OPTION_REQUIRED` that the tool uses instead of `USAGE` (spec 7.2.2) | (none: L2.destructive-half passes) |
 | `--plan-digest x` alone refused with the `code` its command's `requires` rule declares for the pair (spec 10.8.1) | (none: L2.destructive-half passes) |
-| a fixture `prepare` step exits non-zero | (none: the checker stops with a fixture error and reports no check, §5) |
+| a fixture `prepare` step exits non-zero, or runs the binary under test | (none: the checker stops with a fixture error and reports no check, §5) |
+| a fixture `setup` step exits non-zero | (none: the checker stops with a fixture error and reports no check, §5) |
 | a registry whose exit for one code differs from the fixture's | L0.registry |
 | a tool declaring 1.0 that emits `error.reason`, or a 1.1 tool whose envelope lacks `meta.contractVersion` or says `1.0` | L0.contract-version |
 | stderr holds a progress line in JSON mode | L0.stderr-quiet (advisory; no MUST check fails) |
