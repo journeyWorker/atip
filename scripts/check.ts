@@ -18,7 +18,8 @@
 //                                           output schema of the command's own self-description example
 //
 // Every tool document (all but caller-*) is also checked against the contract minor it declares in
-// `meta.contractVersion` (spec 15.7, 10.13 rule 16): absent means 1.0, which allows none of the 1.1 additions.
+// `meta.contractVersion` (spec 15.7, 10.13 rule 16): absent means 1.0, which allows none of the 1.1 additions, and
+// the rules a minor adds for its own documents (1.2: more flag-only options, `STOPPED_MIDWAY`) apply from that minor.
 //
 // The command documents and registries of the valid examples (examples/schema-*.json) are the reference that
 // reports, inputs and streams are checked against. Every document is validated against its JSON Schema before
@@ -148,10 +149,10 @@ const openSchema = (name: string): ValidateFunction => {
 }
 
 /** The contract minors this repository describes; a tool declares one of them (spec 15.7). */
-const MINORS = ["1.0", "1.1"]
+const MINORS = ["1.0", "1.1", "1.2"]
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/
 
-// The twelve reserved codes (spec 7.2.1), and the ones every tool registers.
+// The reserved codes of 1.0 and 1.1 (spec 7.2.1), and the ones every tool registers.
 const RESERVED: Record<string, { exit: number; retryable: boolean }> = {
   USAGE: { exit: 2, retryable: false },
   UNKNOWN_COMMAND: { exit: 2, retryable: false },
@@ -171,6 +172,10 @@ const PLACEHOLDER = /<[A-Z][A-Z0-9_]*>|\.\.\.|…/
 const INTEGER = /^-?(0|[1-9][0-9]*)$/
 const JSON_NUMBER = /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$/
 const FLAG_ONLY = ["json", "input", "commit", "plan-digest"]
+// Since 1.2 (spec 11.6, 10.13 rules 8 and 14), for a document that declares 1.2: the paging and field-selection
+// options are flag-only too, and `STOPPED_MIDWAY` is a reserved code. A 1.1 or 1.0 document is not held to either.
+const FLAG_ONLY_SINCE_12 = ["limit", "cursor", "all", "fields"]
+const RESERVED_SINCE_12: Record<string, { exit: number; retryable: boolean }> = { STOPPED_MIDWAY: { exit: 1, retryable: false } }
 // Keywords a cut node may use (spec 6.10): annotations, and the shape keywords of its kind.
 const ANNOTATIONS = ["title", "description", "default", "examples", "deprecated", "readOnly", "writeOnly", "$comment"]
 const CUT_OBJECT: Record<string, true> = Object.fromEntries(
@@ -1046,7 +1051,7 @@ function projectedSchema(doc: CommandDoc, output: Output, trie: Trie): ValidateF
 }
 
 // ---- self-description (spec 10.13) ----
-function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11: boolean) {
+function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11: boolean, v12: boolean) {
   const all = [...doc.operands, ...doc.options]
   // Rule 9: names and short letters are unique.
   const names = new Set<string>()
@@ -1141,6 +1146,8 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
   for (const o of doc.options) {
     if (reservedShape[o.name] && o.valueType !== reservedShape[o.name]) problems.push(`reserved option --${o.name} must be ${reservedShape[o.name]}`)
     if (FLAG_ONLY.includes(o.name) && o.flagOnly !== true) problems.push(`--${o.name} must be flagOnly`)
+    if (v12 && FLAG_ONLY_SINCE_12.includes(o.name) && o.flagOnly !== true)
+      problems.push(`--${o.name} must be flagOnly in a document that declares 1.2 (spec 11.6, 10.13 rule 8)`)
   }
   // Rule 10: the fragment contract.
   if (doc.input) {
@@ -1233,6 +1240,8 @@ function minorOf(meta: { contractVersion?: string }, problems: string[]): boolea
   else if (!MINORS.includes(minor)) problems.push(`contractVersion ${minor} is not a minor this repository describes (spec 15.7)`)
   return minor !== "1.0"
 }
+/** Whether the document declares 1.2 or later, so that the rules 1.2 adds for its own documents apply. */
+const declares12 = (meta: Meta) => MINORS.indexOf(declaredMinor(meta)) >= MINORS.indexOf("1.2")
 const since11 = (allowed: boolean, what: string, problems: string[]) =>
   allowed || problems.push(`${what} is since 1.1, but the document declares contract 1.0 (spec 10.13 rule 16)`)
 
@@ -1259,7 +1268,7 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
     for (const o of data.outputs)
       for (const p of [...(o.fields?.paths ?? []), ...(o.fields?.keep ?? []), ...(o.fields?.default ?? [])])
         if (parseFieldPath(p)?.some((s) => s.bracket)) since11(v11, `the bracketed field path ${p}`, problems)
-    checkCommandDoc(data, meta.tool, problems, v11)
+    checkCommandDoc(data, meta.tool, problems, v11, declares12(meta))
   }
   if (data.kind === "group" && data.command !== data.path.join(" ")) problems.push(`group ${data.command} is not its path ${data.path.join(" ")}`)
   if (data.kind === "tree" || data.kind === "group") {
@@ -1284,7 +1293,7 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
     for (const e of entries) {
       if (seen.has(e.code)) problems.push(`code ${e.code} is registered twice (spec 10.13 rule 14)`)
       seen.add(e.code)
-      const reserved = RESERVED[e.code]
+      const reserved = RESERVED[e.code] ?? (declares12(meta) ? RESERVED_SINCE_12[e.code] : undefined)
       if (reserved && (reserved.exit !== e.exit || reserved.retryable !== e.retryable)) problems.push(`reserved ${e.code} has the wrong exit or retryable`)
       if (e.reasons) since11(v11, `the reasons of ${e.code}`, problems)
       const reasons = (e.reasons ?? []).map((r) => r.reason)
@@ -1755,15 +1764,16 @@ function checkCallerDocument(name: string, text: string, problems: string[]) {
 }
 
 /**
- * Spec 15.7: a tool whose build declares 1.1 sets `contract` and `contractVersion` on every envelope (a stream's end
+ * Spec 15.7: a tool whose build declares 1.1 or later sets `contract` and `contractVersion` on every envelope (a stream's end
  * result included) and on every stream start line, so that an unmarked document is always a 1.0 document. Checked
  * last, so that a document's own first problem is reported first.
  */
 function checkMarkers(name: string, text: string, problems: string[]) {
   const marked = (o: { contract?: string; contractVersion?: string } | undefined, what: string, tool?: string) => {
-    if (!tool || (toolMinors.get(tool) ?? "1.0") === "1.0") return
+    const minor = (tool && toolMinors.get(tool)) ?? "1.0"
+    if (minor === "1.0") return
     if (!o?.contract || !o.contractVersion)
-      problems.push(`${tool} declares 1.1, but ${what} lacks contract or contractVersion (spec 15.7)`)
+      problems.push(`${tool} declares ${minor}, but ${what} lacks contract or contractVersion (spec 15.7)`)
   }
   if (name.endsWith(".ndjson")) {
     const lines = text.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as StreamLine & { meta?: Meta })
