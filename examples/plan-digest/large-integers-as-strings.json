@@ -1,5 +1,5 @@
 {
-  "description": "Integers beyond ±(2^53-1) are strings in a plan, as spec 10.7.5 makes them for argument values: as JSON numbers they would be rounded by some parsers and canonicalized differently, so the digest would depend on the implementation. As strings their digits pass through unchanged; within the range they stay numbers.",
+  "description": "Integers beyond ±(2^53-1) are strings in a plan, as spec 9.7.5 makes them for argument values: as JSON numbers they would be rounded by some parsers and canonicalized differently, so the digest would depend on the implementation. As strings their digits pass through unchanged; within the range they stay numbers.",
   "plan": {
     "effects": [
       {"action": "update", "record": "18446744073709551615", "detail": {"sequence": "9007199254740993", "previous": "-9223372036854775808"}}

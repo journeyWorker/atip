@@ -50,8 +50,8 @@
     ],
     "errors": [
       "DEPLOYMENT_NOT_FOUND",
-      "DEPLOY_FAILED",
-      "DEPLOY_WAIT_TIMEOUT",
+      "DEPLOYMENT_FAILED",
+      "DEPLOYMENT_TIMEOUT",
       "INTERNAL",
       "USAGE"
     ],
@@ -97,8 +97,8 @@
   "meta": {
     "command": "schema",
     "contract": "atip/1",
-    "contractVersion": "1.2",
-    "schemaVersion": "1.2",
+    "contractVersion": "1.3",
+    "schemaVersion": "1.3",
     "tool": "acme",
     "toolVersion": "1.0.0"
   }

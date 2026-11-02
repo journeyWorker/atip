@@ -51,14 +51,14 @@
         "fix": "Use the deployment deploy start reported"
       },
       {
-        "code": "DEPLOY_FAILED",
+        "code": "DEPLOYMENT_FAILED",
         "exit": 1,
         "retryable": false,
         "meaning": "The deployment ran and failed; data.state is failed",
         "fix": "Read the worker's log for the deployment, fix the cause and start a new deployment"
       },
       {
-        "code": "DEPLOY_WAIT_TIMEOUT",
+        "code": "DEPLOYMENT_TIMEOUT",
         "exit": 1,
         "retryable": true,
         "meaning": "The deployment had not ended when --timeout passed",
@@ -165,7 +165,7 @@
         "fix": "Try again; if it persists, check the store's address in acme.yaml"
       },
       {
-        "code": "TAG_RESERVED",
+        "code": "TAG_INVALID",
         "exit": 2,
         "retryable": false,
         "meaning": "The tag is reserved for the directory (admin, owner)",
@@ -197,8 +197,8 @@
   "meta": {
     "command": "schema",
     "contract": "atip/1",
-    "contractVersion": "1.3",
-    "schemaVersion": "1.3",
+    "contractVersion": "1.4",
+    "schemaVersion": "1.4",
     "tool": "acme",
     "toolVersion": "1.0.0"
   }

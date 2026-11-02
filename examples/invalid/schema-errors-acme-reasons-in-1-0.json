@@ -51,14 +51,14 @@
         "fix": "Use the deployment deploy start reported"
       },
       {
-        "code": "DEPLOY_FAILED",
+        "code": "DEPLOYMENT_FAILED",
         "exit": 1,
         "retryable": false,
         "meaning": "The deployment ran and failed; data.state is failed",
         "fix": "Read the worker's log for the deployment, fix the cause and start a new deployment"
       },
       {
-        "code": "DEPLOY_WAIT_TIMEOUT",
+        "code": "DEPLOYMENT_TIMEOUT",
         "exit": 1,
         "retryable": true,
         "meaning": "The deployment had not ended when --timeout passed",
@@ -164,7 +164,7 @@
         "fix": "Try again; if it persists, check the store's address in acme.yaml"
       },
       {
-        "code": "TAG_RESERVED",
+        "code": "TAG_INVALID",
         "exit": 2,
         "retryable": false,
         "meaning": "The tag is reserved for the directory (admin, owner)",

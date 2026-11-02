@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "data": {
+    "kind": "error",
+    "error": {
+      "code": "DEPLOYMENT_INCOMPLETE",
+      "exit": 2,
+      "retryable": false,
+      "meaning": "deploy start made changes and stopped before it queued the deployment",
+      "fix": "Read what was done (meta.next) before running the command again"
+    }
+  },
+  "meta": {
+    "command": "schema",
+    "contract": "atip/1",
+    "contractVersion": "1.3",
+    "schemaVersion": "1.3",
+    "tool": "acme",
+    "toolVersion": "1.0.0"
+  }
+}

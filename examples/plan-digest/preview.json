@@ -1,5 +1,5 @@
 {
-  "description": "A plan shaped like a destructive preview's: two deletes and the audit line the commit appends (spec 12.4), with the arguments and the digests of the files read as inputs (spec 12.6).",
+  "description": "A plan shaped like a destructive preview's: two deletes and the audit line the commit appends (spec 11.4), with the arguments and the digests of the files read as inputs (spec 11.6).",
   "plan": {
     "effects": [
       {"action": "delete", "path": ".canon/sessions/2026-09-30.jsonl"},

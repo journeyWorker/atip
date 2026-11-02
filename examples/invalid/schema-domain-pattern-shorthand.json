@@ -134,7 +134,7 @@
       },
       "BatchMemberTagReport": {
         "type": "object",
-        "description": "Deliberately permissive: spec 11.11 makes the generic batch-report schema apply whatever this says."
+        "description": "Deliberately permissive: spec 10.11 makes the generic batch-report schema apply whatever this says."
       },
       "MemberTagInput": {
         "type": "object",
@@ -162,7 +162,7 @@
         }
       },
       "MemberTagArguments": {
-        "description": "The argument object (spec 11.7 step 6): numbers are numbers here, whatever their spelling in the document.",
+        "description": "The argument object (spec 10.7 step 6): numbers are numbers here, whatever their spelling in the document.",
         "type": "object",
         "required": [
           "operands",
@@ -192,8 +192,8 @@
   "meta": {
     "command": "schema",
     "contract": "atip/1",
-    "contractVersion": "1.2",
-    "schemaVersion": "1.2",
+    "contractVersion": "1.3",
+    "schemaVersion": "1.3",
     "tool": "acme",
     "toolVersion": "1.0.0"
   }

@@ -1,15 +1,15 @@
 {
   "ok": false,
   "error": {
-    "code": "STOPPED_MIDWAY",
-    "reason": "ENVIRONMENT_FROZEN",
+    "code": "DEPLOYMENT_INCOMPLETE",
+    "reason": "DEPLOYMENT_DENIED",
     "message": "Recorded deployment d-7f3a, then staging refused to queue it: the environment was frozen in between",
     "retryable": false
   },
   "meta": {
     "command": "deploy start",
     "contract": "atip/1",
-    "contractVersion": "1.2",
+    "contractVersion": "1.3",
     "schemaVersion": "1.0",
     "tool": "acme",
     "toolVersion": "1.0.0",

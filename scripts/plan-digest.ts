@@ -1,4 +1,4 @@
-// Recomputes the plan digest test vectors in examples/plan-digest/ (spec 12.6): for each file, the RFC 8785 (JCS)
+// Recomputes the plan digest test vectors in examples/plan-digest/ (spec 11.6): for each file, the RFC 8785 (JCS)
 // canonical form of `plan` must equal `canonical`, and `sha256:` followed by the lower-case hex SHA-256 of its UTF-8
 // bytes must equal `digest`. The canonicalizer below is this repository's own; the expected values were computed
 // with two other implementations (see examples/README.md). Its number form is first checked against the values of

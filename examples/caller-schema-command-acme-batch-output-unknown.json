@@ -75,7 +75,7 @@
         "arguments": [
           "tag"
         ],
-        "code": "TAG_RESERVED",
+        "code": "TAG_INVALID",
         "description": "The tags admin and owner are reserved for the directory and cannot be added by hand. The domain's pattern admits them; this check refuses them.",
         "rejects": [
           "acme member tag 7 --tag admin --json"
@@ -89,7 +89,7 @@
       "INPUT_TOO_LARGE",
       "INTERNAL",
       "MEMBER_NOT_FOUND",
-      "TAG_RESERVED",
+      "TAG_INVALID",
       "USAGE"
     ],
     "outputs": [
@@ -150,7 +150,7 @@
       },
       "BatchMemberTagReport": {
         "type": "object",
-        "description": "Deliberately permissive: spec 11.11 makes the generic batch-report schema apply whatever this says."
+        "description": "Deliberately permissive: spec 10.11 makes the generic batch-report schema apply whatever this says."
       },
       "MemberTagInput": {
         "type": "object",
@@ -178,7 +178,7 @@
         }
       },
       "MemberTagArguments": {
-        "description": "The argument object (spec 11.7 step 6): numbers are numbers here, whatever their spelling in the document. It also states the TAG_RESERVED validator, which a validator's rejects invocation is not checked against (10.13 rule 13).",
+        "description": "The argument object (spec 10.7 step 6): numbers are numbers here, whatever their spelling in the document. It also states the TAG_INVALID validator, which a validator's rejects invocation is not checked against (9.13 rule 13).",
         "type": "object",
         "required": [
           "operands",
@@ -215,8 +215,8 @@
   "meta": {
     "command": "schema",
     "contract": "atip/1",
-    "contractVersion": "1.3",
-    "schemaVersion": "1.3",
+    "contractVersion": "1.4",
+    "schemaVersion": "1.4",
     "tool": "acme",
     "toolVersion": "1.0.0"
   }

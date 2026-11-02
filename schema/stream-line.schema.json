@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://atip.dev/1/stream-line.schema.json",
   "title": "atip/1 stream line",
-  "description": "One NDJSON line of a stream command in JSON mode (spec 13.5): a start line first, event lines, an end line last. An event's `data` follows the output's eventRef. The order is a rule over the whole stream, checked by scripts/check.ts.",
+  "description": "One NDJSON line of a stream command in JSON mode (spec 13): a start line first, event lines, an end line last. An event's `data` follows the output's eventRef. The order is a rule over the whole stream, checked by scripts/check.ts.",
   "oneOf": [
     { "$ref": "#/$defs/start" },
     { "$ref": "#/$defs/event" },
@@ -21,7 +21,7 @@
         "command": { "$ref": "envelope.schema.json#/$defs/meta/properties/command" },
         "schemaVersion": { "$ref": "envelope.schema.json#/$defs/schemaVersion" },
         "output": {
-          "description": "The stream output that runs; required when the command declares more than one output (spec 13.5.1).",
+          "description": "The stream output that runs; required when the command declares more than one output (spec 13.1).",
           "type": "string",
           "pattern": "^[A-Za-z][A-Za-z0-9]*$"
         }

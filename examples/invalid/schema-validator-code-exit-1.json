@@ -202,7 +202,7 @@
             ]
           },
           "planDigest": {
-            "description": "The plan digest to pass to --plan-digest. canon's own description (a hex digest of the effects) is superseded by spec 12.6: `sha256:` and the digest of the plan's effects and every input that determines them (proposed).",
+            "description": "The plan digest to pass to --plan-digest. canon's own description (a hex digest of the effects) is superseded by spec 11.6: `sha256:` and the digest of the plan's effects and every input that determines them (proposed).",
             "type": "string"
           },
           "rungs": {

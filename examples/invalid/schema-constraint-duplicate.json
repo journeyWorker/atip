@@ -348,7 +348,7 @@
       },
       "FindingCloseInput": {
         "type": "object",
-        "description": "Fragment schema: no required keys (spec 10.10).",
+        "description": "Fragment schema: no required keys (spec 9.10).",
         "additionalProperties": false,
         "properties": {
           "operands": {

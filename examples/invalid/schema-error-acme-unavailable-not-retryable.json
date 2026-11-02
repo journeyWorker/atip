@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "data": {
+    "kind": "error",
+    "error": {
+      "code": "STORE_UNAVAILABLE",
+      "exit": 2,
+      "retryable": false,
+      "meaning": "The page store could not be reached when the command was to start",
+      "fix": "Try again; if it persists, check the store's address in acme.yaml"
+    }
+  },
+  "meta": {
+    "command": "schema",
+    "contract": "atip/1",
+    "contractVersion": "1.3",
+    "schemaVersion": "1.3",
+    "tool": "acme",
+    "toolVersion": "1.0.0"
+  }
+}

@@ -100,7 +100,7 @@
       "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
     },
     "fieldPath": {
-      "description": "A path into a record (spec 6.10). The first branch is the 1.0 grammar, unchanged: `name`, `.name` and `[]` after a name. The second, since 1.1, also admits a bracketed key `[\"…\"]` for a member whose name is not an identifier, the empty name included and U+0000 excluded, since argv cannot carry it (spec 6.10); inside the quotes only `\\\"` and `\\\\` are escapes. Brackets are valid only for such names (spec 10.13 rule 15) and only in documents that declare 1.1 (rule 16).",
+      "description": "A path into a record (spec 6.10). The first branch is the 1.0 grammar, unchanged: `name`, `.name` and `[]` after a name. The second, since 1.1, also admits a bracketed key `[\"…\"]` for a member whose name is not an identifier, the empty name included and U+0000 excluded, since argv cannot carry it (spec 6.10); inside the quotes only `\\\"` and `\\\\` are escapes. Brackets are valid only for such names (spec 9.13 rule 15) and only in documents that declare 1.1 (rule 16).",
       "type": "string",
       "anyOf": [
         { "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?(\\.[A-Za-z_][A-Za-z0-9_]*(\\[\\])?)*$" },

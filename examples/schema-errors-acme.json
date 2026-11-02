@@ -44,6 +44,41 @@
         ]
       },
       {
+        "code": "DEPLOYMENT_DENIED",
+        "exit": 2,
+        "retryable": false,
+        "meaning": "The deployment was refused before it started because a policy does not allow it now",
+        "fix": "Act on the reason's fix, then deploy again",
+        "reasons": [
+          {
+            "reason": "ENVIRONMENT_FROZEN",
+            "meaning": "The environment is frozen and takes no deployments",
+            "fix": "Wait until the environment is unfrozen (acme.yaml names who freezes it), then deploy again"
+          }
+        ]
+      },
+      {
+        "code": "DEPLOYMENT_FAILED",
+        "exit": 1,
+        "retryable": false,
+        "meaning": "The deployment ran and failed; data.state is failed",
+        "fix": "Read the worker's log for the deployment, fix the cause and start a new deployment"
+      },
+      {
+        "code": "DEPLOYMENT_INCOMPLETE",
+        "exit": 1,
+        "retryable": false,
+        "meaning": "deploy start made changes and stopped before it queued the deployment, because a later step was refused; the reason is the refused code",
+        "fix": "Read what was done (meta.next), then act on the reason's fix before running the command again",
+        "reasons": [
+          {
+            "reason": "DEPLOYMENT_DENIED",
+            "meaning": "deploy start recorded the deployment, then the environment refused to queue it with DEPLOYMENT_DENIED because it was frozen in between",
+            "fix": "acme deploy status <DEPLOYMENT> --json shows the recorded deployment; deploy again once the environment is unfrozen"
+          }
+        ]
+      },
+      {
         "code": "DEPLOYMENT_NOT_FOUND",
         "exit": 2,
         "retryable": false,
@@ -51,25 +86,11 @@
         "fix": "Use the deployment deploy start reported"
       },
       {
-        "code": "DEPLOY_FAILED",
-        "exit": 1,
-        "retryable": false,
-        "meaning": "The deployment ran and failed; data.state is failed",
-        "fix": "Read the worker's log for the deployment, fix the cause and start a new deployment"
-      },
-      {
-        "code": "DEPLOY_WAIT_TIMEOUT",
+        "code": "DEPLOYMENT_TIMEOUT",
         "exit": 1,
         "retryable": true,
         "meaning": "The deployment had not ended when --timeout passed",
         "fix": "Wait again with the same command (meta.next)"
-      },
-      {
-        "code": "ENVIRONMENT_FROZEN",
-        "exit": 2,
-        "retryable": false,
-        "meaning": "The environment is frozen and takes no deployments",
-        "fix": "Wait until the environment is unfrozen (acme.yaml names who freezes it), then deploy again"
       },
       {
         "code": "ENVIRONMENT_NOT_FOUND",
@@ -176,20 +197,6 @@
         "fix": "Check the page slug; it is the last part of the page's address"
       },
       {
-        "code": "STOPPED_MIDWAY",
-        "exit": 1,
-        "retryable": false,
-        "meaning": "A command that works in steps stopped after an earlier step made changes, because a later step was refused; the reason is the refusal's code",
-        "fix": "Read what was done (meta.next), then act on the reason's fix before running the command again",
-        "reasons": [
-          {
-            "reason": "ENVIRONMENT_FROZEN",
-            "meaning": "deploy start recorded the deployment, then the environment refused to queue it because it was frozen in between",
-            "fix": "acme deploy status <DEPLOYMENT> --json shows the recorded deployment; deploy again once the environment is unfrozen"
-          }
-        ]
-      },
-      {
         "code": "STORE_UNAVAILABLE",
         "exit": 2,
         "retryable": true,
@@ -197,11 +204,18 @@
         "fix": "Try again; if it persists, check the store's address in acme.yaml"
       },
       {
-        "code": "TAG_RESERVED",
+        "code": "TAG_INVALID",
         "exit": 2,
         "retryable": false,
-        "meaning": "The tag is reserved for the directory (admin, owner)",
-        "fix": "Choose another tag"
+        "meaning": "The tag is not allowed",
+        "fix": "Choose another tag",
+        "reasons": [
+          {
+            "reason": "RESERVED",
+            "meaning": "The tag is reserved for the directory (admin, owner)",
+            "fix": "Choose another tag"
+          }
+        ]
       },
       {
         "code": "TEAM_NOT_FOUND",
@@ -229,8 +243,8 @@
   "meta": {
     "command": "schema",
     "contract": "atip/1",
-    "contractVersion": "1.2",
-    "schemaVersion": "1.2",
+    "contractVersion": "1.3",
+    "schemaVersion": "1.3",
     "tool": "acme",
     "toolVersion": "1.0.0"
   }
