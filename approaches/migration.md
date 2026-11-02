@@ -86,7 +86,7 @@ Legend: ✅ conforms · 🟡 close, mechanical change · 🔴 missing or differe
 | Commit `next` from normalised arguments (12.5) | | *unmeasured* | — |
 | `async`, waiting (13.2, 13.3) | | ✅ (`waitingOn`) | n/a |
 | Operation keys (13.4) | `--request-id`-style options | n/a | n/a |
-| Stream protocol (13.5), with `output` on the start line when there are several outputs (13.5.1) | raw NDJSON without start and end lines | 🔴 `dashboard` | 🔴 `compile --stream`, `play --events` |
+| Stream protocol (13.5), with `output` on the start line when there are several outputs (13.5.1) | raw NDJSON without start and end lines | n/a: `dashboard` is a report that then serves until signalled, not a stream (spec 1.2, 8.4) | 🔴 `compile --stream`, `play --events` |
 | `skills show` (14) | a guide only on a website | 🟡 `NAME` required; `{name, version, markdown}` | 🔴 |
 | Guide commands parse (14.5) | | ✅ `docs_lint.rs` | — |
 
@@ -133,10 +133,13 @@ Rust crate.
    instead of failing preflight.
 5. A purge preview lists the audit line its commit appends among `effects` (spec 12.4); lifted report schemas lose
    their own `$id`; a `--cursor` given with other filter arguments refuses (spec 6.9).
-6. `skills show` with an optional `NAME` and `{name, text, guides, full}`; `dashboard` on the stream protocol,
-   with `output` on the start line when it declares more than one output (spec 13.5.1); `subject show` keeps
-   its cache as a `read` command whose `effectNote` names the cache (spec 12.1), and writes it only when it
-   succeeds: never on a refusal, a preview or `--dry-run` (12.2), so it writes the cache only after its checks pass.
+6. `skills show` with an optional `NAME` and `{name, text, guides, full}`; `dashboard` stays a command with a report
+   output: with `--json` it prints one envelope and then serves until it is signalled, which its `effectNote` says.
+   It is not a stream (a server is out of scope beyond its starting command's output, spec 1.2, and a run ended by a
+   signal promises no envelope, 8.4), and the fixture lists it in `notRun` (approaches/checker.md §5) so the checker
+   never waits on it; `subject show` keeps its cache as a `read` command whose `effectNote` names the cache (spec
+   12.1), and writes it only when it succeeds: never on a refusal, a preview or `--dry-run` (12.2), so it writes the
+   cache only after its checks pass.
 7. Run the checker at L2 in CI. Every consumer of canon JSON (hooks, the skill, the website) moves in the same
    release.
 
@@ -158,7 +161,7 @@ Callers: the website and every harness that parses lute JSON. approaches/rust.md
 | Batch failure during execution is always `BATCH_INCOMPLETE` with the batch report (11.11) | canon | `INPUT_ELEMENT_FAILED` and the exit overrides go; batch consumers read `data.items`. |
 | Output schemas for artifacts (10.9) | canon (`skills show`, `export`, approval payloads, `completion`) | A JSON representation type per artifact command; `skills show` data changes shape (a major bump). |
 | Exit 1 = ran with a negative or incomplete answer, 2 = refused to run (8.1, 8.3, D15) | every tool | Registries split I/O and backend codes into a precondition code (2) and a during-the-work code (1); exits move. |
-| Stream protocol (13.5) | lute, canon | NDJSON outputs gain start and end lines; consumers that read raw lines change. |
+| Stream protocol (13.5) | lute | NDJSON outputs gain start and end lines; consumers that read raw lines change. |
 
 ## 5. Cutover rules
 

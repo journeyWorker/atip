@@ -22,7 +22,9 @@ document kind is added; `meta.contractVersion` stays `"1.2"`, and a tool that co
   `skip_serializing_if` on every `Option`, or the deserialize view for a pass-through record, never mixed in one
   output.
 - **Migration (`approaches/migration.md`).** A `read` command may keep the cache or audit line its `effectNote`
-  names, written on success only (12.1, 12.2); it need not become a `write`.
+  names, written on success only (12.1, 12.2); it need not become a `write`. canon's `dashboard` stays a report
+  command that prints one envelope and then serves until signalled, listed in the fixture's `notRun`; it is not a
+  stream (1.2, 8.4).
 
 ## 1.2.0 (2026-11-02)
 
