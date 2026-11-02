@@ -1,6 +1,7 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.3.0, release candidate**, a minor (15.1) that restates the contract as a protocol (Appendix A D36).
+Status: **1.3.0**, adopted 2026-11-03 after two rounds of independent review and three implementer reviews: a minor
+(15.1) that restates the contract as a protocol (Appendix A D36).
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
 (V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 

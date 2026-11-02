@@ -9,19 +9,20 @@ TypeScript/Effect 4, but nothing in it depends on either. Conformance is defined
 that level (spec 3). The checker, `atip check` (`approaches/checker.md`), is a tool that tests a built binary against
 the spec; what it finds is evidence for or against a claim, not the definition of one (spec 3.7).
 
-**Status: 1.3.0, release candidate.** 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
-(2026-11-01), after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1 and 1.1.2
-(2026-11-01) are patches that clarify wording and checks. 1.2.0 (2026-11-02) is a minor whose new rules bind only a
-tool that declares 1.2: which arguments bind a paging cursor, `--fields` without `--json`, flag-only paging and
-selection options, the order of the stateless checks, and the reserved code `STOPPED_MIDWAY`; 1.2.1 (2026-11-02) is a
-patch that adds plan digest test vectors and approaches notes. 1.3.0 restates the contract as a protocol, organised
-around the exchanges between caller and tool; adds the code-name convention (`<SUBJECT>_<CONDITION>`, where the
-condition fixes exit and retryability) with twelve core codes; keeps warning codes in the warning registry; and moves
-the rules that only a checker needs to `approaches/implementation.md`. It adds no member, document kind or enum
-value, and changes no schema shape. The decisions behind all of the versions are in Appendix A of the spec; no
-question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, 15.7 lists what differs in the
-earlier minors (and the one place where 1.1.0 changes what 1.0.0 promised callers), and 15.8 says what 1.3 means for
-callers. Until its second revision the contract was called `agent-cli/1`.
+**Status: 1.3.0** (2026-11-03). 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0 (2026-11-01),
+after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1 and 1.1.2 (2026-11-01) are
+patches that clarify wording and checks. 1.2.0 (2026-11-02) is a minor whose new rules bind only a tool that declares
+1.2: which arguments bind a paging cursor, `--fields` without `--json`, flag-only paging and selection options, the
+order of the stateless checks, and the reserved code `STOPPED_MIDWAY`; 1.2.1 (2026-11-02) is a patch that adds plan
+digest test vectors and approaches notes. 1.3.0 (2026-11-03), after two rounds of review and three implementer reviews,
+restates the contract as a protocol, organised around the exchanges between caller and tool; adds the code-name
+convention (`<SUBJECT>_<CONDITION>`, where the condition fixes the exit and the default retryability) with fifteen
+conditions and twelve core codes; keeps warning codes in the warning registry; and moves the rules that only a checker
+needs to `approaches/implementation.md`. It adds no member, document kind or enum value, and changes no schema shape.
+The decisions behind all of the versions are in Appendix A of the spec; no question is open. `CHANGELOG.md` lists the
+versions; spec 15 says how versions work, 15.7 lists what differs in the earlier minors (and the one place where 1.1.0
+changes what 1.0.0 promised callers), and 15.8 says what 1.3 means for callers. Until its second revision the contract
+was called `agent-cli/1`.
 
 **Names.** Contract id `atip/1` (`meta.contract`); schema `$id`s under `https://atip.dev/1/` (placeholders); the
 checker command `atip check`; the TypeScript package `@journeykit/atip` and the Rust crate `atip`. OpenCLI is out of

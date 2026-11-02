@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0 (unreleased)
+## 1.3.0 (2026-11-03)
 
 A minor (15.1) that restates the contract as a protocol (D36). It adds no member, option, document kind or enum
 value, and no schema changes shape. Its new MUSTs bind only a document that declares `meta.contractVersion` `"1.3"`;
