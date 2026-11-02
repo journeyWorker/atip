@@ -7,15 +7,16 @@ streams, and the guide shipped in the binary. It is written for tools built with
 TypeScript/Effect 4, but nothing in it depends on either, and it is checked against built binaries. A tool that
 passes is "ATIP 1.2 L1 conformant" (contract minor, then level L0, L1 or L2) for a release.
 
-**Status: 1.2.0, release candidate.** 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
+**Status: 1.2.0** (2026-11-02). 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
 (2026-11-01), after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1 and 1.1.2
 (2026-11-01) are patches that clarify wording and checks, tighten the schema pattern of `meta.contractVersion` and
-add the checker's `prepare` fixture key. 1.2.0 is a minor whose new rules bind only a tool that declares 1.2: which
-arguments bind a paging cursor, `--fields` without `--json`, flag-only paging and selection options, the order of
-the stateless checks, and the reserved code `STOPPED_MIDWAY` for work stopped part-way. The decisions behind all of
-them are in Appendix A of the spec; no question is open. `CHANGELOG.md` lists the versions; spec 15 says how
-versions work, 15.9 states the one place where 1.1.0 changes what 1.0.0 promised callers, and 15.10 why 1.2.0
-changes nothing a 1.1 caller relied on. Until its second revision the contract was called `agent-cli/1`.
+add the checker's `prepare` fixture key. 1.2.0 (2026-11-02), after two rounds of review, is a minor whose new rules
+bind only a tool that declares 1.2: which arguments bind a paging cursor, `--fields` without `--json`, flag-only
+paging and selection options, the order of the stateless checks, and the reserved code `STOPPED_MIDWAY` for work
+stopped part-way. The decisions behind all of them are in Appendix A of the spec; no question is open.
+`CHANGELOG.md` lists the versions; spec 15 says how versions work, 15.9 states the one place where 1.1.0 changes
+what 1.0.0 promised callers, and 15.10 why 1.2.0 changes nothing a 1.1 caller relied on. Until its second revision
+the contract was called `agent-cli/1`.
 
 **Names.** Contract id `atip/1` (`meta.contract`); schema `$id`s under `https://atip.dev/1/` (placeholders); the
 checker command `atip check`; the TypeScript package `@journeykit/atip` and the Rust crate `atip`. OpenCLI is out of

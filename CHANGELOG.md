@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (unreleased)
+## 1.2.0 (2026-11-02)
 
 A minor (15.1) from implementer feedback. It adds no member, option, document kind or enum value. Its new rules
 bind only a tool that declares `meta.contractVersion` `"1.2"`; a tool that declares 1.1 or 1.0 stays conforming
@@ -19,9 +19,10 @@ govern), and nothing a 1.1 caller that reads the tool's self-description relied 
   what it does to text is the tool's.
 - **Flag-only paging and selection (9.8, 11.6, 10.13 rule 8, D32).** In a 1.2 tool `limit`, `cursor`, `all` and
   `fields` are flag-only, like `json`, `input`, `commit` and `plan-digest`.
-- **Order of the stateless checks (11.7 step 6, D32).** In a 1.2 tool argv parse failures come first; then
-  `required`, domains, constraints and validators, in that order: operands in order and then options in declaration
-  order for `required` and domains, declaration order for constraints and validators. The first failure answers.
+- **Order of the stateless checks (11.7 step 6, D32).** In a 1.2 tool argv parse failures come first, the one at the
+  earliest argv position among several; then `required`, domains, constraints and validators, in that order:
+  operands in order and then options in declaration order for `required` and domains, declaration order for
+  constraints and validators. The first failure answers.
 - **A constraint's argument at fault (10.8.1, D32).** In a 1.2 document `field` names: for `requires` the first
   missing `then` name; for `forbids` the first given `then` name; for `atMostOne`, and `exactlyOne` with several
   given, the first given name; for `atLeastOne`, and `exactlyOne` with none given, the first name. For every minor,
@@ -42,17 +43,18 @@ govern), and nothing a 1.1 caller that reads the tool's self-description relied 
   cursor digest and next-page entry. `migration.md` §7: moving from 1.1 to 1.2. The contract constants say `"1.2"`.
 - **Checker (`approaches/checker.md`).** A fixture invocation listed to succeed and refused with a registered
   precondition code makes its checks `unprovided`, naming the code (§5); `unprovided` still fails the level. A
-  refusal from a stateless step (a parse code, an `INPUT_*` code, a code declared on a domain, a constraint or a
-  validator) is `fail`; at L0, with no command document, only the reserved stateless codes are known, and with no
-  registry at all any other exit-2 code counts as a precondition. L1.walk names rule 3's `in` check on switches and
-  counts. L2.input-pointer's omitted key is omitted from argv too. L2.input-conflict's same-value case uses other
-  spellings (member order, `1.0`/`1`, `-0`/`0`). New L2.input-env: an `env` value applies only to an argument absent
-  after the merge. L0.hint-form, L1.hint-command and L2.input-usage run for 1.1 or later. For a 1.2 claim:
-  L1.grammar (four more flag-only options), L1.registry (`STOPPED_MIDWAY`), L1.paging (`--all` instead of `--limit`
-  continues; an option other than a switch or count added at its default refuses; a changed `env` variable refuses;
-  after `--input -` the next-page entry carries no default or `env` value and continues), L1.fields (`--fields`
-  without `--json`), new L1.check-order (every pair of stages, two domains, constraint against validator),
-  L2.input-refusals (paging keys in a document). A §8 obligation for `STOPPED_MIDWAY`. Seeded violations for each.
+  refusal from a stateless step (a parse code, an `INPUT_*` code, a code declared on a constraint or a validator, or
+  a code observed as a domain's refusal, since a domain declares none) is `fail`; at L0, with no command document,
+  only the reserved stateless codes are known, and with no registry at all any other exit-2 code counts as a
+  precondition. L1.walk names rule 3's `in` check on switches and counts. L2.input-pointer's omitted key is omitted
+  from argv too. L2.input-conflict's same-value case uses other spellings (member order, `1.0`/`1`, `-0`/`0`). New
+  L2.input-env: an `env` value applies only to an argument absent after the merge. L0.hint-form, L1.hint-command and
+  L2.input-usage run for 1.1 or later. For a 1.2 claim: L1.grammar (four more flag-only options), L1.registry
+  (`STOPPED_MIDWAY`), L1.paging (`--all` instead of `--limit` continues; an option other than a switch or count
+  added at its default refuses; a changed `env` variable refuses; after `--input -` the next-page entry carries no
+  default or `env` value and continues), L1.fields (`--fields` without `--json`), new L1.check-order (every pair of
+  stages, two parse failures, two domains, constraint against validator), L2.input-refusals (paging keys in a
+  document). A §8 obligation for `STOPPED_MIDWAY`. Seeded violations for each.
 - **Checker changes that can fail a tool that passed the 1.1.2 checker, at its own claim.** L2.input-conflict's
   spelling variants, L2.input-env and L2.input-pointer's truly omitted key enforce 11.7 steps 3 and 5 and 11.8,
   which 1.0 already had. Every other new row runs only for a 1.2 claim, and the refused-invocation rule turns some

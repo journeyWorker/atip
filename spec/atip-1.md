@@ -1,13 +1,13 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.2.0** (release candidate). Version 1.1.2 was adopted 2026-11-01 after two rounds of independent review.
-1.2.0 is a minor (15.1) from implementer feedback: for a document that declares 1.2 it states which arguments bind a
-cursor, accepts `--fields` without `--json`, makes the paging and field-selection options flag-only and fixes the
-order of the stateless checks, and it reserves `STOPPED_MIDWAY` for work stopped part-way (Appendix A D32, D33); it
-also carries wording and checker rows a patch could carry (D34). 1.1.1 and 1.1.2 were patches (D30, D31). Version
-1.0.0 was adopted 2026-10-30 after six rounds and 1.1.0 on 2026-11-01 after four; 1.1.0 added optional members and
-SHOULD/MAY rules and fixed how the contract is versioned (15, Appendix A D20-D29). Until revision 2 this contract
-was called `agent-cli/1`; it was renamed by owner decision 2026-10-28 (Appendix A, D13).
+Status: **1.2.0**, adopted 2026-11-02 after two rounds of independent review. Version 1.1.2 was adopted 2026-11-01
+after two rounds. 1.2.0 is a minor (15.1) from implementer feedback: for a document that declares 1.2 it states
+which arguments bind a cursor, accepts `--fields` without `--json`, makes the paging and field-selection options
+flag-only and fixes the order of the stateless checks, and it reserves `STOPPED_MIDWAY` for work stopped part-way
+(Appendix A D32, D33); it also carries wording and checker rows a patch could carry (D34). 1.1.1 and 1.1.2 were
+patches (D30, D31). Version 1.0.0 was adopted 2026-10-30 after six rounds and 1.1.0 on 2026-11-01 after four; 1.1.0
+added optional members and SHOULD/MAY rules and fixed how the contract is versioned (15, Appendix A D20-D29). Until
+revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision 2026-10-28 (Appendix A, D13).
 
 ## Abstract
 
@@ -1237,15 +1237,16 @@ the command's self-description, so they give the same answer whatever the tool's
    with or without `--input`, the first failure is the answer and the order is fixed, so that two tools give one
    invocation the same code and `field`: a failure to parse argv (an unknown option or command word, a missing
    option value, a value that is not of its valueType or not one of its `possibleValues`) comes before step 6 (with
-   `--input`, at step 3); step 6 then checks `required`, then domains, then constraints, then validators; within
-   `required` and within domains, operands in their order and then options in their declaration order; constraints
-   and validators each in their declaration order. 10.8.3 puts validators last for every minor. What is validated
-   is the **argument object**: `operands` (normalised; when the explicit operands end before an operand that has a
-   non-null default, that default is appended, and for a variadic operand the elements of its default array, in
-   order), and for every option that is not flag-only, under its camelCase name, its normalised explicit value,
-   else its `env` value, else its default when that is not `null`. Integers and numbers are JSON numbers there,
-   whatever their spelling in argv or the document; a repeatable option is an array; a count is one integer. It is
-   what `argumentsRef` describes (10.10).
+   `--input`, at step 3), and among several parse failures the one at the earliest argv position answers; step 6
+   then checks `required`, then domains, then constraints, then validators; within `required` and within domains,
+   operands in their order and then options in their declaration order; constraints and validators each in their
+   declaration order. 10.8.3 puts validators last for every minor. What is validated is the **argument object**:
+   `operands` (normalised; when the explicit operands end before an operand that has a non-null default, that
+   default is appended, and for a variadic operand the elements of its default array, in order), and for every
+   option that is not flag-only, under its camelCase name, its normalised explicit value, else its `env` value, else
+   its default when that is not `null`. Integers and numbers are JSON numbers there, whatever their spelling in argv
+   or the document; a repeatable option is an array; a count is one integer. It is what `argumentsRef` describes
+   (10.10).
 7. **Execution.** The command resolves the objects it names, checks its state-dependent preconditions (8.3) and
    does its work. A precondition that fails here, before the work started, is a refusal (exit 2) of a single
    invocation; in a batch it is the failure of that item (11.11).
@@ -1716,7 +1717,7 @@ caller is `atip/2`.
 
 | # | Owner decision 2026-11-02, version 1.2.0, a minor (15.1) from implementer feedback | Where |
 |---|---|---|
-| D32 | Paging, field selection and the stateless checks, for a document that declares 1.2 only (the D27 pattern, now named in 15.1's MINOR row: a tool that declares 1.1 or 1.0 keeps its behaviour and stays conforming). A cursor is bound to every argument except the reserved options that never change the result set (`--json`, `--limit`, `--all`, `--cursor`, `--fields`); an argument given explicitly with its default value is given, except a switch given `false` or a count given `0`, which are absent (10.7.2); a value taken from an `env` variable is bound though not given. The next-page entry carries exactly the arguments the invocation gave explicitly, never a default or an `env` value, so it continues in the same environment. This relaxes 1.1's binding of `--json` and `--all` only where the result set is the same (15.1, 15.10). `--fields` is parsed and validated with or without `--json`; what it does to text is the tool's. `limit`, `cursor`, `all` and `fields` are flag-only. Argv parse failures come before step 6 of 11.7, which checks `required`, domains, constraints and validators in that order (operands then options in declaration order for the first two, declaration order for the last two), and the first failure answers. A constraint's argument at fault is defined per rule. Declined: per-item batch `--fields`, since 1.1.2 already gives one answer (`USAGE` when the batch output declares no `fields`). | 6.9, 6.10, 9.8, 10.8.1, 10.13 rules 8 and 16, 11.6, 11.7, 15.1, 15.10 |
+| D32 | Paging, field selection and the stateless checks, for a document that declares 1.2 only (the D27 pattern, now named in 15.1's MINOR row: a tool that declares 1.1 or 1.0 keeps its behaviour and stays conforming). A cursor is bound to every argument except the reserved options that never change the result set (`--json`, `--limit`, `--all`, `--cursor`, `--fields`); an argument given explicitly with its default value is given, except a switch given `false` or a count given `0`, which are absent (10.7.2); a value taken from an `env` variable is bound though not given. The next-page entry carries exactly the arguments the invocation gave explicitly, never a default or an `env` value, so it continues in the same environment. This relaxes 1.1's binding of `--json` and `--all` only where the result set is the same (15.1, 15.10). `--fields` is parsed and validated with or without `--json`; what it does to text is the tool's. `limit`, `cursor`, `all` and `fields` are flag-only. Argv parse failures come before step 6 of 11.7 (the one at the earliest argv position first), which checks `required`, domains, constraints and validators in that order (operands then options in declaration order for the first two, declaration order for the last two), and the first failure answers. A constraint's argument at fault is defined per rule. Declined: per-item batch `--fields`, since 1.1.2 already gives one answer (`USAGE` when the batch output declares no `fields`). | 6.9, 6.10, 9.8, 10.8.1, 10.13 rules 8 and 16, 11.6, 11.7, 15.1, 15.10 |
 | D33 | `STOPPED_MIDWAY` (exit 1, not retryable) is reserved since 1.2: a command that works in steps and stops after a step made effects, because a later step meets what the command refuses before its work, reports it with that refusal's code as `reason` (the refusal's own reason is not carried), instead of a during-the-work twin of every refusal code. SHOULD for a tool that declares 1.2, so a tool with a code of its own stays conforming; a 1.2 tool that registers the name gives it this exit, retryability and meaning. The reserved meaning holds only in a document that declares 1.2: in an earlier document the code is the tool's own, read by its registry entry. The name is the one the first adopter already uses and says what happened and when; an `*_INCOMPLETE` name was not chosen because exit 1 already covers incomplete answers that made no effect (8.1, 8.5), and `BATCH_INCOMPLETE` stays the code of a batch, under which a stopped item is `failed` with `STOPPED_MIDWAY`. Reserved reason `PLAN_STALE`, for a commit that detects a changed plan between its effects (12.7). | 7.2.1, 7.2.3, 8.1, 8.3.2, 10.13 rule 14, 12.7, 15.10 |
 | D34 | Wording and checker rows that a patch could carry, released with 1.2.0: a check that reads an option's `env` value is a validator; a constraint's `field` follows the rule's own order, never argv's; rules said of a document that declares 1.1 hold for every later minor. Approaches: report schemas compare by meaning, not bytes; defaults are decoded at definition; the 1.2 cursor digest. Checker: the `in` check on switches and counts named; `--input` rows for environment values and spelling variants; a fixture invocation listed to succeed and refused with a precondition code is `unprovided`, never a pass, while a refusal from a stateless step is `fail`; the 1.2 rows for paging, `--fields` without `--json`, flag-only document keys, the check order and `STOPPED_MIDWAY`. | 7.1.2, 7.5.2, 6.10, 10.8.1, 11.2, approaches/typescript.md, approaches/checker.md |
 
