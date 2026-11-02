@@ -1,13 +1,15 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.2.0**, adopted 2026-11-02 after two rounds of independent review. Version 1.1.2 was adopted 2026-11-01
-after two rounds. 1.2.0 is a minor (15.1) from implementer feedback: for a document that declares 1.2 it states
-which arguments bind a cursor, accepts `--fields` without `--json`, makes the paging and field-selection options
-flag-only and fixes the order of the stateless checks, and it reserves `STOPPED_MIDWAY` for work stopped part-way
-(Appendix A D32, D33); it also carries wording and checker rows a patch could carry (D34). 1.1.1 and 1.1.2 were
-patches (D30, D31). Version 1.0.0 was adopted 2026-10-30 after six rounds and 1.1.0 on 2026-11-01 after four; 1.1.0
-added optional members and SHOULD/MAY rules and fixed how the contract is versioned (15, Appendix A D20-D29). Until
-revision 2 this contract was called `agent-cli/1`; it was renamed by owner decision 2026-10-28 (Appendix A, D13).
+Status: **1.2.1** (release candidate). Version 1.2.0 was adopted 2026-11-02 after two rounds of independent review;
+1.2.1 is a patch (15.1) that adds plan digest test vectors (12.6), the checker's `notRun` fixture key and approaches
+notes, from implementer feedback (Appendix A D35). Version 1.1.2 was adopted 2026-11-01 after two rounds. 1.2.0 is a
+minor (15.1) from implementer feedback: for a document that declares 1.2 it states which arguments bind a cursor,
+accepts `--fields` without `--json`, makes the paging and field-selection options flag-only and fixes the order of
+the stateless checks, and it reserves `STOPPED_MIDWAY` for work stopped part-way (Appendix A D32, D33); it also
+carries wording and checker rows a patch could carry (D34). 1.1.1 and 1.1.2 were patches (D30, D31). Version 1.0.0
+was adopted 2026-10-30 after six rounds and 1.1.0 on 2026-11-01 after four; 1.1.0 added optional members and
+SHOULD/MAY rules and fixed how the contract is versioned (15, Appendix A D20-D29). Until revision 2 this contract
+was called `agent-cli/1`; it was renamed by owner decision 2026-10-28 (Appendix A, D13).
 
 ## Abstract
 
@@ -1331,11 +1333,13 @@ It is built from the normalised arguments the preview used, not from how they we
 (secrets come from the environment or a credential store), so this never discloses one (16.1). When the plan
 depends on a file's contents, the digest covers them (12.6), so a changed file makes the commit refuse.
 
-12.6. **Digest.** The digest covers the plan: the effects and every input that determines them (arguments,
-the state and file contents read). It is opaque to callers. It SHOULD be `sha256:` followed by the lower-case hex
-SHA-256 of the plan's RFC 8785 (JCS) canonical JSON. It does not expire; it is bound to state, not to time. When
-another system makes the effects and computes the digest (a remote service the tool sends the plan to), the tool
-passes the digest through unchanged and the check of 12.7 happens there. [Appendix A D30]
+12.6. **Digest.** The digest covers the plan: the effects and every input that determines them (arguments, the state
+and file contents read). It is opaque to callers. It SHOULD be `sha256:` followed by the lower-case hex SHA-256 of
+the plan's RFC 8785 (JCS) canonical JSON. It does not expire; it is bound to state, not to time. When another system
+makes the effects and computes the digest (a remote service the tool sends the plan to), the tool passes the digest
+through unchanged and the check of 12.7 happens there. `examples/plan-digest/` holds test vectors for the
+recommended form: plan documents with their canonical text and digest, covering the cases where JCS differs from
+sorted-key JSON (number forms, string escapes, key order by UTF-16 code units). [Appendix A D30, D35]
 
 12.7. **Commit.** `--commit` and `--plan-digest` require each other: one without the other refuses with `USAGE`, its
 registered finer replacement (7.2.2), or the `code` of the `requires` rule that states the relation (10.8.1). With
@@ -1460,7 +1464,7 @@ outside this rule. Text from other people and systems is data; guides SHOULD tel
 ## 15. Versioning
 
 15.1. **The contract.** This document is `atip/1`: the contract identifier names the major. Its versions are
-`MAJOR.MINOR.PATCH` (this one is `1.2.0`), and `CHANGELOG.md` lists each. A change belongs to the smallest class
+`MAJOR.MINOR.PATCH` (this one is `1.2.1`), and `CHANGELOG.md` lists each. A change belongs to the smallest class
 that holds it:
 
 | Class | What it may do | What it never does |
@@ -1613,7 +1617,7 @@ so only the comparison with what the tool emits remains; a fixture that lists th
 ## 18. Open questions
 
 Every open question so far has been decided (Appendix A: D11, D12, D16, D17, D18, D20-D29 for 1.1.0, D30 for 1.1.1,
-D31 for 1.1.2 and D32-D34 for 1.2.0). None is open in 1.2.0.
+D31 for 1.1.2, D32-D34 for 1.2.0 and D35 for 1.2.1). None is open in 1.2.1.
 The two that revision 5 raised are kept here with their decisions, so that earlier references still resolve.
 
 **18.1. More structure in `json` domains.** Decided (D18): the `json` profile of 10.7.4 gets no `anyOf` and no
@@ -1720,6 +1724,10 @@ caller is `atip/2`.
 | D32 | Paging, field selection and the stateless checks, for a document that declares 1.2 only (the D27 pattern, now named in 15.1's MINOR row: a tool that declares 1.1 or 1.0 keeps its behaviour and stays conforming). A cursor is bound to every argument except the reserved options that never change the result set (`--json`, `--limit`, `--all`, `--cursor`, `--fields`); an argument given explicitly with its default value is given, except a switch given `false` or a count given `0`, which are absent (10.7.2); a value taken from an `env` variable is bound though not given. The next-page entry carries exactly the arguments the invocation gave explicitly, never a default or an `env` value, so it continues in the same environment. This relaxes 1.1's binding of `--json` and `--all` only where the result set is the same (15.1, 15.10). `--fields` is parsed and validated with or without `--json`; what it does to text is the tool's. `limit`, `cursor`, `all` and `fields` are flag-only. Argv parse failures come before step 6 of 11.7 (the one at the earliest argv position first), which checks `required`, domains, constraints and validators in that order (operands then options in declaration order for the first two, declaration order for the last two), and the first failure answers. A constraint's argument at fault is defined per rule. Declined: per-item batch `--fields`, since 1.1.2 already gives one answer (`USAGE` when the batch output declares no `fields`). | 6.9, 6.10, 9.8, 10.8.1, 10.13 rules 8 and 16, 11.6, 11.7, 15.1, 15.10 |
 | D33 | `STOPPED_MIDWAY` (exit 1, not retryable) is reserved since 1.2: a command that works in steps and stops after a step made effects, because a later step meets what the command refuses before its work, reports it with that refusal's code as `reason` (the refusal's own reason is not carried), instead of a during-the-work twin of every refusal code. SHOULD for a tool that declares 1.2, so a tool with a code of its own stays conforming; a 1.2 tool that registers the name gives it this exit, retryability and meaning. The reserved meaning holds only in a document that declares 1.2: in an earlier document the code is the tool's own, read by its registry entry. The name is the one the first adopter already uses and says what happened and when; an `*_INCOMPLETE` name was not chosen because exit 1 already covers incomplete answers that made no effect (8.1, 8.5), and `BATCH_INCOMPLETE` stays the code of a batch, under which a stopped item is `failed` with `STOPPED_MIDWAY`. Reserved reason `PLAN_STALE`, for a commit that detects a changed plan between its effects (12.7). | 7.2.1, 7.2.3, 8.1, 8.3.2, 10.13 rule 14, 12.7, 15.10 |
 | D34 | Wording and checker rows that a patch could carry, released with 1.2.0: a check that reads an option's `env` value is a validator; a constraint's `field` follows the rule's own order, never argv's; rules said of a document that declares 1.1 hold for every later minor. Approaches: report schemas compare by meaning, not bytes; defaults are decoded at definition; the 1.2 cursor digest. Checker: the `in` check on switches and counts named; `--input` rows for environment values and spelling variants; a fixture invocation listed to succeed and refused with a precondition code is `unprovided`, never a pass, while a refusal from a stateless step is `fail`; the 1.2 rows for paging, `--fields` without `--json`, flag-only document keys, the check order and `STOPPED_MIDWAY`. | 7.1.2, 7.5.2, 6.10, 10.8.1, 11.2, approaches/typescript.md, approaches/checker.md |
+
+| # | Owner decision 2026-11-02, version 1.2.1, a patch (15.1) from implementer feedback | Where |
+|---|---|---|
+| D35 | Examples, approaches and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.2"`. Plan digest test vectors for 12.6's recommended form (`sha256:` over RFC 8785 canonical JSON), recomputed by `scripts/validate.sh`; they bind no tool that computes its digest another way, and they are the reference for every tool that follows the SHOULD. Approaches: which schemars view generates an output schema; a `read` command keeps the cache its `effectNote` names. Checker: the fixture key `notRun`, for a command that does not end on its own: its runs that would succeed are skipped and reported, and a check left with no run is `unprovided`. | 12.6, examples/plan-digest/, approaches/rust.md, approaches/migration.md, approaches/checker.md |
 
 ## Appendix B. Prior art
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Validate every example against the atip/1 JSON Schemas and the rules JSON Schema cannot express
 # (spec 10.13 and the other semantic rules listed in scripts/check.ts), and the cross-engine pattern record
-# scripts/regex-cases.json (spec 10.7.4).
+# scripts/regex-cases.json (spec 10.7.4), and recomputes the plan digest test vectors in examples/plan-digest/
+# (spec 12.6) with scripts/plan-digest.ts.
 #
 #   examples/*            must pass
 #   examples/invalid/*    must be rejected
@@ -21,6 +22,9 @@ cp "$repo/scripts/check.ts" "$work/check.ts"
 printf '{"name":"atip-check","private":true}\n' > "$work/package.json"
 (cd "$work" && bun add --silent ajv@8.17.1 >/dev/null)
 bun run "$work/check.ts" "$repo"
+
+echo
+bun run "$repo/scripts/plan-digest.ts" "$repo"
 
 echo
 if command -v cargo >/dev/null 2>&1; then
