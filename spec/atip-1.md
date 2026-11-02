@@ -225,9 +225,10 @@ follow, `total` when known), and with `nextCursor` a next-page entry in `meta.ne
 decides the result set (every argument except `--json`, `--limit`, `--all`, `--cursor` and `--fields`, values taken
 from an `env` variable included); given with other values, or not issued by this command, it refuses with
 `CURSOR_INVALID`, `field` `--cursor`. Whether giving an argument at its default value rebinds a cursor is the tool's
-choice (`approaches/implementation.md` §3), so a caller continues only with the next-page entry verbatim, changing at
-most `--limit`, `--all` and `--fields`. `meta.page` is authoritative over any paging members a report keeps. An answer
-cut by size carries `meta.truncated` and a `next` entry that reaches the rest. [Appendix A D11.5, D16.1, D32]
+choice (`approaches/implementation.md` §3), so a caller continues with the next-page entry's arguments, changing at
+most `--limit` (or `--all`, a `--limit` without a bound) and `--fields`. `meta.page` is authoritative over any paging
+members a report keeps. An answer cut by size carries `meta.truncated` and a `next` entry that reaches the rest.
+[Appendix A D11.5, D16.1, D32]
 
 6.10. **Field selection.** A command whose output declares `fields` (9.9.1) takes `--fields`, a comma-separated list
 of the paths that declaration makes selectable, and parses it the same way with or without `--json`. The answer keeps
@@ -282,7 +283,7 @@ UPPER     = %x41-5A
 
 | Condition | Exit | Retryable | The command | The caller |
 |---|---|---|---|---|
-| `INVALID` | 2 | no | refused a value the caller gave (an argument, a document, a file it named) | changes the value `field` names |
+| `INVALID` | 2 | no | refused a value the caller or its user supplied (an argument, a document, a file it named, a configuration the user edits) | changes the value `field` names |
 | `REQUIRED` | 2 | no | needs something not given or not set up (an argument, a choice, a configuration, a login, an outcome to reconcile, 12.4) | supplies it, as `hint` or `next` says |
 | `NOT_FOUND` | 2 | no | was named an object that does not exist | checks the name, or lists |
 | `EXISTS` | 2 | no | would create an object that exists | uses it or another name |
@@ -292,16 +293,18 @@ UPPER     = %x41-5A
 | `DENIED` | 2 | no | does not permit this caller (a role, a policy, a person-only act) | hands it over (`hint`) |
 | `UNSUPPORTED` | 2 | no | cannot do a well-formed request here (build, platform, remote version) | uses another way |
 | `TOO_LARGE` | 2 | no | met a request whose size, count or cost exceeds a declared limit (a value outside its domain is `INVALID`) | splits or narrows it |
-| `CORRUPT` | 2 | no | found state it keeps or wrote damaged or inconsistent (a manifest, a pack, a stored row) | repairs or rebuilds it, as `hint` says |
+| `CORRUPT` | 2 | no | found state the tool itself keeps or wrote damaged or inconsistent (a manifest, a pack, a stored row) | repairs or rebuilds it, as `hint` says |
 | `UNAVAILABLE` | 2 | yes | lacks something now (an unreachable backend, a held lock, a rate or quota limit that clears with time) | repeats later |
 | `FAILED` | 1 | no | ran, and the outcome is negative (a check found problems, an operation or step failed) | reads `data` and `next` |
 | `INCOMPLETE` | 1 | no | ran and stopped with work left undone (a batch item or a later step stopped it, 8.3.2; a scope it could not reach whole); what was done stays done | reads what was done first |
 | `TIMEOUT` | 1 | yes | waited (12.3) and ran out of time; the work may still finish | repeats the wait (`next`) |
 
-When two seem to fit, the one whose caller action resolves the situation is right. A refusal before any effect is
-exit 2 whatever the command calls it (a gate, a check, a verdict) and takes a refusal condition
-(`BRIEF_APPROVAL_REQUIRED`, `EVIDENCE_INVALID`); a check whose negative answer is its ordinary result reports it in
-`data`, with exit 0 or a `FAILED` code.
+When two seem to fit, the one whose caller action resolves the situation is right. A file that exists but cannot be
+read is `DENIED` when the system refuses access, `UNAVAILABLE` only when a repeat can succeed, and for content it
+cannot parse `INVALID` (a file the user supplies or edits) or `CORRUPT` (state the tool keeps). A verdict the command
+must pass before its work (a gate, an approval, a check of its input or state) is a precondition (8.3) and refuses
+with exit 2 and a refusal condition (`BRIEF_APPROVAL_REQUIRED`, `EVIDENCE_INVALID`), whatever the command calls it; a
+check whose negative answer is its ordinary result reports it in `data`, with exit 0 or a `FAILED` code.
 
 7.2.3. **Rules**, for a document that declares 1.3: every error code is a core code (7.3) or follows 7.2.1 and never
 takes a core code's name; its registered `exit` is its condition's, and so is its `retryable`, except that a
@@ -388,18 +391,19 @@ exit code is used, except a signal's. [Appendix A D11.1]
 
 8.3. **When a command has run.** A command has run once its preconditions passed and its work started.
 Preconditions: parsing argv and `--input` (10.7 steps 1-6), resolving context and configuration, prerequisites (a
-reachable backend, a login), the objects the invocation names, an operation key's reservation. A precondition failure
-is a refusal; a failure after the work started is exit 1, so a category that can fail at both stages has a code for
-each (`STORE_UNAVAILABLE`, `STORE_FAILED`). Callers branch on `code` and `retryable`, not the exit alone.
-[Appendix A D11.8, D15, D26]
+reachable backend, a login), the objects the invocation names, a verdict it must pass before its work (7.2.2), an
+operation key's reservation. A precondition failure is a refusal; a failure after the work started is exit 1, so a
+category that can fail at both stages has a code for each (`STORE_UNAVAILABLE`, `STORE_FAILED`). Callers branch on
+`code` and `retryable`, not the exit alone. [Appendix A D11.8, D15, D26]
 
 8.3.1. A `write` or `destructive` command that cannot show a failure came before its work MAY report it with its
 exit-1 code; it uses exit 2 only for a failure known to precede the work. [Appendix A D25]
 
 8.3.2. **Stopped part-way.** A command that works in steps and, after a step made effects, meets a situation it
 refuses before its work (a lease held elsewhere, a plan changed between effects) SHOULD report it with a code of its
-own, one `<SUBJECT>_INCOMPLETE` per subject, whose `reason` is the refused code alone, and lead `meta.next` with a
-command that reads what was done. [Appendix A D33, D36]
+own, one `<SUBJECT>_INCOMPLETE` per subject (the unit of work that stopped; a stop that spans the tool rather than one
+object uses the command's own noun, `RUN_INCOMPLETE`, `SYNC_INCOMPLETE`), whose `reason` is the refused code alone,
+and lead `meta.next` with a command that reads what was done. [Appendix A D33, D36]
 
 8.4. **Signals.** A signal ends a run without an envelope, shown as a wait status or as 128+n from a launcher, which
 SHOULD re-raise or exit 128+n. A tool SHOULD release what it claimed and keep the default SIGPIPE behaviour.
@@ -558,8 +562,8 @@ commit a plan.
 10.7. **Processing.** Steps 1-6 read no state; the first failure answers, with nothing changed.
 
 1. Read and frame (10.2-10.4, 10.10): `INPUT_INVALID` or `INPUT_TOO_LARGE`, `field` `--input`.
-2. Validate each document against the fragment schema: `INPUT_INVALID`, `field` the pointer of the first problem in
-   document order, `details` listing every problem when several.
+2. Validate each document against the fragment schema: `INPUT_INVALID`, `field` the pointer of one of the problems
+   (the first of `details`), `details` listing every problem when several.
 3. Compare argv's explicit arguments with the document's after normalisation (arrays in order, objects by members);
    a difference refuses with `INPUT_CONFLICT`. Argv is read alone here, without `required`, constraints or defaults,
    so a document may supply a required argument. Malformed argv refuses here with its usual code.
@@ -651,10 +655,11 @@ reserved atomically as a precondition, so concurrent requests start the work onc
 makes no new effect and returns the first request's result (an accepted report with the same identifier while it
 runs). If the outcome of a first request is unknown, the repeat MUST reconcile with the system that holds the effect;
 if it still cannot tell, it refuses with a code of the tool's own whose condition is `REQUIRED`
-(`RECONCILIATION_REQUIRED`: exit 2, not retryable), `hint` a durable inspection command, and the key stays reserved;
-the guide says how to resolve it, and a new key MUST NOT start the same work meanwhile. Another payload refuses with
-`OPERATION_REUSED`, `field` `--operation`. Keys are kept at least until their work is over; callers MUST NOT reuse one
-after its documented retention. [Appendix A D11.10, D12.2, D16.3]
+(`RECONCILIATION_REQUIRED`: exit 2, not retryable), `hint` a durable inspection command (acme:
+`acme deploy status <DEPLOYMENT> --json`; once the outcome is known the caller repeats with the same key), and the key
+stays reserved; the guide says how to resolve it, and a new key MUST NOT start the same work meanwhile. Another
+payload refuses with `OPERATION_REUSED`, `field` `--operation`. Keys are kept at least until their work is over;
+callers MUST NOT reuse one after its documented retention. [Appendix A D11.10, D12.2, D16.3]
 
 ## 13. Streams
 
@@ -863,7 +868,7 @@ sections of this version.
 
 | # | Owner decision 2026-11-03, version 1.3.0, a minor (15.1) | Where |
 |---|---|---|
-| D36 | ATIP is a protocol: this document defines conformance, and a conformance checker is a tool that tests it, not its definition. The spec is restated as the messages that cross the boundary (invocation, envelope and stream lines, the error object, exit status, `next`, the self-description, input documents, the destructive exchange, paging and field selection, versioning), each as shape, meaning and exchange rules, pointing to the JSON Schemas rather than restating them; algorithms, profiles and long rule lists are normative annexes: field selection and projection (Annex F), argument domains, the pattern dialect and numbers (Annex V), command design and the self-description rules (Annex S). Rationale, examples and history moved to Appendix A and `approaches/`. Rules whose only purpose was an exact checker verdict are recommendations in `approaches/implementation.md`: the order among the stateless checks of step 6 (stateless checks still precede every state read), which argument a constraint's `field` names when several qualify (it still names one the caller can add or remove), whether an argument given at its default value changes a cursor's binding (an `env` value still binds it) and what the next-page entry carries exactly, and the argv conversion of an `--input` document (its answer must still equal direct validation). Error codes: a tool's own code is `<SUBJECT>_<CONDITION>`, the subject a noun phrase, the condition one of fifteen (`INVALID`, `REQUIRED`, `NOT_FOUND`, `EXISTS`, `CONFLICT`, `STALE`, `EXPIRED`, `DENIED`, `UNSUPPORTED`, `TOO_LARGE`, `CORRUPT`, `UNAVAILABLE` exit 2; `FAILED`, `INCOMPLETE`, `TIMEOUT` exit 1), and the condition fixes the exit and the caller's action and gives the default retryability (`UNAVAILABLE` and `TIMEOUT` retryable; a `FAILED`, `INCOMPLETE` or `TIMEOUT` code registered either way by whether repeating it is safe), the error's `retryable` staying authoritative; conditions bind `error.code` only, never a warning that shares the name; a refusal before any effect is exit 2 whatever the command calls it, and a check's ordinary negative answer is `data`, not a refusal; `CORRUPT` (added after the implementer reviews) is state the tool keeps or wrote, where `INVALID` is a value the caller gave, because the caller repairs one and changes the other; an unknown remote outcome after the work began is a `FAILED` or `INCOMPLETE` code whose `next` reads the state, and 12.4's refusal of a repeat it cannot reconcile is a `REQUIRED` code, so no condition was added for uncertain outcomes; a rate or quota that clears with time is `UNAVAILABLE`, a request too big or too costly `TOO_LARGE`; situations that differ in retryability are different codes, and reason names are a namespace of their own per code; `TIMEOUT` is only for a command that waits, so that a write whose backend ran out of time is never forced retryable; `TOO_LARGE` is the size or count of a request, a value outside its domain `INVALID`; a finer parse code is `OPTION_INVALID`/`OPTION_REQUIRED`; MUST for a document that declares 1.3, SHOULD-shape for warning codes. The twelve core codes keep their names, five of which predate the grammar, because renaming a core code is `atip/2`. `STOPPED_MIDWAY` leaves the core set for 1.3, which 15.1's MINOR row allows because 1.2 only recommended its use: a stop part-way is the tool's own `INCOMPLETE` code with the refused code as `reason`. D33 declined an `*_INCOMPLETE` name because exit 1 also covers incomplete answers that made no effect; under the convention the effect class says whether a stop left effects, and the caller action (read what was done before repeating) is the same, so the condition carries it. A 1.3 tool keeps its warning codes in the warning registry, so that its error registry holds only codes that follow the convention. 1.3 adds no member, document kind or enum value; a tool that declares 1.0, 1.1 or 1.2 is held to that minor's release text. | 3, 4.6, 6.10, 7.2, 7.3, 7.5.2, 8.3.2, 9.8.1, 10.7, 15.7, 15.8, Annex F, Annex V, Annex S, approaches/implementation.md, approaches/checker.md |
+| D36 | ATIP is a protocol: this document defines conformance, and a conformance checker is a tool that tests it, not its definition. The spec is restated as the messages that cross the boundary (invocation, envelope and stream lines, the error object, exit status, `next`, the self-description, input documents, the destructive exchange, paging and field selection, versioning), each as shape, meaning and exchange rules, pointing to the JSON Schemas rather than restating them; algorithms, profiles and long rule lists are normative annexes: field selection and projection (Annex F), argument domains, the pattern dialect and numbers (Annex V), command design and the self-description rules (Annex S). Rationale, examples and history moved to Appendix A and `approaches/`. Rules whose only purpose was an exact checker verdict are recommendations in `approaches/implementation.md`: the order among the stateless checks of step 6 (stateless checks still precede every state read), which argument a constraint's `field` names when several qualify (it still names one the caller can add or remove), whether an argument given at its default value changes a cursor's binding (an `env` value still binds it) and what the next-page entry carries exactly, and the argv conversion of an `--input` document (its answer must still equal direct validation). Error codes: a tool's own code is `<SUBJECT>_<CONDITION>`, the subject a noun phrase, the condition one of fifteen (`INVALID`, `REQUIRED`, `NOT_FOUND`, `EXISTS`, `CONFLICT`, `STALE`, `EXPIRED`, `DENIED`, `UNSUPPORTED`, `TOO_LARGE`, `CORRUPT`, `UNAVAILABLE` exit 2; `FAILED`, `INCOMPLETE`, `TIMEOUT` exit 1), and the condition fixes the exit and the caller's action and gives the default retryability (`UNAVAILABLE` and `TIMEOUT` retryable; a `FAILED`, `INCOMPLETE` or `TIMEOUT` code registered either way by whether repeating it is safe), the error's `retryable` staying authoritative; conditions bind `error.code` only, never a warning that shares the name; a verdict the command must pass before its work (a gate, an approval, a check of its input or state) is a precondition (8.3) and refuses with exit 2 whatever the command calls it, keeping D11.8 and D15's boundary (whether the command ran, not whether it made an effect), and a check's ordinary negative answer is `data`, not a refusal; `CORRUPT` (added after the implementer reviews) is state the tool itself keeps or wrote, where `INVALID` is a value the caller or its user supplied (configuration the user edits included), because the caller repairs one and changes the other; a file that cannot be read is `DENIED`, `UNAVAILABLE` (a repeat can succeed), or by its content `INVALID` or `CORRUPT`; an unknown remote outcome after the work began is a `FAILED` or `INCOMPLETE` code whose `next` reads the state, and 12.4's refusal of a repeat it cannot reconcile is a `REQUIRED` code, so no condition was added for uncertain outcomes; a rate or quota that clears with time is `UNAVAILABLE`, a request too big or too costly `TOO_LARGE`; situations that differ in retryability are different codes, and reason names are a namespace of their own per code; `TIMEOUT` is only for a command that waits, so that a write whose backend ran out of time is never forced retryable; `TOO_LARGE` is the size or count of a request, a value outside its domain `INVALID`; a finer parse code is `OPTION_INVALID`/`OPTION_REQUIRED`; MUST for a document that declares 1.3, SHOULD-shape for warning codes. The twelve core codes keep their names, five of which predate the grammar, because renaming a core code is `atip/2`. `STOPPED_MIDWAY` leaves the core set for 1.3, which 15.1's MINOR row allows because 1.2 only recommended its use: a stop part-way is the tool's own `INCOMPLETE` code with the refused code as `reason`. D33 declined an `*_INCOMPLETE` name because exit 1 also covers incomplete answers that made no effect; under the convention the effect class says whether a stop left effects, and the caller action (read what was done before repeating) is the same, so the condition carries it. A 1.3 tool keeps its warning codes in the warning registry, so that its error registry holds only codes that follow the convention. 1.3 adds no member, document kind or enum value; a tool that declares 1.0, 1.1 or 1.2 is held to that minor's release text. | 3, 4.6, 6.10, 7.2, 7.3, 7.5.2, 8.3.2, 9.8.1, 10.7, 15.7, 15.8, Annex F, Annex V, Annex S, approaches/implementation.md, approaches/checker.md |
 
 ## Appendix B. Prior art
 

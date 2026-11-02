@@ -28,8 +28,10 @@ a 1.2 caller reads every 1.3 document (15.8). Section numbers below are 1.3's; `
   authoritative). Each condition says what kind of step the caller takes; the subject and `hint` name it. The subject
   is never empty. `TIMEOUT` is only for a command that waits (12.3); `TOO_LARGE` is a request too big, too many or too
   costly, a value outside its domain is `INVALID`, and a rate or quota that clears with time is `UNAVAILABLE`;
-  `CORRUPT` is state the tool keeps or wrote, `INVALID` a value the caller gave. A refusal before any effect is exit 2
-  whatever the command calls it. Conditions bind `error.code` only, never a warning that shares the name. Situations
+  `CORRUPT` is state the tool itself keeps or wrote, `INVALID` a value the caller or its user supplied (configuration
+  included); an unreadable file is `DENIED`, `UNAVAILABLE` or, by its content, `INVALID` or `CORRUPT`. A verdict the
+  command must pass before its work (a gate, an approval) is a precondition (8.3): exit 2, whatever the command calls
+  it. Conditions bind `error.code` only, never a warning that shares the name. Situations
   that differ in retryability are different codes; reason names are a namespace of their own per code. Finer parse
   codes are `OPTION_INVALID`, `OPTION_REQUIRED` (7.3.2). 12.4's refusal of a repeat it cannot reconcile is a
   `REQUIRED` code. MUST for a 1.3 document (7.2.3); warning codes SHOULD take the same shape (7.2.3, last sentence).

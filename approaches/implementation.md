@@ -22,7 +22,9 @@ tool's. The recommended order, a MUST for a tool that declares 1.2:
    Constraints and validators: each in their declaration order.
 
 With this order, two tools give one invocation the same code and `field`, and a caller that fixes one problem and
-repeats meets the next problem in a predictable place.
+repeats meets the next problem in a predictable place. For a document with several problems at step 2 (spec 10.7),
+list `details` in document order where the parser keeps member order, and put the first of them at the top level; a
+parser that sorts members (default `serde_json`) uses its own order, which spec 10.7 allows.
 
 ## 2. Which argument a constraint violation names
 
@@ -121,11 +123,14 @@ answer in different hands:
    (`CORRUPT`), wait and repeat (`UNAVAILABLE`), hand over to a person (`DENIED`), read what was done (`FAILED`,
    `INCOMPLETE`), repeat the wait (`TIMEOUT`, only for a command that waits, spec 12.3; a write whose backend call ran
    out of time is `FAILED` or `INCOMPLETE`, so that no agent repeats it blindly). A value above its domain maximum is
-   `INVALID`; `TOO_LARGE` is a request too big, too many or too costly (`QUERY_TOO_LARGE`); a live-run or rate quota
-   that frees up with time is `UNAVAILABLE`; a missing configuration is `REQUIRED`, never `UNAVAILABLE`. A gate that
-   refuses before writing anything is exit 2 with a refusal condition, whatever the command calls it. Two situations
-   with the same subject and condition whose next steps differ are one code with two reasons, unless they differ in
-   retryability.
+   `INVALID`; `TOO_LARGE` is a request too big, too many or too costly, refused before it runs (a query whose cost is
+   estimated up front: `QUERY_TOO_LARGE`); a read that ran and was stopped at the backend's time limit has run, so it
+   is exit 1: `TIMEOUT` if the command waits, otherwise `FAILED` or `INCOMPLETE`, with a `hint` to narrow it. A
+   live-run or rate quota that frees up with time is `UNAVAILABLE`; a missing configuration is `REQUIRED`, never
+   `UNAVAILABLE`. A verdict the command must pass before its work (a gate, an approval, a check of its input or
+   state) is a precondition, exit 2 with a refusal condition, whatever the command calls it (spec 7.2.2, 8.3). Two
+   situations with the same subject and condition whose next steps differ are one code with two reasons, unless they
+   differ in retryability.
 3. **Name the subject with a noun the tool already uses**, preferably a group of its command tree (`FINDING`,
    `MEMBER`, `DEPLOYMENT`) or the resource at fault (`STORE`, `CONFIG`, `LOCK`). A verb becomes its noun
    (`PROMOTE` → `PROMOTION`, `DEPLOY` → `DEPLOYMENT`). Keep the subject short: the condition carries the meaning.
