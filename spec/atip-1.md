@@ -1,15 +1,15 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.2.1** (release candidate). Version 1.2.0 was adopted 2026-11-02 after two rounds of independent review;
-1.2.1 is a patch (15.1) that adds plan digest test vectors (12.6), the checker's `notRun` fixture key and approaches
-notes, from implementer feedback (Appendix A D35). Version 1.1.2 was adopted 2026-11-01 after two rounds. 1.2.0 is a
-minor (15.1) from implementer feedback: for a document that declares 1.2 it states which arguments bind a cursor,
-accepts `--fields` without `--json`, makes the paging and field-selection options flag-only and fixes the order of
-the stateless checks, and it reserves `STOPPED_MIDWAY` for work stopped part-way (Appendix A D32, D33); it also
-carries wording and checker rows a patch could carry (D34). 1.1.1 and 1.1.2 were patches (D30, D31). Version 1.0.0
-was adopted 2026-10-30 after six rounds and 1.1.0 on 2026-11-01 after four; 1.1.0 added optional members and
-SHOULD/MAY rules and fixed how the contract is versioned (15, Appendix A D20-D29). Until revision 2 this contract
-was called `agent-cli/1`; it was renamed by owner decision 2026-10-28 (Appendix A, D13).
+Status: **1.2.1**, adopted 2026-11-02 after one round of independent review. Version 1.2.0 was adopted 2026-11-02
+after two rounds; 1.2.1 is a patch (15.1) that adds plan digest test vectors (12.6), the checker's `notRun` fixture
+key and approaches notes, from implementer feedback (Appendix A D35). Version 1.1.2 was adopted 2026-11-01 after two
+rounds. 1.2.0 is a minor (15.1) from implementer feedback: for a document that declares 1.2 it states which
+arguments bind a cursor, accepts `--fields` without `--json`, makes the paging and field-selection options flag-only
+and fixes the order of the stateless checks, and it reserves `STOPPED_MIDWAY` for work stopped part-way (Appendix A
+D32, D33); it also carries wording and checker rows a patch could carry (D34). 1.1.1 and 1.1.2 were patches (D30,
+D31). Version 1.0.0 was adopted 2026-10-30 after six rounds and 1.1.0 on 2026-11-01 after four; 1.1.0 added optional
+members and SHOULD/MAY rules and fixed how the contract is versioned (15, Appendix A D20-D29). Until revision 2 this
+contract was called `agent-cli/1`; it was renamed by owner decision 2026-10-28 (Appendix A, D13).
 
 ## Abstract
 
@@ -1727,7 +1727,7 @@ caller is `atip/2`.
 
 | # | Owner decision 2026-11-02, version 1.2.1, a patch (15.1) from implementer feedback | Where |
 |---|---|---|
-| D35 | Examples, approaches and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.2"`. Plan digest test vectors for 12.6's recommended form (`sha256:` over RFC 8785 canonical JSON), recomputed by `scripts/validate.sh`; they bind no tool that computes its digest another way, and they are the reference for every tool that follows the SHOULD. Approaches: which schemars view generates an output schema; a `read` command keeps the cache its `effectNote` names. Checker: the fixture key `notRun`, for a command that does not end on its own: its runs that would succeed are skipped and reported, and a check left with no run is `unprovided`. | 12.6, examples/plan-digest/, approaches/rust.md, approaches/migration.md, approaches/checker.md |
+| D35 | Examples, approaches and the checker only; no member, option, rule strength or document kind is added, and `meta.contractVersion` stays `"1.2"`. Plan digest test vectors for 12.6's recommended form (`sha256:` over RFC 8785 canonical JSON), recomputed by `scripts/validate.sh`; they bind no tool that computes its digest another way, and they are the reference for every tool that follows the SHOULD. Approaches: which schemars view generates an output schema; a `read` command keeps the cache its `effectNote` names. Checker: the fixture key `notRun`, for a command that does not end on its own: it runs once until its first JSON document, which the envelope and output checks read, and is then signalled; its other runs that would succeed are skipped and reported, and a check left with no run is `unprovided`. A plan holds integers beyond ±(2^53-1) as strings and only valid Unicode (examples/README.md). | 12.6, examples/plan-digest/, approaches/rust.md, approaches/migration.md, approaches/checker.md |
 
 ## Appendix B. Prior art
 

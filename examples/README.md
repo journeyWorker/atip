@@ -199,6 +199,13 @@ tool might build it (written with the spellings under test, so read the file as 
 both. The plans are shaped `{effects, inputs}` for illustration; the digest covers whatever plan document a tool
 builds, and a tool that computes its digest another way (12.6 is a SHOULD) is not bound by them.
 
+What goes into a plan is the tool's choice, within what JCS can canonicalize the same everywhere. An integer beyond
+±(2^53-1) is written as a string, as spec 10.7.5 makes it for argument values (an identifier that can exceed the
+range is a `string`): as a JSON number it would be rounded by some parsers, and its digest would depend on the
+implementation, so no vector holds one. A plan holds only valid Unicode, as I-JSON requires: a value that may not be
+(a file name that is not UTF-8, which can decode to a lone surrogate) is escaped or encoded by the tool before it
+enters the plan, since RFC 8785 refuses a lone surrogate; no vector holds one either.
+
 | File | What it pins |
 |---|---|
 | `empty-effects.json` | Empty array and empty object. |
@@ -209,6 +216,7 @@ builds, and a tool that computes its digest another way (12.6 is a SHOULD) is no
 | `strings.json` | Escapes: only `"`, `\` and controls below U+0020; non-ASCII, DEL, U+2028 and surrogate pairs as UTF-8; RFC 8785 section 3.2.2's string. |
 | `nested.json` | Nested arrays and objects, empty containers, literals. |
 | `preview.json` | A plan shaped like a destructive preview's: deletes, an audit append, arguments and digests of the files read. |
+| `large-integers-as-strings.json` | Integers beyond ±(2^53-1) written as strings, next to one within the range written as a number. |
 
 The expected values were computed with two independent RFC 8785 implementations, the `canonicalize` npm package
 (5.1.0) and a separate implementation in Python, each first checked against RFC 8785's own examples (Appendix B and

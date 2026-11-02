@@ -193,17 +193,25 @@ effects check (§4) starts from that copy, so nothing `prepare` or `setup` made 
 invocation. The checker never runs a `write` or `destructive` command that the fixture does not list. A command with
 no fixture entry makes its stateful checks `unprovided`.
 
-`notRun` lists commands, by path, that the checker never runs in a way that is expected to succeed: a command that
-does not end on its own (one that serves until it is signalled, whose `effectNote` says so, spec 10.5). Every
-listed command must be in `schema` with a non-empty `effectNote`, and none may be the `probe`, or the fixture is in
-error, as for a failing `prepare` step; at L0, where there is no `schema`, the list is taken as given. Runs that the
-checker expects to be refused still run, since a refusal ends: the generated refusals of L1.constraints,
-L1.numbers, L1.validators and L1.check-order, and the out-of-range values of L1.domains. Skipped are the runs that
-would succeed and so never end: the command's examples (L1.example-runs, L1.output-data), a `meta.next` entry that
-names it (L1.next), the in-range values of L1.domains, its successful run in L2.effects, and any fixture `ok` entry
-for it. Each check computes its result from its other runs and reports the runs it skipped with the reason
-`notRun`; a check whose every run was skipped this way is `unprovided`, so listing commands cannot pass a level.
-The report lists the `notRun` commands, as it lists the `prepare` steps.
+`notRun` lists commands, by path, that do not end on their own: a command that serves until it is signalled, whose
+`effectNote` says so (spec 10.5). Every listed command must be in `schema` with a non-empty `effectNote`, and none
+may be the `probe`, or the fixture is in error, as for a failing `prepare` step; at L0, where there is no `schema`,
+the list is taken as given. The checker runs each listed command **once**: its first fixture `ok` invocation, else
+its first example, with `--json`. It reads stdout up to the end of the first JSON document, checks that the process
+is still running, then signals it (SIGTERM, then SIGKILL after a grace period). That document goes to the checks of
+every envelope (L0.envelope, L0.no-null, L0.contract-version, L0.next) and to L1.output-data; the checks that read
+the exit status or the whole of stdout (L0.ok-exit, L0.one-document) do not apply to it, since the run ended by the
+checker's signal (spec 8.4). A listed command that exits on its own within the timeout, before or after its first
+document, is a fixture error: it ends, so it belongs in no `notRun`. One that prints no document before the timeout
+fails L0.envelope. Without an `ok` entry or an example (at L0, without an `ok` entry) the one run is `unprovided`.
+Beyond that run, the runs that the checker expects to be refused still run, since a refusal ends: the generated
+refusals of L1.constraints, L1.numbers, L1.validators and L1.check-order, and the out-of-range values of L1.domains.
+Skipped are the other runs that would succeed and so never end: the command's other examples (L1.example-runs,
+L1.output-data), a `meta.next` entry that names it (L1.next), the in-range values of L1.domains, its successful run
+in L2.effects, and its other fixture entries (further `ok` invocations, `paged`, `fields`, `preview`). Each check
+computes its result from its other runs and reports the runs it skipped with the reason `notRun`; a check whose
+every run was skipped this way is `unprovided`, so listing commands cannot pass a level. The report lists the
+`notRun` commands, as it lists the `prepare` steps.
 
 `paged` lists invocations of a command that return `meta.page.nextCursor` in the fixture state; L0.page and
 L1.paging run them. Which commands page is not taken from the fixture. From L1, a command pages when its command
@@ -465,7 +473,10 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | `--plan-digest x` alone refused with the `code` its command's `requires` rule declares for the pair (spec 10.8.1) | (none: L2.destructive-half passes) |
 | a fixture `prepare` step exits non-zero, or runs the binary under test | (none: the checker stops with a fixture error and reports no check, §5) |
 | a fixture `setup` step exits non-zero | (none: the checker stops with a fixture error and reports no check, §5) |
-| a command that serves until signalled, listed in `notRun`, whose example would never end | (none: its example-driven runs are skipped and reported as `notRun`, §5) |
+| a command that serves until signalled, listed in `notRun`, whose example would never end | (none: it runs once until its first document, which passes the envelope and output checks; its other example-driven runs are skipped and reported as `notRun`, §5) |
+| a command listed in `notRun` whose first document is not a valid envelope | L0.envelope |
+| a command listed in `notRun` that exits on its own after printing its envelope | (none: the checker stops with a fixture error, §5) |
+| a `paged` entry for a command listed in `notRun` | (none: the entry is skipped and reported as `notRun`, §5) |
 | `notRun` naming a command without an `effectNote`, or one `schema` does not list | (none: the checker stops with a fixture error, §5) |
 | `notRun` naming every `read` command that has examples | (none fails, but L1.example-runs is `unprovided`, which fails the level, §5) |
 | a command in `notRun` that accepts an out-of-range domain value | L1.domains (its refusal runs still run) |

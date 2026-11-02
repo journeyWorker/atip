@@ -81,7 +81,7 @@ Legend: ✅ conforms · 🟡 close, mechanical change · 🔴 missing or differe
 | Conversion with operands after `--` (11.9) | | *unmeasured* | — |
 | Batches (11.11) | a per-item failure code, exit overrides | 🟡 `INPUT_ELEMENT_FAILED`, exit overrides; pointer `/items/<i>/…` | — |
 | `--input` twice, or last with no value, is `USAGE` with `field` `--input` (11.2) | `INPUT_INVALID` for a malformed command line | *unmeasured* | — |
-| Refusals and previews write nothing (12.2); a `read` may write the cache or audit line its `effectNote` names on success (12.1) | logs, telemetry or caches written before the command ran, or on a refusal | 🟡 `read_effects.rs` whitelists `subject show` writes | 🔴 telemetry |
+| Refusals and previews write nothing (12.2); a `read` may write the cache or audit line its `effectNote` names when it ran (exit 0 or 1), never on a refusal, a preview or `--dry-run` (12.1, 12.2) | logs, telemetry or caches written before the command ran, or on a refusal | 🟡 `read_effects.rs` whitelists `subject show` writes | 🔴 telemetry |
 | Preview + digest (12.4-12.7) | `--yes`, prompts, `--dry-run` as the only safety | ✅ 5 leaves; bare-hex digest; `PLAN_CHANGED` | 🟡 `tag --renumber --commit`, no digest |
 | Commit `next` from normalised arguments (12.5) | | *unmeasured* | — |
 | `async`, waiting (13.2, 13.3) | | ✅ (`waitingOn`) | n/a |
@@ -114,34 +114,31 @@ canon has every mechanism the contract asks for, so it proves the contract and b
 Rust crate.
 
 1. Extract `envelope`, `error`, `spec`, `schema`, `input`, `safety`, `stream`, `skills` into the shared crate
-   (approaches/rust.md §3) and switch canon to it.
-2. Wire changes: `meta.tool`/`toolVersion`/`contract`/`output`; omit nulls and empty arrays; `meta.command`
-   omitted when nothing resolved; paging extras → `meta.page`; `unchanged`/`waitingOn` → reports (minor bumps);
-   warnings with codes; `next` with `--json`; `PLAN_CHANGED` → `PLAN_STALE`; `INPUT_*` → reserved codes;
-   `UNKNOWN_COMMAND`, `COMMAND_REQUIRED` where `USAGE` is used today; remove `with_exit`; `BATCH_INCOMPLETE`;
-   `WRITE_FAILED` exit 1 (plus a precondition code where the same failure can happen before the work starts); `UNKNOWN_FIELD` → `USAGE`.
-3. Self-description: tree with groups and `level`; group documents; `valueType`; typed defaults; `flagOnly`;
-   `constraints` (including the value-conditional checks handlers make today); `domain` for every stateless
-   restriction of one argument (`--round`/`--seq`/`--limit` ≥ 1, in the profile of spec 10.7.4, declared in the
-   per-command table and tested against the real parser, approaches/rust.md §4.3); `validators` for the checks
-   outside the profile (`<TIMESTAMP>` options); integers refused outside ±(2^53-1); every command listing the
-   reserved codes of its features (`CURSOR_INVALID` on paged lists); `schemas` in the command document;
-   `roles` → `x-canon`.
-4. `--input` in the order of spec 11.7, with the conflict check on lexically extracted argv (approaches/rust.md §6)
-   instead of a full clap parse of the argv alone; fragment schemas without `required`; no `#` comments in NDJSON;
-   batch pointers `/<i>/…`; a batch item whose finding does not exist fails the batch with `BATCH_INCOMPLETE`
-   instead of failing preflight.
-5. A purge preview lists the audit line its commit appends among `effects` (spec 12.4); lifted report schemas lose
-   their own `$id`; a `--cursor` given with other filter arguments refuses (spec 6.9).
-6. `skills show` with an optional `NAME` and `{name, text, guides, full}`; `dashboard` stays a command with a report
-   output: with `--json` it prints one envelope and then serves until it is signalled, which its `effectNote` says.
-   It is not a stream (a server is out of scope beyond its starting command's output, spec 1.2, and a run ended by a
-   signal promises no envelope, 8.4), and the fixture lists it in `notRun` (approaches/checker.md §5) so the checker
-   never waits on it; `subject show` keeps its cache as a `read` command whose `effectNote` names the cache (spec
-   12.1), and writes it only when it succeeds: never on a refusal, a preview or `--dry-run` (12.2), so it writes the
-   cache only after its checks pass.
-7. Run the checker at L2 in CI. Every consumer of canon JSON (hooks, the skill, the website) moves in the same
-   release.
+   (approaches/rust.md §3) and switch canon to it. 2. Wire changes: `meta.tool`/`toolVersion`/`contract`/`output`;
+   omit nulls and empty arrays; `meta.command` omitted when nothing resolved; paging extras → `meta.page`;
+   `unchanged`/`waitingOn` → reports (minor bumps); warnings with codes; `next` with `--json`; `PLAN_CHANGED` →
+   `PLAN_STALE`; `INPUT_*` → reserved codes; `UNKNOWN_COMMAND`, `COMMAND_REQUIRED` where `USAGE` is used today;
+   remove `with_exit`; `BATCH_INCOMPLETE`; `WRITE_FAILED` exit 1 (plus a precondition code where the same failure
+   can happen before the work starts); `UNKNOWN_FIELD` → `USAGE`. 3. Self-description: tree with groups and `level`;
+   group documents; `valueType`; typed defaults; `flagOnly`; `constraints` (including the value-conditional checks
+   handlers make today); `domain` for every stateless restriction of one argument (`--round`/`--seq`/`--limit` ≥ 1,
+   in the profile of spec 10.7.4, declared in the per-command table and tested against the real parser,
+   approaches/rust.md §4.3); `validators` for the checks outside the profile (`<TIMESTAMP>` options); integers
+   refused outside ±(2^53-1); every command listing the reserved codes of its features (`CURSOR_INVALID` on paged
+   lists); `schemas` in the command document; `roles` → `x-canon`. 4. `--input` in the order of spec 11.7, with the
+   conflict check on lexically extracted argv (approaches/rust.md §6) instead of a full clap parse of the argv
+   alone; fragment schemas without `required`; no `#` comments in NDJSON; batch pointers `/<i>/…`; a batch item
+   whose finding does not exist fails the batch with `BATCH_INCOMPLETE` instead of failing preflight. 5. A purge
+   preview lists the audit line its commit appends among `effects` (spec 12.4); lifted report schemas lose their own
+   `$id`; a `--cursor` given with other filter arguments refuses (spec 6.9). 6. `skills show` with an optional
+   `NAME` and `{name, text, guides, full}`; `dashboard` stays a command with a report output: with `--json` it
+   prints one envelope and then serves until it is signalled, which its `effectNote` says. It is not a stream (a
+   server is out of scope beyond its starting command's output, spec 1.2, and a run ended by a signal promises no
+   envelope, 8.4), and the fixture lists it in `notRun` (approaches/checker.md §5) so the checker never waits on it;
+   `subject show` keeps its cache as a `read` command whose `effectNote` names the cache (spec 12.1), and writes it
+   only once the command has run (exit 0, or exit 1 for an incomplete answer): never on a refusal, a preview or
+   `--dry-run` (12.2), so it writes the cache only after its checks pass. 7. Run the checker at L2 in CI. Every
+   consumer of canon JSON (hooks, the skill, the website) moves in the same release.
 
 ### 3.2 lute (Rust, using the crate from canon)
 
@@ -155,7 +152,7 @@ Callers: the website and every harness that parses lute JSON. approaches/rust.md
 | Rule | Who pays | Cost |
 |---|---|---|
 | No `--yes`; every destructive act previews and commits with a digest (12.8, D11.11) | any tool with `--yes`, `--force` or a confirmation prompt | One extra call per destructive act; the plan must cover the target's state so the digest means something; prompts go; every caller that passes `--yes` today (scripts, guides, the tool's own `next`) changes in the same release. |
-| Refusals, previews and `schema` write nothing at all (12.2) | lute (telemetry on every invocation), canon (`subject show`, a read that writes a cache); any tool that logs every run | Telemetry and logs recorded only after a successful command; storage resolved only after the scope is checked. A `read` command may still keep a cache or an audit line its `effectNote` names (12.1), written on success only; it need not become a `write`. |
+| Refusals, previews and `schema` write nothing at all (12.2) | lute (telemetry on every invocation), canon (`subject show`, a read that writes a cache); any tool that logs every run | Telemetry and logs recorded only after a successful command; storage resolved only after the scope is checked. A `read` command may still keep a cache or an audit line its `effectNote` names (12.1), written only once the command has run (exit 0 or 1), never on a refusal; it need not become a `write`. |
 | One operand kind; modifiers are options (9.4) | any tool with a second operand of another kind | The values become a repeatable option; callers and guides change. |
 | Fragment schemas without `required`; argv and document merged before requirements (11.7) | canon | canon's input path must stop rejecting a partial document before the merge; it publishes fragment schemas. |
 | Batch failure during execution is always `BATCH_INCOMPLETE` with the batch report (11.11) | canon | `INPUT_ELEMENT_FAILED` and the exit overrides go; batch consumers read `data.items`. |
