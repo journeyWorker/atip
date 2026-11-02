@@ -185,7 +185,7 @@ synthetic tool, **`tally`** (`*-tally-*`), stays on 1.1: its `entry list` is `le
 | a 1.2 command document whose `--limit`, `--cursor`, `--all` and `--fields` are flag-only | `schema-command-acme-member-list.json` | accepted |
 | the same with `--limit` not flag-only; a 1.1 document with none of them flag-only | `invalid/schema-command-acme-member-list-limit-not-flag-only.json`; `schema-command-tally-entry-list.json` | rejected; accepted |
 | `STOPPED_MIDWAY` in a 1.2 registry, with a reason that names the refusal (`ENVIRONMENT_FROZEN`), and a failure that uses it | `schema-errors-acme.json`, `report-failure-acme-deploy-start-stopped-midway.json` | accepted |
-| `STOPPED_MIDWAY` at exit 2 in a 1.2 registry; a 1.1 tool's own `STOPPED_MIDWAY` that is retryable | `invalid/schema-errors-acme-stopped-midway-exit-2.json`; `schema-errors-tally.json` | rejected; accepted |
+| `STOPPED_MIDWAY` at exit 2 in a 1.2 registry; a 1.1 tool's own `STOPPED_MIDWAY` that is retryable, read by its registry entry (spec 8.3.2) | `invalid/schema-errors-acme-stopped-midway-exit-2.json`; `schema-errors-tally.json` | rejected; accepted |
 
 The other 1.2 rules (which arguments bind a cursor, `--fields` without `--json`, the order of the stateless checks)
 are behaviour, not documents; the checker tests them (approaches/checker.md).

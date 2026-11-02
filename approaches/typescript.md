@@ -338,12 +338,16 @@ to the digest the flag-only options the invocation gave, `--json` and a tool's o
 can change the result set), except `--input`, which only carries arguments that are already in the object.
 
 **A tool that declares 1.2** (spec 6.9, 11.6 since 1.2) binds the cursor to every argument except `--json`,
-`--limit`, `--all`, `--cursor` and `--fields`, and counts an argument given with its default value as given. The
-last four are flag-only there, so they are already out of the argument object; leave `--json` out of the digest as
-well, and leave out every value that step 5 or 6 filled in from a `default`, so that an argument given explicitly
-with its default value differs from one left out. Keep `env` values and the tool's own flag-only options that can
-change the result set. The helpers that declare the reserved paging and selection options mark them `flagOnly`
-when the tool declares 1.2.
+`--limit`, `--all`, `--cursor` and `--fields`, counts an argument given with its default value as given, and binds
+`env` values too. The last four options are flag-only there, so they are already out of the argument object; leave
+`--json` out of the digest as well. Digest each remaining argument with its source: an explicit value as given
+(normalised), an `env` value marked as coming from the environment, and nothing for a value filled in from a
+`default`. A switch given `false` and a count given `0` are absent (spec 10.7.2), so they digest as left out. Keep
+the tool's own flag-only options that can change the result set. Build the next-page `next` from the explicit
+arguments only (an `--input -` or file document re-expressed as argv options or one inline `--input` word, spec
+12.5), never from the merged argument object, so that the entry carries no default and no `env` value and its own
+cursor accepts it. The helpers that declare the reserved paging and selection options mark them `flagOnly` when the
+tool declares 1.2.
 
 ## 4. A tool on `effect/cli` in the meantime
 

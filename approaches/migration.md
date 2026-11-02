@@ -240,11 +240,12 @@ declares 1.2 (spec 10.13 rule 16). Declaring 1.2 turns on:
 
 | Rule | Spec | Strength for a 1.2 tool |
 |---|---|---|
-| A cursor is bound to every argument except `--json`, `--limit`, `--all`, `--cursor`, `--fields`; an argument given with its default value is given | 6.9 | MUST |
+| A cursor is bound to every argument except `--json`, `--limit`, `--all`, `--cursor`, `--fields`; an argument given with its default value is given (a switch given `false` or a count given `0` is absent); `env` values are bound; the next-page `next` carries only the arguments given explicitly | 6.9 | MUST |
 | `--fields` parsed and validated with or without `--json`; its effect on text is the tool's | 6.10 | MUST |
 | `limit`, `cursor`, `all` and `fields` are flag-only (`flagOnly: true`, not in the fragment schema) | 9.8, 11.6, 10.13 rule 8 | MUST |
-| Step 6 checks `required`, domains, constraints, validators in that order, each list in declaration order; the first failure answers | 11.7 | MUST |
-| A stop after a step made effects is `STOPPED_MIDWAY` (exit 1, not retryable), `reason` the refusal's code, `next` reading what was done | 7.2.1, 8.3.2 | SHOULD; a registered `STOPPED_MIDWAY` has that exit, retryability and meaning |
+| Argv parse failures first; then step 6 checks `required`, domains, constraints, validators in that order (operands then options in declaration order for the first two, declaration order for the last two); the first failure answers | 11.7 | MUST |
+| A constraint's `field` per rule: the first missing `then` name of `requires`, the first given `then` name of `forbids`, the first given name of `atMostOne`/`exactlyOne`, the first name when none is given | 10.8.1 | MUST |
+| A stop after a step made effects is `STOPPED_MIDWAY` (exit 1, not retryable), `reason` the refusal's code alone, `next` reading what was done | 7.2.1, 8.3.2 | SHOULD; a registered `STOPPED_MIDWAY` has that exit, retryability and meaning, which hold only in a 1.2 document |
 
 A tool moves by setting its contract constant to `"1.2"` (approaches/rust.md §3.1, approaches/typescript.md §3.2),
 marking the four options flag-only, changing its cursor digest (approaches/typescript.md §3.8), and replacing any
@@ -253,7 +254,8 @@ code of its own for this keeps it until it chooses to move; spec 9.10 applies to
 `contractVersion: "1.2"`, and the checker then runs the 1.2 halves of L1.grammar, L1.registry, L1.paging,
 L1.fields, L1.check-order and L2.input-refusals (approaches/checker.md §6).
 
-**A caller.** Nothing changes for a caller that pages with `meta.next`. With a tool that declares 1.2, a caller may
-also replace `--limit` by `--all` while paging; it puts `--limit`, `--cursor`, `--all` and `--fields` on argv,
-never in a document; and it reads `STOPPED_MIDWAY` as any exit 1 after effects: read what was done (`next`) before
-acting on the reason.
+**A caller.** Nothing changes for a caller that pages with `meta.next` in the same environment. With a tool that
+declares 1.2, a caller may also replace `--limit` by `--all` while paging; it puts `--limit`, `--cursor`, `--all`
+and `--fields` on argv, never in a document; and it reads `STOPPED_MIDWAY` as any exit 1 after effects: read what
+was done (`next`) before acting on the reason. In a document that declares 1.1 or 1.0, `STOPPED_MIDWAY` is the
+tool's own code: read its registry entry.
