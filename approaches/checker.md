@@ -1,7 +1,7 @@
 # The conformance checker
 
 Not normative in its implementation; spec 17 makes passing its MUST checks at the claimed level a requirement.
-Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.2.0.
+Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.2.1.
 
 ## 1. What it is
 
@@ -141,6 +141,7 @@ A tool supplies a fixture file:
   "env": { "CANON_ACTOR": "fixture" },
   "timeoutSeconds": 30,
   "probe": "status",
+  "notRun": ["dashboard"],
   "globalOptions": [["--repo", "."]],
   "registry": [
     { "code": "USAGE", "exit": 2, "retryable": false },
@@ -191,6 +192,18 @@ checker stops, reports the step and its answer, and reports no check. The
 effects check (§4) starts from that copy, so nothing `prepare` or `setup` made counts as an effect of a checked
 invocation. The checker never runs a `write` or `destructive` command that the fixture does not list. A command with
 no fixture entry makes its stateful checks `unprovided`.
+
+`notRun` lists commands, by path, that the checker never runs in a way that is expected to succeed: a command that
+does not end on its own (one that serves until it is signalled, whose `effectNote` says so, spec 10.5). Every
+listed command must be in `schema` with a non-empty `effectNote`, and none may be the `probe`, or the fixture is in
+error, as for a failing `prepare` step; at L0, where there is no `schema`, the list is taken as given. Runs that the
+checker expects to be refused still run, since a refusal ends: the generated refusals of L1.constraints,
+L1.numbers, L1.validators and L1.check-order, and the out-of-range values of L1.domains. Skipped are the runs that
+would succeed and so never end: the command's examples (L1.example-runs, L1.output-data), a `meta.next` entry that
+names it (L1.next), the in-range values of L1.domains, its successful run in L2.effects, and any fixture `ok` entry
+for it. Each check computes its result from its other runs and reports the runs it skipped with the reason
+`notRun`; a check whose every run was skipped this way is `unprovided`, so listing commands cannot pass a level.
+The report lists the `notRun` commands, as it lists the `prepare` steps.
 
 `paged` lists invocations of a command that return `meta.page.nextCursor` in the fixture state; L0.page and
 L1.paging run them. Which commands page is not taken from the fixture. From L1, a command pages when its command
@@ -452,6 +465,10 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | `--plan-digest x` alone refused with the `code` its command's `requires` rule declares for the pair (spec 10.8.1) | (none: L2.destructive-half passes) |
 | a fixture `prepare` step exits non-zero, or runs the binary under test | (none: the checker stops with a fixture error and reports no check, §5) |
 | a fixture `setup` step exits non-zero | (none: the checker stops with a fixture error and reports no check, §5) |
+| a command that serves until signalled, listed in `notRun`, whose example would never end | (none: its example-driven runs are skipped and reported as `notRun`, §5) |
+| `notRun` naming a command without an `effectNote`, or one `schema` does not list | (none: the checker stops with a fixture error, §5) |
+| `notRun` naming every `read` command that has examples | (none fails, but L1.example-runs is `unprovided`, which fails the level, §5) |
+| a command in `notRun` that accepts an out-of-range domain value | L1.domains (its refusal runs still run) |
 | a registry whose exit for one code differs from the fixture's | L0.registry |
 | a tool declaring 1.0 that emits `error.reason`, or a 1.1 tool whose envelope lacks `meta.contractVersion` or says `1.0` | L0.contract-version |
 | stderr holds a progress line in JSON mode | L0.stderr-quiet (advisory; no MUST check fails) |

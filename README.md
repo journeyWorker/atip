@@ -7,13 +7,14 @@ streams, and the guide shipped in the binary. It is written for tools built with
 TypeScript/Effect 4, but nothing in it depends on either, and it is checked against built binaries. A tool that
 passes is "ATIP 1.2 L1 conformant" (contract minor, then level L0, L1 or L2) for a release.
 
-**Status: 1.2.0** (2026-11-02). 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
+**Status: 1.2.1, release candidate.** 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0
 (2026-11-01), after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1 and 1.1.2
 (2026-11-01) are patches that clarify wording and checks, tighten the schema pattern of `meta.contractVersion` and
 add the checker's `prepare` fixture key. 1.2.0 (2026-11-02), after two rounds of review, is a minor whose new rules
 bind only a tool that declares 1.2: which arguments bind a paging cursor, `--fields` without `--json`, flag-only
 paging and selection options, the order of the stateless checks, and the reserved code `STOPPED_MIDWAY` for work
-stopped part-way. The decisions behind all of them are in Appendix A of the spec; no question is open.
+stopped part-way. 1.2.1 is a patch that adds plan digest test vectors, the checker's `notRun` fixture key and
+approaches notes. The decisions behind all of them are in Appendix A of the spec; no question is open.
 `CHANGELOG.md` lists the versions; spec 15 says how versions work, 15.9 states the one place where 1.1.0 changes
 what 1.0.0 promised callers, and 15.10 why 1.2.0 changes nothing a 1.1 caller relied on. Until its second revision
 the contract was called `agent-cli/1`.
@@ -39,8 +40,9 @@ scope (spec 1.6).
 | `schema/guide.schema.json` | The JSON data of `skills show --json`. |
 | `examples/` | Documents that must pass (canon's and the synthetic `ledger`'s as 1.0 tools, acme's as a 1.1 tool): canon `finding close`, `finding list`, `purge` and `skills show` command documents translated from canon; a synthetic reference tool `acme` (`member list`, `member show`, `member tag`, `member roster`, `member export`, `page label`, `deploy start`, `deploy status`, `filter test`, `lint`, `build`) for what the translations do not exercise; tree, search, group, error and warning registries with reasons, one entry; reports (success, failures, input error, preview, stale plan, three batch cases, projected pages, guide); `--input` documents; streams. `examples/README.md` says where every translated field comes from and which are proposed or unverified. |
 | `examples/caller-*.json` | Documents of a later minor, with members this one does not define, that a caller must read: they pass the schemas read open and fail them closed (spec 15.6, 15.8). |
+| `examples/plan-digest/` | Plan digest test vectors (spec 12.6): a plan document, its RFC 8785 canonical text and its `sha256:` digest, for number forms, string escapes, key order and nesting. |
 | `examples/invalid/` | Documents that must be rejected, one broken rule each (shape, every rule of spec 10.13, projection, domains, patterns, validators, batch, stream, input). |
-| `scripts/validate.sh` | Runs `scripts/check.ts`: every example against its JSON Schema and the rules beyond JSON Schema (spec 10.13, 6.x, 7.3, 11.x, 13.5), report and stream data against the output and event schemas of the example command documents, the spec's section cross-references, and the ECMAScript side of `scripts/regex-cases.json`. With cargo it also runs `scripts/regex-parity`, which checks the Rust side of that record. |
+| `scripts/validate.sh` | Runs `scripts/check.ts`: every example against its JSON Schema and the rules beyond JSON Schema (spec 10.13, 6.x, 7.3, 11.x, 13.5), report and stream data against the output and event schemas of the example command documents, the spec's section cross-references, and the ECMAScript side of `scripts/regex-cases.json`; then `scripts/plan-digest.ts`, which recomputes the plan digest test vectors. With cargo it also runs `scripts/regex-parity`, which checks the Rust side of that record. |
 | `scripts/regex-cases.json` | Patterns and values with the answers of ECMAScript (`u`) and the Rust `regex` crate: the evidence that the pattern form of spec 10.7.4 reads the same in both. |
 | `approaches/` | Not normative. `rust.md` (clap → spec, the shared crate, constraints, `--input` in Rust, canon and lute), `typescript.md` (spec-first `defineCommand` for Effect 4, fragment schemas and numeric codecs, an `effect/cli` interim), `checker.md` (the black-box conformance checker: strengths, coverage, fixtures, tool-owned obligations), `migration.md` (adopting ATIP level by level, canon and lute as worked examples, and the costs the contract does not soften). |
 | `CHANGELOG.md` | What each version of the contract is. |

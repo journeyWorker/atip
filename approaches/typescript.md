@@ -1,7 +1,7 @@
 # TypeScript and Effect 4: spec-first commands
 
 Not normative. How a TypeScript tool built on Effect 4 can become ATIP conformant, and what the shared package
-`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.2.0.
+`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.2.1.
 
 ## 1. Where a TypeScript tool starts
 

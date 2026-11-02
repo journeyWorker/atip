@@ -189,3 +189,28 @@ synthetic tool, **`tally`** (`*-tally-*`), stays on 1.1: its `entry list` is `le
 
 The other 1.2 rules (which arguments bind a cursor, `--fields` without `--json`, the order of the stateless checks)
 are behaviour, not documents; the checker tests them (approaches/checker.md).
+
+## Plan digests
+
+`plan-digest/*.json` are test vectors for the digest form spec 12.6 recommends: `sha256:` followed by the lower-case
+hex SHA-256 of the plan's RFC 8785 (JCS) canonical JSON, as UTF-8. Each file has a `description`, the `plan` as a
+tool might build it (written with the spellings under test, so read the file as JSON, not as text), the expected
+`canonical` text and the expected `digest`. A tool that follows the recommendation canonicalizes `plan` and must get
+both. The plans are shaped `{effects, inputs}` for illustration; the digest covers whatever plan document a tool
+builds, and a tool that computes its digest another way (12.6 is a SHOULD) is not bound by them.
+
+| File | What it pins |
+|---|---|
+| `empty-effects.json` | Empty array and empty object. |
+| `key-order.json` | Keys sorted at every depth; array order kept. |
+| `key-order-utf16.json` | Keys sorted by UTF-16 code units, not code points (RFC 8785 section 3.2.3's keys). |
+| `numbers-integral.json` | `1.0`, `1e0`, `1e2`, `100.000`, negative zero and the safe-integer bounds. |
+| `numbers-other.json` | Fractions, exponent forms from `1e21` up and below `1e-6`, the largest and smallest doubles. |
+| `strings.json` | Escapes: only `"`, `\` and controls below U+0020; non-ASCII, DEL, U+2028 and surrogate pairs as UTF-8; RFC 8785 section 3.2.2's string. |
+| `nested.json` | Nested arrays and objects, empty containers, literals. |
+| `preview.json` | A plan shaped like a destructive preview's: deletes, an audit append, arguments and digests of the files read. |
+
+The expected values were computed with two independent RFC 8785 implementations, the `canonicalize` npm package
+(5.1.0) and a separate implementation in Python, each first checked against RFC 8785's own examples (Appendix B and
+sections 3.2.2 and 3.2.3); both agree on every vector. `scripts/plan-digest.ts`, run by `scripts/validate.sh`,
+recomputes them with a third, self-contained canonicalizer, which it checks against Appendix B first.

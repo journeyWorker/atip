@@ -3,7 +3,7 @@
 Not normative. How an existing command-line tool moves to ATIP, level by level, with canon 0.31.0 and lute 0.52.0
 (both Rust, clap) as worked examples. Their status below is from their source and their read-only `schema`
 output; anything not established that way is marked *unmeasured*. Section numbers ("spec 11.7") refer to
-`spec/atip-1.md`, version 1.2.0.
+`spec/atip-1.md`, version 1.2.1.
 
 The contract is not softened to ease adoption; where a rule costs a tool real work, the cost is recorded here (§4).
 
@@ -81,7 +81,7 @@ Legend: ✅ conforms · 🟡 close, mechanical change · 🔴 missing or differe
 | Conversion with operands after `--` (11.9) | | *unmeasured* | — |
 | Batches (11.11) | a per-item failure code, exit overrides | 🟡 `INPUT_ELEMENT_FAILED`, exit overrides; pointer `/items/<i>/…` | — |
 | `--input` twice, or last with no value, is `USAGE` with `field` `--input` (11.2) | `INPUT_INVALID` for a malformed command line | *unmeasured* | — |
-| Refusals and previews write nothing (12.2) | logs, telemetry or caches written before the command ran | 🟡 `read_effects.rs` whitelists `subject show` writes | 🔴 telemetry |
+| Refusals and previews write nothing (12.2); a `read` may write the cache or audit line its `effectNote` names on success (12.1) | logs, telemetry or caches written before the command ran, or on a refusal | 🟡 `read_effects.rs` whitelists `subject show` writes | 🔴 telemetry |
 | Preview + digest (12.4-12.7) | `--yes`, prompts, `--dry-run` as the only safety | ✅ 5 leaves; bare-hex digest; `PLAN_CHANGED` | 🟡 `tag --renumber --commit`, no digest |
 | Commit `next` from normalised arguments (12.5) | | *unmeasured* | — |
 | `async`, waiting (13.2, 13.3) | | ✅ (`waitingOn`) | n/a |
@@ -134,8 +134,9 @@ Rust crate.
 5. A purge preview lists the audit line its commit appends among `effects` (spec 12.4); lifted report schemas lose
    their own `$id`; a `--cursor` given with other filter arguments refuses (spec 6.9).
 6. `skills show` with an optional `NAME` and `{name, text, guides, full}`; `dashboard` on the stream protocol,
-   with `output` on the start line when it declares more than one output (spec 13.5.1); `subject show` writes
-   moved out of a `read` command or the command made `write`.
+   with `output` on the start line when it declares more than one output (spec 13.5.1); `subject show` keeps
+   its cache as a `read` command whose `effectNote` names the cache (spec 12.1), and writes it only when it
+   succeeds: never on a refusal, a preview or `--dry-run` (12.2), so it writes the cache only after its checks pass.
 7. Run the checker at L2 in CI. Every consumer of canon JSON (hooks, the skill, the website) moves in the same
    release.
 
@@ -151,7 +152,7 @@ Callers: the website and every harness that parses lute JSON. approaches/rust.md
 | Rule | Who pays | Cost |
 |---|---|---|
 | No `--yes`; every destructive act previews and commits with a digest (12.8, D11.11) | any tool with `--yes`, `--force` or a confirmation prompt | One extra call per destructive act; the plan must cover the target's state so the digest means something; prompts go; every caller that passes `--yes` today (scripts, guides, the tool's own `next`) changes in the same release. |
-| Refusals, previews and `schema` write nothing at all (12.2) | lute (telemetry on every invocation), canon (`subject show` writes as a read); any tool that logs every run | Telemetry and logs recorded only after a successful command; storage resolved only after the scope is checked; canon reclassifies or splits `subject show`. |
+| Refusals, previews and `schema` write nothing at all (12.2) | lute (telemetry on every invocation), canon (`subject show`, a read that writes a cache); any tool that logs every run | Telemetry and logs recorded only after a successful command; storage resolved only after the scope is checked. A `read` command may still keep a cache or an audit line its `effectNote` names (12.1), written on success only; it need not become a `write`. |
 | One operand kind; modifiers are options (9.4) | any tool with a second operand of another kind | The values become a repeatable option; callers and guides change. |
 | Fragment schemas without `required`; argv and document merged before requirements (11.7) | canon | canon's input path must stop rejecting a partial document before the merge; it publishes fragment schemas. |
 | Batch failure during execution is always `BATCH_INCOMPLETE` with the batch report (11.11) | canon | `INPUT_ELEMENT_FAILED` and the exit overrides go; batch consumers read `data.items`. |

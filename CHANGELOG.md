@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.2.1 (unreleased)
+
+A patch (15.1): examples, approaches and checker rows from implementer feedback. No member, option, rule strength or
+document kind is added; `meta.contractVersion` stays `"1.2"`, and a tool that conformed to 1.2.0 still conforms
+(D35).
+
+- **Plan digest test vectors (12.6, `examples/plan-digest/`).** Eight plan documents with their RFC 8785 canonical
+  text and `sha256:` digest, for 12.6's recommended form: number spellings (`1.0`, `1e2`, negative zero, exponent
+  forms, the extreme doubles), string escapes and non-ASCII text, key order by UTF-16 code units, nesting and empty
+  containers, and a plan shaped like a destructive preview's. Expected values come from two independent JCS
+  implementations checked against RFC 8785's examples; `scripts/validate.sh` recomputes them with
+  `scripts/plan-digest.ts`. 12.6 says, informatively, that the vectors exist. They bind no tool that computes its
+  digest another way.
+- **Checker (`approaches/checker.md` §5).** Fixture key `notRun`: commands that do not end on their own (one that
+  serves until signalled, with an `effectNote` saying so). The checker skips their runs that would succeed
+  (examples, `next` entries, in-range domain values, the L2.effects run, `ok` entries), still runs their generated
+  refusals, reports what it skipped, and reports a check left with no run as `unprovided`. A listed command missing
+  from `schema` or without an `effectNote`, or the `probe`, is a fixture error. Seeded rows.
+- **Rust (`approaches/rust.md` §5).** Which schemars view generates an output schema: the serialize view with
+  `skip_serializing_if` on every `Option`, or the deserialize view for a pass-through record, never mixed in one
+  output.
+- **Migration (`approaches/migration.md`).** A `read` command may keep the cache or audit line its `effectNote`
+  names, written on success only (12.1, 12.2); it need not become a `write`.
+
 ## 1.2.0 (2026-11-02)
 
 A minor (15.1) from implementer feedback. It adds no member, option, document kind or enum value. Its new rules

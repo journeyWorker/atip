@@ -1,7 +1,7 @@
 # Rust: clap stays the source, the self-description is generated
 
 Not normative. How a Rust tool built on clap 4 derive, such as canon and lute, can become ATIP conformant without a second
-description of their command trees. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.2.0.
+description of their command trees. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.2.1.
 
 ## 1. The principle
 
@@ -315,6 +315,24 @@ make `#/schemas/…` resolve against that URN instead of the command document (f
 translated `purge` example). Artifacts have a JSON representation type of their own (`skills show` → `Guide`);
 streams have an event type and a result type (spec 10.9). A record schema of an output with `fields` must be
 projectable (spec 6.10); schemars emits `anyOf: [{$ref}, {type: null}]` for `Option<T>`, which is allowed.
+
+**Which schemars view.** schemars describes a type either as it is serialized or as it is deserialized, and the two
+differ exactly where a report is checked: `schema_for!` and the default `SchemaSettings` use the deserialize view,
+in which an `Option<T>` field and a `#[serde(default)]` field are never `required`, although serde prints every
+`Option` as `null` unless told otherwise. An output schema describes what the tool prints (spec 10.9.3), so every
+Rust tool generates it from one of two settings, chosen per output:
+
+- **The serialize view** (`SchemaSettings::draft2020_12().for_serialize()`), the default for reports. Every
+  `Option` field carries `#[serde(skip_serializing_if = "Option::is_none")]`, so an absent value is an absent member
+  and the generated schema leaves it out of `required`. An `Option` without the attribute is `required` in this
+  view, which is true to the bytes but puts a `null` member in every report that lacks the value; a test that walks
+  the report types and fails on an `Option` without the attribute keeps the two together.
+- **The deserialize view** (`SchemaSettings::draft2020_12().for_deserialize()`) only for a pass-through record: a
+  value the tool reads from a store or another program and prints unchanged, whose type exists to read it. Its
+  schema then admits what the source may hold, an absent member or a `null` alike.
+
+Either way L1.output-data (approaches/checker.md §6) checks the generated schema against real output, and one output
+does not mix the two views.
 
 The input **fragment** schema (spec 10.10) is generated from the clap node: one property per option that is not
 flag-only (camelCase name; type from valueType in its encoded form, so an integer is
