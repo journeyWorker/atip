@@ -257,16 +257,27 @@ present exactly when more items follow) and `total` (when known). When `nextCurs
 contain an entry for the next page: the same invocation with `--cursor <nextCursor>` (at any position in `next`). A
 cursor is bound to the arguments of the invocation that produced it, except `--limit`, `--cursor` and `--fields`:
 given with different arguments, or not produced by this command, it refuses with `CURSOR_INVALID` (exit 2, 7.2.1),
-so changing a filter can never skip or repeat records silently. **Since 1.2**, in a tool that declares 1.2 the
-exceptions are exactly the reserved options that never change the result set, `--json`, `--limit`, `--all`,
-`--cursor` and `--fields`, and an argument given explicitly with its default value is given (10.8.1): adding or
-removing it changes the arguments, as changing its value does. A tool that declares 1.1 or 1.0 keeps the binding of
-the first sentence (15.10). A caller pages with the `next` entry's arguments, changing at most `--limit` and
-`--fields`, and `--all` with a tool that declares 1.2. A report MAY also keep paging members of its own in `data` (a
-cursor in the report's schema from before the tool adopted ATIP); `meta.page` is the contract's paging and is
-authoritative when the two differ. An answer cut by size (not by paging) carries `meta.truncated`: `path` (JSON
-pointer of the list or value cut), `kept`, and `total`, `bytes`, `maxBytes` when known, plus a `next` entry that
-reaches the rest. [Appendix A D11.5, D16.1, D26, D31]
+so changing a filter can never skip or repeat records silently. **Since 1.2**, in a tool that declares 1.2:
+
+- The exceptions are exactly the reserved options that never change the result set: `--json`, `--limit`, `--all`,
+  `--cursor` and `--fields`.
+- An argument given explicitly with its default value is given (10.8.1): adding or removing it changes the
+  arguments, as changing its value does. A switch given `false` and a count given `0` are not given, since they are
+  the same as absent (10.7.2).
+- A value taken from an option's `env` variable (11.7 step 5) is bound too, though it is not given: setting,
+  changing or unsetting the variable changes the arguments, and so does giving the option explicitly instead.
+- The next-page entry carries exactly the arguments the invocation gave explicitly, normalised, plus
+  `--cursor <nextCursor>`: as argv options or one inline `--input` word when they came from `--input -` or a file
+  (12.5), never a value filled in from a default or an environment variable. Run in the same environment, it
+  continues.
+
+A tool that declares 1.1 or 1.0 keeps the binding of the first sentence (15.10). A caller pages with the `next`
+entry's arguments, in the same environment, changing at most `--limit` and `--fields`, and `--all` with a tool that
+declares 1.2. A report MAY also keep paging members of its own in `data` (a cursor in the report's schema from
+before the tool adopted ATIP); `meta.page` is the contract's paging and is authoritative when the two differ. An
+answer cut by size (not by paging) carries `meta.truncated`: `path` (JSON pointer of the list or value cut), `kept`,
+and `total`, `bytes`, `maxBytes` when known, plus a `next` entry that reaches the rest. [Appendix A D11.5, D16.1,
+D26, D31, D32]
 
 6.10. **Field selection.** A command whose output declares `fields` (10.9) takes the reserved option
 `--fields <FIELDS>`: a comma-separated list of field paths from that declaration. A field path is a dot path into
@@ -287,10 +298,10 @@ dot, never in brackets, so each member has exactly one spelling and `meta.fields
 without brackets mean what they meant in 1.0. In the `--fields` value, commas inside a bracketed key do not separate
 paths.
 
-**Map keys** (since 1.1, for a document that declares 1.1). A declared path whose schema is a *map*, an object
-schema whose `additionalProperties` is a schema (`true` included) and whose `properties` is absent or empty, also
-makes each of its keys selectable, except a key that contains U+0000, which no argv element can carry (9.12) and
-which is reached only by selecting the whole map: `attributes.region`, `attributes["http.status-code"]` or
+**Map keys** (since 1.1, for a document that declares 1.1 or later). A declared path whose schema is a *map*, an
+object schema whose `additionalProperties` is a schema (`true` included) and whose `properties` is absent or empty,
+also makes each of its keys selectable, except a key that contains U+0000, which no argv element can carry (9.12)
+and which is reached only by selecting the whole map: `attributes.region`, `attributes["http.status-code"]` or
 `attributes[""]` when `attributes` is declared. The map is the schema the declared path itself names: `labels`
 declared as an array of maps names the array, so its keys are selected through `labels[]` (`labels[].region`), never
 `labels.region`. Such a path selects the whole value under that key and goes no deeper. A key the record does not
@@ -398,12 +409,12 @@ Normative shapes: `schema/error.schema.json`, `schema/registry-entry.schema.json
 | `details` | Only when one input yields several errors. Each item has `code`, `message` and the optional members above except `retryable` and `details`; the top-level `code` summarises. |
 
 7.1.2. **Hint forms.** A `hint` is exactly one of: a runnable invocation; a command template whose missing values
-are `<UPPER_CASE>` placeholders; or one sentence of prose. In a document that declares 1.1, a hint that starts with
-the tool name followed by a space is an invocation or a template: it splits as a POSIX shell would, like
-`meta.next[].command` (6.8), and holds nothing but that command line, so a caller can tell the forms apart; a
-1.1 tool words a prose hint so that it does not start with the tool name and a space, and prose that explains a
-command belongs in `message`. In a document that declares 1.0 a prose hint may start with the tool name, as 1.0
-allowed, and a caller does not read such a hint as a command. [Appendix A D26]
+are `<UPPER_CASE>` placeholders; or one sentence of prose. In a document that declares 1.1 or later, a hint that
+starts with the tool name followed by a space is an invocation or a template: it splits as a POSIX shell would, like
+`meta.next[].command` (6.8), and holds nothing but that command line, so a caller can tell the forms apart; such a
+tool words a prose hint so that it does not start with the tool name and a space, and prose that explains a command
+belongs in `message`. In a document that declares 1.0 a prose hint may start with the tool name, as 1.0 allowed, and
+a caller does not read such a hint as a command. [Appendix A D26]
 
 7.1.3. **`USAGE` names the argument.** A `USAGE` error SHOULD carry `field`. When the tool cannot map the problem
 to an argument (a backend rejects a request built from several arguments and does not say which), it omits
@@ -417,13 +428,13 @@ to an argument (a backend rejects a request built from several arguments and doe
 situation the tool can produce (a tool without `--input` does not register the `INPUT_*` codes). There are twelve
 reserved codes, and since 1.2 a thirteenth, `STOPPED_MIDWAY` (8.3.2). For that one the first sentence is a SHOULD,
 for a tool that declares 1.2: a tool that keeps a code of its own for the situation stays conforming, and a tool
-that registers `STOPPED_MIDWAY` while declaring 1.2 gives it the reserved exit, retryability and meaning. A command
-that offers a feature lists that feature's codes in its `errors` (10.5), so a checker can tell from the
-self-description alone that they are registered: `--input` gives the three `INPUT_*` codes, `input.batch` gives
-`BATCH_INCOMPLETE`, `--commit` gives `PLAN_STALE`, `--operation` gives `OPERATION_REUSED`, and `--cursor` gives
-`CURSOR_INVALID` (10.13 rule 4). `UNVERIFIABLE` has no such marker in the self-description, and neither has
-`STOPPED_MIDWAY`: a command that can produce one lists it like any other code. [Appendix A D11.9, D11.10, D12.2,
-D16.1, D33]
+that registers `STOPPED_MIDWAY` while declaring 1.2 gives it the reserved exit, retryability and meaning, which hold
+only in a document that declares 1.2 (8.3.2). A command that offers a feature lists that feature's codes in its
+`errors` (10.5), so a checker can tell from the self-description alone that they are registered: `--input` gives the
+three `INPUT_*` codes, `input.batch` gives `BATCH_INCOMPLETE`, `--commit` gives `PLAN_STALE`, `--operation` gives
+`OPERATION_REUSED`, and `--cursor` gives `CURSOR_INVALID` (10.13 rule 4). `UNVERIFIABLE` has no such marker in the
+self-description, and neither has `STOPPED_MIDWAY`: a command that can produce one lists it like any other code.
+[Appendix A D11.9, D11.10, D12.2, D16.1, D33]
 
 | Code | Exit | Retryable | When | Applies |
 |---|---|---|---|---|
@@ -511,11 +522,10 @@ if the same situation is ever reported as the error, never to a success that car
 [Appendix A D11.16]
 
 7.5.2. **The warning registry** (since 1.1). A tool MAY keep its warning codes in a registry of their own: entries
-`{code, meaning, fix}`, with no `exit` and no `retryable`, printed by `<tool> schema --warnings --json`
-(`data.kind: "warnings"`) and one entry by `<tool> schema --warning <CODE> --json` (`data.kind: "warning"`). An
-unknown code refuses with `USAGE`, `field` `--warning`. A tool that implements 1.1 SHOULD register every warning
-code there; a warning registered only in the error registry with `exit: 1`, as in 1.0, stays valid.
-[Appendix A D22]
+`{code, meaning, fix}`, with no `exit` and no `retryable`, printed by `<tool> schema --warnings --json` (`data.kind:
+"warnings"`) and one entry by `<tool> schema --warning <CODE> --json` (`data.kind: "warning"`). An unknown code
+refuses with `USAGE`, `field` `--warning`. A tool that implements 1.1 or later SHOULD register every warning code
+there; a warning registered only in the error registry with `exit: 1`, as in 1.0, stays valid. [Appendix A D22]
 
 7.5.3. A tool that keeps a warning registry registers a situation that it reports as a warning in some
 invocations and as an error in others in both registries, under the same code, with the same meaning. A tool
@@ -580,14 +590,18 @@ the work. A `read` command reports its precondition failures as refusals as befo
 
 8.3.2. **Stopped part-way** (since 1.2). A command that does its work in steps (an orchestration of phases, a commit
 that makes its effects one at a time) can meet, after an earlier step made effects, a situation it refuses with an
-exit-2 code when it meets it before the work: a lease another run holds, a plan that changed between effects
-(12.7). It can no longer exit 2 (8.2). A tool that declares 1.2 SHOULD report it with the reserved code
-`STOPPED_MIDWAY` (exit 1, not retryable), whose `reason` is the name of that exit-2 code, registered under
-`STOPPED_MIDWAY` (7.6), instead of a during-the-work twin of each such code. The reason's `fix` says what to do once
-the caller has read what was done, and `meta.next` SHOULD lead with a command that reads it; repeating the command
-blindly could repeat the steps that already ran. A failure category that has its own during-the-work code
-(`WRITE_FAILED`, 8.3) keeps it. `STOPPED_MIDWAY` is the code of one invocation: a batch item that stops this way is
-`failed` with `STOPPED_MIDWAY` as its own error, and the batch is `BATCH_INCOMPLETE` (11.11). [Appendix A D33]
+exit-2 code when it meets it before the work: a lease another run holds, a plan that changed between effects (12.7).
+It can no longer exit 2 (8.2). A tool that declares 1.2 SHOULD report it with the reserved code `STOPPED_MIDWAY`
+(exit 1, not retryable), whose `reason` is the name of that exit-2 code, registered under `STOPPED_MIDWAY` (7.6),
+instead of a during-the-work twin of each such code. The refused step's own `reason`, if it had one, is not carried:
+`reason` is always the refusal's code by itself, never a compound name, and the message can say more. The reason's
+`fix` says what to do once the caller has read what was done, and `meta.next` SHOULD lead with a command that reads
+it; repeating the command blindly could repeat the steps that already ran. A failure category that has its own
+during-the-work code (`WRITE_FAILED`, 8.3) keeps it. `STOPPED_MIDWAY` is the code of one invocation: a batch item
+that stops this way is `failed` with `STOPPED_MIDWAY` as its own error, and the batch is `BATCH_INCOMPLETE` (11.11).
+The reserved meaning holds in a document that declares 1.2; in a document that declares 1.1 or 1.0, `STOPPED_MIDWAY`
+is a code of the tool's own, and a caller reads it by that tool's registry entry (its `retryable` and `fix`).
+[Appendix A D33]
 
 8.4. **Signals.** Termination by a signal is outside this table: no envelope is promised, and signal exits are not
 registry entries. It shows either as a wait status that names the signal, or as exit 128+n (130 for SIGINT, 143 for
@@ -981,8 +995,18 @@ Values are compared after normalisation (11.5); every value in `in` is a valid v
 (10.13 rule 3), and `in` is not allowed on a switch or a count. "Given" means supplied explicitly on argv or in an
 `--input` document; a default or environment value does not count. A rule MAY carry `code`, the registered code
 its violation produces; otherwise it is `USAGE`. A violation's `field` names the first argument of the rule that
-is at fault, first in the rule's own order (`names` as declared, `if` before `then`), never in the order of argv:
-`atMostOne` `["promote", "no-promote"]` given both names `promote`.
+is at fault, "first" in the rule's own order, never in the order of argv. Since 1.2, in a document that declares
+1.2, the argument at fault is defined per rule; a document that declares 1.1 or 1.0 is held only to the sentence
+before:
+
+| `rule` | `field` names |
+|---|---|
+| `requires` | the first name in `then` that is not given (`--disposition rejected` without `--reason` names `--reason`) |
+| `forbids` | the first name in `then` that is given, the one the caller removes |
+| `atMostOne`, and `exactlyOne` with more than one given | the first given name in `names` |
+| `atLeastOne`, and `exactlyOne` with none given | the first name in `names` |
+
+[Appendix A D34]
 
 10.8.2. `requires` and `conflictsWith` on single options do not exist in this revision; they are `requires` and
 `atMostOne` rules. The five rules are the whole vocabulary; a new rule is added only when a real command needs a
@@ -1123,18 +1147,19 @@ this repository and by the conformance checker (17). Every rule has at least one
 16. A document declares its minor by `meta.contractVersion` (a stream by its start line), absent meaning `"1.0"`;
     the value is never `"1.0"` written out and is a minor this document describes, and a stream's end result
     declares the same as its start. A document that declares 1.0 carries no member, document kind or path syntax
-    that this document marks "since 1.1" (`meta.contractVersion` itself, also on a start line; `error.reason`,
-    at the top, in `details` and in batch items; registry `reasons`; the `warnings` and `warning` kinds; bracketed
+    that this document marks "since 1.1" (`meta.contractVersion` itself, also on a start line; `error.reason`, at
+    the top, in `details` and in batch items; registry `reasons`; the `warnings` and `warning` kinds; bracketed
     field paths in `fields` and `meta.fields`; map-key selections). The rules that are meanings rather than shapes
-    apply only to a document that declares 1.1 or later: a declared map's keys are selectable and its schema is a cut
-    node (6.10); a hint that starts with the tool name is a command line (7.1.2). 1.2 adds no member, document kind
-    or syntax; its rules apply only to a document that declares 1.2: four more flag-only options (rule 8),
+    apply only to a document that declares 1.1 or later: a declared map's keys are selectable and its schema is a
+    cut node (6.10); a hint that starts with the tool name is a command line (7.1.2). 1.2 adds no member, document
+    kind or syntax; its rules apply only to a document that declares 1.2: four more flag-only options (rule 8),
     `STOPPED_MIDWAY` as a reserved code (rule 14), and, as behaviour the checker tests rather than shape, the cursor
-    binding of 6.9, `--fields` without `--json` (6.10) and the order of 11.7 step 6. A document that declares 1.1 or
-    1.0 is held to none of them. In a document that declares 1.0 a
-    declared map is kept whole and is no cut node, and a hint may be prose that starts with the tool name. A
-    `schema` answer's `meta.schemaVersion` equals the contract version it declares (10.1.4). This rule applies to
-    every document a tool prints, `schema` answers, reports, failures, batch reports and streams alike.
+    binding and the next-page entry of 6.9, `--fields` without `--json` (6.10), the argument at fault of a
+    constraint (10.8.1), the order of 11.7 step 6 and the meaning of `STOPPED_MIDWAY` (8.3.2). A document that
+    declares 1.1 or 1.0 is held to none of them. In a document that declares 1.0 a declared map is kept whole and is
+    no cut node, and a hint may be prose that starts with the tool name. A `schema` answer's `meta.schemaVersion`
+    equals the contract version it declares (10.1.4). This rule applies to every document a tool prints, `schema`
+    answers, reports, failures, batch reports and streams alike.
 
 ## 11. JSON input: `--input`
 
@@ -1145,12 +1170,12 @@ Normative shapes: `schema/input-document.schema.json` (generic), and per command
 command MAY. The option carries the command's arguments as a JSON document. [Appendix A D6]
 
 11.2. **The value.** After leading whitespace, a value starting with `{` or `[` is inline JSON; `-` reads stdin;
-anything else is a file path relative to the working directory (a file whose name starts with `{` or `[` is
-passed as `./{name}`). An empty value, a file that cannot be read, and an empty source refuse with
-`INPUT_INVALID`, `field` `--input`. `--input` given twice, or as the last word with no value, is a malformed
-command line, not a bad value. A tool that declares 1.1 refuses it with `USAGE` (or the finer parse code it
-registers for that situation instead of `USAGE`, 7.2.2), `field` `--input`; `INPUT_INVALID` is then only for a
-value that was given (steps 1-2 of 11.7). A tool that declares 1.0 SHOULD do the same. [Appendix A D26]
+anything else is a file path relative to the working directory (a file whose name starts with `{` or `[` is passed
+as `./{name}`). An empty value, a file that cannot be read, and an empty source refuse with `INPUT_INVALID`, `field`
+`--input`. `--input` given twice, or as the last word with no value, is a malformed command line, not a bad value. A
+tool that declares 1.1 or later refuses it with `USAGE` (or the finer parse code it registers for that situation
+instead of `USAGE`, 7.2.2), `field` `--input`; `INPUT_INVALID` is then only for a value that was given (steps 1-2 of
+11.7). A tool that declares 1.0 SHOULD do the same. [Appendix A D26]
 
 11.3. `--input -` with stdin attached to a terminal refuses with `INPUT_INVALID`, `field` `--input`.
 
@@ -1208,11 +1233,14 @@ the command's self-description, so they give the same answer whatever the tool's
    an argument "given" for constraints (10.8).
 6. **Invocation validation.** Requirements (`required`), domains (10.7.4), constraints (10.8) and validators
    (10.8.3) are checked on the merged arguments, with the same codes as for an invocation without `--input`
-   (`USAGE`, or the constraint's, validator's or command's code). No state is read. In a tool that declares 1.2
-   they are checked in exactly that order, `constraints` and `validators` each in their declaration order, with or
-   without `--input`, and the first failure is the answer, so that two tools give one invocation the same code;
-   10.8.3 puts validators last for every minor. What is validated is the
-   **argument object**: `operands` (normalised; when the explicit operands end before an operand that has a
+   (`USAGE`, or the constraint's, validator's or command's code). No state is read. In a tool that declares 1.2,
+   with or without `--input`, the first failure is the answer and the order is fixed, so that two tools give one
+   invocation the same code and `field`: a failure to parse argv (an unknown option or command word, a missing
+   option value, a value that is not of its valueType or not one of its `possibleValues`) comes before step 6 (with
+   `--input`, at step 3); step 6 then checks `required`, then domains, then constraints, then validators; within
+   `required` and within domains, operands in their order and then options in their declaration order; constraints
+   and validators each in their declaration order. 10.8.3 puts validators last for every minor. What is validated
+   is the **argument object**: `operands` (normalised; when the explicit operands end before an operand that has a
    non-null default, that default is appended, and for a variadic operand the elements of its default array, in
    order), and for every option that is not flag-only, under its camelCase name, its normalised explicit value,
    else its `env` value, else its default when that is not `null`. Integers and numbers are JSON numbers there,
@@ -1437,7 +1465,7 @@ that holds it:
 | Class | What it may do | What it never does |
 |---|---|---|
 | PATCH (`1.1.x`) | Clarify text without changing what conforming tools and callers do; correct examples, checks and the regex record; add examples. | Change a rule. |
-| MINOR (`1.x.0`) | Add OPTIONAL members, options, document kinds and enum values to the objects this document defines; add SHOULD and MAY rules; add MUST rules that govern only something the same minor adds, so that a tool which does not use the addition cannot fail them; relax a rule only where every answer the relaxed rule permits is one a caller already handles safely (8.3.1). | Make a conforming tool non-conforming: a tool that conformed to `1.0` still conforms, as a `1.0` tool (15.7). |
+| MINOR (`1.x.0`) | Add OPTIONAL members, options, document kinds and enum values to the objects this document defines; add SHOULD and MAY rules; add MUST rules that govern only something the same minor adds, the declaration of that minor (`meta.contractVersion`, 10.13 rule 16) included, so that a tool which does not use the addition, or does not declare the minor, cannot fail them; relax a rule only where every answer the relaxed rule permits is one a caller already handles safely (8.3.1). | Make a conforming tool non-conforming: a tool that conformed to `1.0` still conforms, as a `1.0` tool (15.7). |
 | MAJOR (`atip/2`) | Remove or rename a member, option, code or document kind; change a type or a meaning; make an OPTIONAL member REQUIRED; add a MUST that an existing tool can fail. | |
 
 [Appendix A D20]
@@ -1535,16 +1563,19 @@ caller existed outside the two early adopters of 1.0, and both moved to 1.1. Not
 meaning, and a 1.0 tool stays conforming without a change. From 1.1.0 on, 15.1 and 15.6 hold for every later 1.x,
 and this exception is not repeated. [Appendix A D20]
 
-15.10. **From 1.1 to 1.2.** 1.2.0 changes nothing a 1.1 caller relied on, so 15.9's exception is not repeated. Its
-one relaxation is the cursor binding of 6.9: a tool that declares 1.2 continues a page when `--all` or `--json`
-changed, where a 1.1 tool may refuse with `CURSOR_INVALID`. The answer is the same result set, so it is one a caller
-already handles safely (15.1), and a caller tells which rule applies from the `meta.contractVersion` of the answer
-that issued the cursor. Every other 1.2 rule binds the tool only. An argument added with its default value, and a
-document key that names one of the four new flag-only options, refuse where a 1.1 tool may have accepted, with codes
-a 1.1 caller already handles (`CURSOR_INVALID`; `INPUT_INVALID`, announced beforehand by `flagOnly` in the command
-document, 11.6). `--fields` without `--json` is accepted where a 1.1 tool may refuse. `STOPPED_MIDWAY` is an exit-1
-code, which a caller that does not know it reads as 8.3 says: the command ran, and effects may exist. [Appendix A
-D32, D33]
+15.10. **From 1.1 to 1.2.** 1.2.0 changes nothing that a 1.1 caller which reads the tool's self-description relied
+on, so 15.9's exception is not repeated. Its one relaxation is the cursor binding of 6.9: a tool that declares 1.2
+continues a page when `--all` or `--json` changed, where a 1.1 tool may refuse with `CURSOR_INVALID`. The answer is
+the same result set, so it is one a caller already handles safely (15.1), and a caller tells which rule applies from
+the `meta.contractVersion` of the answer that issued the cursor. Every other 1.2 rule binds the tool only, and where
+it refuses what a 1.1 tool may have accepted, the refusal changes nothing and uses a code a 1.1 caller already
+handles: a cursor given with an argument added at its default value, or after its `env` variable changed, refuses
+with `CURSOR_INVALID`; a document with the key `limit`, `cursor`, `all` or `fields` (`{"limit": 10}`) refuses with
+`INPUT_INVALID`, and the command document marks those options `flagOnly` beforehand (11.6), so a caller that reads
+it does not send them. `--fields` without `--json` is accepted where a 1.1 tool may refuse. `STOPPED_MIDWAY` is an
+exit-1 code; a caller that does not know it reads it as 8.3 says (the command ran, and effects may exist), and a
+caller that knows it reads its reserved meaning only in a document that declares 1.2 (8.3.2). [Appendix A D32,
+D33]
 
 ## 16. Security
 
@@ -1685,9 +1716,9 @@ caller is `atip/2`.
 
 | # | Owner decision 2026-11-02, version 1.2.0, a minor (15.1) from implementer feedback | Where |
 |---|---|---|
-| D32 | Paging, field selection and the stateless checks, for a document that declares 1.2 only (the D27 pattern: a tool that declares 1.1 or 1.0 keeps its behaviour and stays conforming). A cursor is bound to every argument except the reserved options that never change the result set (`--json`, `--limit`, `--all`, `--cursor`, `--fields`), and an argument given explicitly with its default value is given; this relaxes 1.1's binding of `--json` and `--all` only where the result set is the same (15.1, 15.10). `--fields` is parsed and validated with or without `--json`; what it does to text is the tool's. `limit`, `cursor`, `all` and `fields` are flag-only. Step 6 of 11.7 checks `required`, domains, constraints and validators in that order, the last two in declaration order, and the first failure answers. Declined: per-item batch `--fields`, since 1.1.2 already gives one answer (`USAGE` when the batch output declares no `fields`). | 6.9, 6.10, 9.8, 10.13 rules 8 and 16, 11.6, 11.7, 15.10 |
-| D33 | `STOPPED_MIDWAY` (exit 1, not retryable) is reserved since 1.2: a command that works in steps and stops after a step made effects, because a later step meets what the command refuses before its work, reports it with that refusal's code as `reason`, instead of a during-the-work twin of every refusal code. SHOULD for a tool that declares 1.2, so a tool with a code of its own stays conforming; a 1.2 tool that registers the name gives it this exit, retryability and meaning. The name is the one the first adopter already uses and says what happened and when; an `*_INCOMPLETE` name was not chosen because exit 1 already covers incomplete answers that made no effect (8.1, 8.5), and `BATCH_INCOMPLETE` stays the code of a batch, under which a stopped item is `failed` with `STOPPED_MIDWAY`. Reserved reason `PLAN_STALE`, for a commit that detects a changed plan between its effects (12.7). | 7.2.1, 7.2.3, 8.1, 8.3.2, 10.13 rule 14, 12.7 |
-| D34 | Wording and checker rows that a patch could carry, released with 1.2.0: a check that reads an option's `env` value is a validator; a constraint's `field` is the first argument in the rule's own order, not argv's. Approaches: report schemas compare by meaning, not bytes; defaults are decoded at definition; the 1.2 cursor digest. Checker: the `in` check on switches and counts named; `--input` rows for environment values and spelling variants; a fixture invocation refused with a registered code that is not a parse refusal is `unprovided`, never a pass; the 1.2 rows for paging, `--fields` without `--json`, flag-only document keys and `STOPPED_MIDWAY`. | 10.8.1, approaches/typescript.md, approaches/checker.md |
+| D32 | Paging, field selection and the stateless checks, for a document that declares 1.2 only (the D27 pattern, now named in 15.1's MINOR row: a tool that declares 1.1 or 1.0 keeps its behaviour and stays conforming). A cursor is bound to every argument except the reserved options that never change the result set (`--json`, `--limit`, `--all`, `--cursor`, `--fields`); an argument given explicitly with its default value is given, except a switch given `false` or a count given `0`, which are absent (10.7.2); a value taken from an `env` variable is bound though not given. The next-page entry carries exactly the arguments the invocation gave explicitly, never a default or an `env` value, so it continues in the same environment. This relaxes 1.1's binding of `--json` and `--all` only where the result set is the same (15.1, 15.10). `--fields` is parsed and validated with or without `--json`; what it does to text is the tool's. `limit`, `cursor`, `all` and `fields` are flag-only. Argv parse failures come before step 6 of 11.7, which checks `required`, domains, constraints and validators in that order (operands then options in declaration order for the first two, declaration order for the last two), and the first failure answers. A constraint's argument at fault is defined per rule. Declined: per-item batch `--fields`, since 1.1.2 already gives one answer (`USAGE` when the batch output declares no `fields`). | 6.9, 6.10, 9.8, 10.8.1, 10.13 rules 8 and 16, 11.6, 11.7, 15.1, 15.10 |
+| D33 | `STOPPED_MIDWAY` (exit 1, not retryable) is reserved since 1.2: a command that works in steps and stops after a step made effects, because a later step meets what the command refuses before its work, reports it with that refusal's code as `reason` (the refusal's own reason is not carried), instead of a during-the-work twin of every refusal code. SHOULD for a tool that declares 1.2, so a tool with a code of its own stays conforming; a 1.2 tool that registers the name gives it this exit, retryability and meaning. The reserved meaning holds only in a document that declares 1.2: in an earlier document the code is the tool's own, read by its registry entry. The name is the one the first adopter already uses and says what happened and when; an `*_INCOMPLETE` name was not chosen because exit 1 already covers incomplete answers that made no effect (8.1, 8.5), and `BATCH_INCOMPLETE` stays the code of a batch, under which a stopped item is `failed` with `STOPPED_MIDWAY`. Reserved reason `PLAN_STALE`, for a commit that detects a changed plan between its effects (12.7). | 7.2.1, 7.2.3, 8.1, 8.3.2, 10.13 rule 14, 12.7, 15.10 |
+| D34 | Wording and checker rows that a patch could carry, released with 1.2.0: a check that reads an option's `env` value is a validator; a constraint's `field` follows the rule's own order, never argv's; rules said of a document that declares 1.1 hold for every later minor. Approaches: report schemas compare by meaning, not bytes; defaults are decoded at definition; the 1.2 cursor digest. Checker: the `in` check on switches and counts named; `--input` rows for environment values and spelling variants; a fixture invocation listed to succeed and refused with a precondition code is `unprovided`, never a pass, while a refusal from a stateless step is `fail`; the 1.2 rows for paging, `--fields` without `--json`, flag-only document keys, the check order and `STOPPED_MIDWAY`. | 7.1.2, 7.5.2, 6.10, 10.8.1, 11.2, approaches/typescript.md, approaches/checker.md |
 
 ## Appendix B. Prior art
 
