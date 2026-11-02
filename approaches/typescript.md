@@ -111,7 +111,7 @@ are field names of `input` (or operand names), checked by the type of `requires`
 
 **Reasons and warnings (since 1.1).** `defineError` takes `reasons`, an object keyed by reason name, and the failure
 constructor takes `reason` typed as the union of that error's keys, so a reason that is not registered under the
-code does not type-check. A reason has no exit of its own: it shares its code's (spec 7.6.2).
+code does not type-check. A reason has no exit of its own: it shares its code's (spec 7.6).
 
 ```ts
 export const InputInvalid = defineError({
@@ -152,10 +152,10 @@ ready-made definitions in the package with their exit and retryability as spec 7
 one of them only when `CONTRACT_VERSION` is `"1.2"`; a 1.3 tool reports a stop part-way with its own
 `<SUBJECT>_INCOMPLETE` definition whose `reasons` include the refused code (spec 8.3.2). That a subject is a noun is
 the author's judgement (approaches/implementation.md §7), not the package's. A tool that declares 1.2 or earlier
-writes `exit` and `retryable` out as before; the package then applies the 1.2.1 rules to it (spec 15.9).
+writes `exit` and `retryable` out as before; the package then applies the 1.2.1 rules to it (spec 15.7).
 
 **Parser behaviour that is a contract.** Tool-wide options (`--json`, `--repo`, `--actor`, any option declared on
-`defineTool`) are accepted after group words as well as after commands (spec 4.7), so
+`defineTool`) are accepted after group words as well as after commands (Annex S1 item 9), so
 `canon finding --repo . --json` is answered with `COMMAND_REQUIRED`. `--input` given twice, or as the last word
 with no value, is `USAGE` with `field` `--input` (spec 10.2), raised by the argv parser before any decoder runs;
 `INPUT_INVALID` is only for a value that was given.
@@ -168,12 +168,12 @@ with no value, is `USAGE` with `field` `--input` (spec 10.2), raised by the argv
    `Schema.Union([Schema.Int, Schema.NumberFromString.check(Schema.isInt())])` or the equivalent codec; a test
    pins the exact combinators):
    - the **argv decoder** keeps every field, flag-only ones included (`repo`, `as`), because argv may carry them;
-   - the **fragment** schema (spec 9.10) additionally drops the flag-only fields and is what `input.schemaRef`
+   - the **fragment** schema (spec 9.9.2) additionally drops the flag-only fields and is what `input.schemaRef`
      publishes (`Schema.toJsonSchemaDocument` of it).
    Each source is decoded by its own decoder; the two results are merged with provenance (spec 10.7 step 4).
-   Field checks inside the domain profile (spec 9.7.4) become the argument's `domain` and are applied only to the
+   Field checks inside the domain profile (spec 9.7.4, Annex V1) become the argument's `domain` and are applied only to the
    merged arguments, by the argument schema (§3.3 lists the mapping). Neither source decoder carries them.
-   Integers in both decoders are refused outside ±(2^53-1), never rounded (spec 9.7.5): `Number.isSafeInteger`
+   Integers in both decoders are refused outside ±(2^53-1), never rounded (spec 9.7.5, Annex V3): `Number.isSafeInteger`
    after decoding catches the numeric string and the JSON literal alike, because `JSON.parse` turns
    `9007199254740993` into `9007199254740992`, which is not a safe integer either.
 2. **argv parser.** Options are the `input` fields: field `resolutionRev` → `--resolution-rev`. The parser follows
@@ -201,15 +201,15 @@ with no value, is `USAGE` with `field` `--input` (spec 10.2), raised by the argv
    artifact output declares its JSON representation Schema (`skills show` → `Guide`), a stream output its event
    and result Schemas. A test that pins a published report schema compares it by meaning, never byte for byte:
    Effect 4.1 writes a nullable member as `anyOf: [X, {"type": "null"}]` where a hand-written schema says
-   `type: [..., "null"]` (both are the nullable forms of spec 6.10), and gives `Schema.Int` a `maximum`, which the
-   safe-integer rule of spec 9.7.5 already implies. Neither is a contract promise about bytes.
+   `type: [..., "null"]` (both are the nullable forms of Annex F5), and gives `Schema.Int` a `maximum`, which the
+   safe-integer rule of Annex V3 already implies. Neither is a contract promise about bytes.
 7. **Envelope and exit.** The handler's success becomes `{ok: true, data, meta}`; the output is checked against
    its Schema (`onExcessProperty: "error"`) before printing, so a report can never drift from what `schema`
    publishes; a typed failure becomes the error object, with its `reason` when it has one, and the registry's
    exit. `meta.contract` and `meta.contractVersion` come from one constant of the package
    (`CONTRACT_VERSION = "1.3"`), set on every envelope including the `result` of a stream's `end` line; a tool does
-   not write the minor itself (spec 15.7).
-8. **Field paths.** `--fields` and the projection share one parser for field paths (spec 6.10): dotted names,
+   not write the minor itself (spec 15.5).
+8. **Field paths.** `--fields` and the projection share one parser for field paths (spec 6.10, Annex F1): dotted names,
    `[]`, and a bracketed key for a name that is not an identifier (`attributes["http.status-code"]`, `attributes[""]`;
    only `\"` and `\\` escape inside the quotes, so it is not `JSON.parse`; U+0000 is refused, since argv cannot carry it). It rejects a bracketed identifier, so every member has one spelling
    and `meta.fields` compares as text; its writer is the inverse; the `--fields` value is split by a scanner that
@@ -246,7 +246,7 @@ the rule records under another field name (`targets`; the helpers above take it 
 when the command document is emitted; parse an incoming document back into the same in-memory shape. The wire name
 cannot change within `atip/1`.
 
-Value checks become the argument's `domain` (spec 9.7.4). The generator reads them from the field's JSON Schema,
+Value checks become the argument's `domain` (spec 9.7.4, Annex V). The generator reads them from the field's JSON Schema,
 keeps only the profile keywords of the field's valueType, and moves them out of both source decoders. They stay in
 the argument schema, which applies them after the merge:
 
@@ -256,7 +256,7 @@ the argument schema, which applies them after the merge:
 | `Schema.isLessThanOrEqualTo(n)`, `Schema.isLessThan(n)` | `maximum`, `exclusiveMaximum` |
 | `Schema.isMultipleOf(n)` | `multipleOf` |
 | `Schema.isMinLength(n)`, `Schema.isMaxLength(n)` | `minLength`, `maxLength` |
-| `Schema.isPattern(re)` | `pattern`, which must be `^…$` around the restricted I-Regexp of spec 9.7.4 (no `&&` or `~~` inside a class); the generator refuses any other regular expression at build time. It cannot see the Rust `regex` crate's size limit, which the checker's L1.patterns tests; keep counted repetitions of large classes short and put lengths in `maxLength` |
+| `Schema.isPattern(re)` | `pattern`, which must be `^…$` around the restricted I-Regexp of Annex V2 (no `&&` or `~~` inside a class); the generator refuses any other regular expression at build time. It cannot see the Rust `regex` crate's size limit, which the checker's L1.patterns tests; keep counted repetitions of large classes short and put lengths in `maxLength` |
 | a `json()` field's Struct, Array, Literals or a union of JSON types | `type`, `properties`, `required`, `additionalProperties`, `items`, `enum`, `const` |
 
 Any other check, such as `Schema.makeFilter` with a custom predicate, a union of two object shapes, or a check of
@@ -392,18 +392,18 @@ should not stop there.
    changes only where atip/1 differs from the tool's earlier shape.
 3. A tool on `effect/cli` reaches L0 first, independent of the parser (text by default with `--json`; `field`,
    `expected` and `suggestions` at the top of the error, `details` only for several errors; UPPER_SNAKE codes;
-   `meta.tool`; nothing on stdout when a module fails to load, spec 5.6), then L1 through §4 or directly by
+   `meta.tool`; nothing on stdout when a module fails to load, spec 5.5), then L1 through §4 or directly by
    porting families to `defineCommand`, then L2.
 4. Whatever the starting point, the contract changes that are not renames: a `--yes` or `--dry-run`-to-act flag
    on a destructive command becomes preview + `--commit --plan-digest` (spec 11.8); a digest lives at
    `data.planDigest`; an idempotency key option is `--operation` (spec 12.4); several values of one kind are a
-   repeatable option, never a second operand of another kind (spec 4.6.2); a refusal or a `schema` call writes no
+   repeatable option, never a second operand of another kind (Annex S1 item 2); a refusal or a `schema` call writes no
    log file (spec 11.2).
 5. A tool that adopts 1.1 members (reasons, a warning registry, escaped field paths) sets `CONTRACT_VERSION` to
-   `"1.1"` from the package and claims "ATIP 1.1" with its level (spec 15.7); `approaches/migration.md` lists the
+   `"1.1"` from the package and claims "ATIP 1.1" with its level (spec 15.5); `approaches/migration.md` lists the
    steps.
 6. A tool that adopts 1.3 renames its own codes to `<SUBJECT>_<CONDITION>`, moves its warning codes into the warning
    registry, replaces `STOPPED_MIDWAY` by its own `INCOMPLETE` code, sets `CONTRACT_VERSION` to `"1.3"` and claims
-   "ATIP 1.3" with its level (spec 15.7, 15.10); `approaches/migration.md` lists the steps.
+   "ATIP 1.3" with its level (spec 15.5, 15.8); `approaches/migration.md` lists the steps.
 
 `approaches/migration.md` lists the steps for any tool and two worked examples.

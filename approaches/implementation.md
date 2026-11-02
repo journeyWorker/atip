@@ -6,7 +6,7 @@ The protocol fixes what a caller can rely on. Some behaviour lies below that lin
 the caller, but tools that choose the same one behave alike, and a conformance checker can then test one answer
 instead of a set. Up to 1.2 several of these choices were rules of the spec; 1.3 keeps them here as recommendations
 (Appendix A D36). A tool that declares 1.2 is still held to them where 1.2 made them MUSTs (it is held to the 1.2.1
-text, spec 15.9); the section of each says which.
+text, spec 15.7); the section of each says which.
 
 ## 1. The order of the stateless checks
 
@@ -69,7 +69,7 @@ parser; the answer must equal validating the document directly, codes and the po
 
 ## 5. Patterns: why each restriction, and the cross-engine record
 
-Spec 9.7.4 restricts a domain `pattern` to a form that ECMAScript (with the `u` flag, as JSON Schema validators such
+Annex V2 restricts a domain `pattern` to a form that ECMAScript (with the `u` flag, as JSON Schema validators such
 as Ajv read it) and the Rust `regex` crate read the same way. Each restriction removes a spelling the two engines
 read differently:
 
@@ -123,7 +123,7 @@ answer in different hands:
 3. **Name the subject with a noun the tool already uses**, preferably a group of its command tree (`FINDING`,
    `MEMBER`, `DEPLOYMENT`) or the resource at fault (`STORE`, `CONFIG`, `LOCK`). A verb becomes its noun
    (`PROMOTE` → `PROMOTION`, `DEPLOY` → `DEPLOYMENT`). Keep the subject short: the condition carries the meaning.
-4. **Never reuse a retired name with another meaning** (spec 15.5). When a rename would land on a name the tool used
+4. **Never reuse a retired name with another meaning** (spec 15.3). When a rename would land on a name the tool used
    for something else (`PLUGIN_SYNC_FAILED` was exit 2 "could not start"; the exit-1 failure cannot take it), pick
    another subject (`PLUGIN_WRITE_FAILED`).
 5. **Words that hide the stage are gone**: `REFUSED` (exit 2 in some tools, exit 1 in others), `ERRORS`, `ABORTED`,

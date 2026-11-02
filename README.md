@@ -19,19 +19,22 @@ around the exchanges between caller and tool; adds the code-name convention (`<S
 condition fixes exit and retryability) with twelve core codes; keeps warning codes in the warning registry; and moves
 the rules that only a checker needs to `approaches/implementation.md`. It adds no member, document kind or enum
 value, and changes no schema shape. The decisions behind all of the versions are in Appendix A of the spec; no
-question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, 15.9 lists what differs in the
-earlier minors (and the one place where 1.1.0 changes what 1.0.0 promised callers), and 15.10 says what 1.3 means for
+question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, 15.7 lists what differs in the
+earlier minors (and the one place where 1.1.0 changes what 1.0.0 promised callers), and 15.8 says what 1.3 means for
 callers. Until its second revision the contract was called `agent-cli/1`.
 
 **Names.** Contract id `atip/1` (`meta.contract`); schema `$id`s under `https://atip.dev/1/` (placeholders); the
 checker command `atip check`; the TypeScript package `@journeykit/atip` and the Rust crate `atip`. OpenCLI is out of
-scope (spec 1.5).
+scope (spec 1.4).
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `spec/atip-1.md` | The normative specification (BCP 14 keywords, conformance levels L0/L1/L2). |
+| `spec/atip-1.md` | The normative specification, written as a protocol document (BCP 14 keywords, conformance levels L0/L1/L2); its annexes are normative where it refers to them. |
+| `spec/annex-fields.md` | Annex F, normative: field selection and projection (paths, records, map keys, projection, the projected schema, outputs of several shapes). |
+| `spec/annex-domains.md` | Annex V, normative: argument domains (the keyword profile), the pattern dialect and numbers. |
+| `spec/annex-schema.md` | Annex S, normative: command design and the self-description rules. |
 | `schema/` | JSON Schemas, draft 2020-12, normative for wire shapes. `$id`s under `https://atip.dev/1/` are placeholders. |
 | `schema/envelope.schema.json` | Success and failure envelope, `meta` (incl. `output`, `page`, `fields`, `truncated`). |
 | `schema/error.schema.json` | The `error` object. |
@@ -43,11 +46,11 @@ scope (spec 1.5).
 | `schema/stream-line.schema.json` | One line of a stream command's NDJSON protocol. |
 | `schema/guide.schema.json` | The JSON data of `skills show --json`. |
 | `examples/` | Documents that must pass (canon's and the synthetic `ledger`'s as 1.0 tools, `tally`'s as a 1.1 tool, acme's as a 1.3 tool): canon `finding close`, `finding list`, `purge` and `skills show` command documents translated from canon; a synthetic reference tool `acme` (`member list`, `member show`, `member tag`, `member roster`, `member export`, `page label`, `deploy start`, `deploy status`, `filter test`, `lint`, `build`) for what the translations do not exercise; tree, search, group, error and warning registries with reasons, one entry; reports (success, failures, input error, preview, stale plan, three batch cases, projected pages, guide); `--input` documents; streams. `examples/README.md` says where every translated field comes from and which are proposed or unverified. |
-| `examples/caller-*.json` | Documents of a later minor, with members this one does not define, that a caller must read: they pass the schemas read open and fail them closed (spec 15.6, 15.8). |
+| `examples/caller-*.json` | Documents of a later minor, with members this one does not define, that a caller must read: they pass the schemas read open and fail them closed (spec 15.4, 15.6). |
 | `examples/plan-digest/` | Plan digest test vectors (spec 11.6): a plan document, its RFC 8785 canonical text and its `sha256:` digest, for number forms, string escapes, key order and nesting. |
-| `examples/invalid/` | Documents that must be rejected, one broken rule each (shape, every rule of spec 9.13, projection, domains, patterns, validators, batch, stream, input). |
-| `scripts/validate.sh` | Runs `scripts/check.ts`: every example against its JSON Schema and the rules beyond JSON Schema (spec 9.13, 6.x, 7.4, 10.x, 13), report and stream data against the output and event schemas of the example command documents, the spec's section cross-references, and the ECMAScript side of `scripts/regex-cases.json`; then `scripts/plan-digest.ts`, which recomputes the plan digest test vectors. With cargo it also runs `scripts/regex-parity`, which checks the Rust side of that record. |
-| `scripts/regex-cases.json` | Patterns and values with the answers of ECMAScript (`u`) and the Rust `regex` crate: the evidence that the pattern form of spec 9.7.4 reads the same in both. |
+| `examples/invalid/` | Documents that must be rejected, one broken rule each (shape, every rule of Annex S2, projection, domains, patterns, validators, batch, stream, input). |
+| `scripts/validate.sh` | Runs `scripts/check.ts`: every example against its JSON Schema and the rules beyond JSON Schema (Annex S2, 6.x, 7.4, 10.x, 13), report and stream data against the output and event schemas of the example command documents, the spec's section cross-references, and the ECMAScript side of `scripts/regex-cases.json`; then `scripts/plan-digest.ts`, which recomputes the plan digest test vectors. With cargo it also runs `scripts/regex-parity`, which checks the Rust side of that record. |
+| `scripts/regex-cases.json` | Patterns and values with the answers of ECMAScript (`u`) and the Rust `regex` crate: the evidence that the pattern form of Annex V2 reads the same in both. |
 | `approaches/` | Not normative. `rust.md` (clap → spec, the shared crate, constraints, `--input` in Rust, canon and lute), `typescript.md` (spec-first `defineCommand` for Effect 4, fragment schemas and numeric codecs, an `effect/cli` interim), `checker.md` (the black-box conformance checker: strengths, coverage, fixtures, tool-owned obligations; a tool that tests the spec, not its definition), `migration.md` (adopting ATIP level by level, canon and lute as worked examples, and the costs the contract does not soften). |
 | `approaches/implementation.md` | Not normative. Recommendations beyond the protocol: the order of the stateless checks, which argument a constraint violation names, cursor binding details and the next-page entry, converting an `--input` document to argv, why each pattern restriction and the cross-engine record, the text-mode error form, and naming error codes in practice. Rules a tool that declares 1.2 must still follow, and that 1.3 recommends. |
 | `CHANGELOG.md` | What each version of the contract is. |

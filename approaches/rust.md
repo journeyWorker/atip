@@ -16,7 +16,7 @@ already works this way; the shared crate makes the projection and the wire types
 | canon file | What it does today | Change for atip/1 |
 |---|---|---|
 | `spec.rs` | Walks `cli::command()`; per option `name`, `kind` (`flag`/`count`/`value`), `short`, `aliases`, `valueName`, `required`, `repeatable`, `possibleValues`, `default` (strings), `help`, `env`, `conflictsWith`, `requires`; per leaf `effect`, `idempotency`, `exits`, `errorCodes`, `requiredOneOf`, `outputs`, `inputs`, `examples`. Reads `requires` from clap's `Debug` text because `Arg::requires` has no getter, pinned by a test. Writes `docs/cli/canon.cli.json`; `tests/cli_spec.rs` byte-diffs it. | `kind` → `valueType` (§4); typed `default` (§5); `conflictsWith`, `requires` and `requiredOneOf` → `constraints` (§4.2); `about` → `summary`; `errorCodes` → `errors`; `roles` → `x-canon`; drop `aliases`, `exits`, `nodeKind`, `supportsJson`; `flagOnly` on `repo`, `as`, `json`, `input`, `commit`, `plan-digest`. Moves into the shared crate. |
-| `schema.rs` | `META` (effect, effectNote, roles, exits) per leaf; runtime `schema` answers: a flat leaf list, a full leaf node, `--errors`, `--error`, `--as` filter. | Tree with groups and `level`; `schema <group>` answers a `group`; command answers embed `schemas` (today they live only in `canon.cli.json`). `--as` stays (explicit filter, spec 9.2.2). |
+| `schema.rs` | `META` (effect, effectNote, roles, exits) per leaf; runtime `schema` answers: a flat leaf list, a full leaf node, `--errors`, `--error`, `--as` filter. | Tree with groups and `level`; `schema <group>` answers a `group`; command answers embed `schemas` (today they live only in `canon.cli.json`). `--as` stays (explicit filter, spec 9.2). |
 | `spec_facts.rs` | `FACTS`: outputs and idempotency per leaf. | Merges with `META` into one table (§3.2). |
 | `reports.rs` | `trait Report: Serialize + JsonSchema` with a default `schemaVersion` `1.0`; schemars 1.2. | Unchanged; the shared crate re-exports the trait. |
 | `json_out.rs` | `Meta {command, schemaVersion, canonVersion, context{role,actor,repo}, next, warnings, …}` plus flattened extras (`returned`, `total`, `hasMore`, `nextCursor`, `unchanged`, `waitingOn`, `provenance`); compact one-line output; debug builds validate every emitted envelope against its schema (`validate`, `witness`). | `canonVersion` → `toolVersion`, add `tool`, `contract`, `output`; nulls in `context` omitted; paging extras → `meta.page`; `unchanged` and `waitingOn` → reports (a minor bump each); warnings `{code, message}`; `next` argv gains `--json` in JSON mode (spec 6.8); `meta.command` omitted when no word resolved (canon prints `"canon"`). Keep the debug validation. |
@@ -37,7 +37,7 @@ atip
 ├── envelope   Meta, Success<R>, Failure<R>, NextStep, Warning, Page; print_success / print_failure (one compact line)
 ├── argv       json_mode(&[OsString]) -> bool (the word `--json` before `--`, spec 4.3.4); the argv writer (approaches/implementation.md §4, spec 10.9)
 ├── error      Code (registry row with its reasons), Condition, ReasonInfo, WarningInfo, CliError (builder), core codes, text rendering (approaches/implementation.md §6)
-├── fieldpath  the parser and writer of field paths: dotted names, `[]`, bracketed keys (spec 6.10); used by `--fields` and the projection
+├── fieldpath  the parser and writer of field paths: dotted names, `[]`, bracketed keys (spec 6.10, Annex F1, F3); used by `--fields` and the projection
 ├── spec       CommandMeta table, project(&clap::Command, &Table) -> Vec<Node>, valueType, typed defaults, constraints
 ├── schema     the `schema` subcommand: Args (path, --errors, --error, --warnings, --warning, --search, --json) and its handler
 ├── input      InputArgs (--input): read, frame, fragment-validate, conflict-check, merge, batch runner (spec 11)
@@ -112,8 +112,8 @@ printed by `schema --warnings` (`data.kind` `warnings`) and `schema --warning <C
 --error <CODE>` for a code that is only in the warning table refuses with `USAGE`, `field` `--error`, and the
 `hint` `<tool> schema --warning <CODE> --json`. A tool that declares 1.3 has the warning table (spec 7.5.2) and keeps
 a code in the error table only when it is also an error; a situation reported as a warning in one invocation and as an
-error in another has a row in both tables, and a test asserts the two `meaning`s are equal (spec 7.5.3). A tool that
-declares 1.2 or earlier without a warning table keeps its warning codes in the error table (spec 15.9).
+error in another has a row in both tables, and a test asserts the two `meaning`s are equal (spec 7.5.2). A tool that
+declares 1.2 or earlier without a warning table keeps its warning codes in the error table (spec 15.7).
 
 **Code names (1.3).** A tool's own code is `<SUBJECT>_<CONDITION>` (spec 7.2) and the condition fixes the exit and the
 retryability, so the crate takes the condition, not the exit, as the input. `Condition` is an enum of the fourteen
@@ -129,9 +129,9 @@ written out, as 7.3.1 gives them; a tool's own code is refused at compile time w
 not `PROMOTE`) is the author's judgement, not the crate's (approaches/implementation.md §7).
 
 **The contract constant.** `pub const CONTRACT_VERSION: &str = "1.3"` in the crate is the one place the minor is
-written (a tool that still declares 1.2 sets "1.2" and is held to the 1.2.1 text, spec 15.9). `Meta` sets
+written (a tool that still declares 1.2 sets "1.2" and is held to the 1.2.1 text, spec 15.7). `Meta` sets
 `contractVersion` from it on every envelope, the `result` of a stream's `end` line included, and `schema` uses it for
-the self-description's `meta.schemaVersion` (spec 9.1.4, 15.7). A tool does not copy it.
+the self-description's `meta.schemaVersion` (spec 9.1.2, 15.5). A tool does not copy it.
 
 clap's own errors are mapped once: `clap::error::ErrorKind::{UnknownArgument, InvalidValue, MissingRequiredArgument,
 ArgumentConflict, …}` → `USAGE` with `field` (the argument), `expected` (`ContextKind::ValidValue`), `received`
@@ -140,7 +140,7 @@ ArgumentConflict, …}` → `USAGE` with `field` (the argument), `expected` (`Co
 `COMMAND_REQUIRED`. canon already extracts these contexts. When the invocation used `--input`, the mapper rewrites `Field::Argv` to the
 document pointer the argument came from (§6).
 
-**Tool-wide options on groups (spec 4.7).** Declare `--json`, `--repo`, `--actor` and the like with
+**Tool-wide options on groups (Annex S1 item 9).** Declare `--json`, `--repo`, `--actor` and the like with
 `Arg::global(true)` on the root command. clap then accepts them after a group word as well, and
 `canon finding --repo . --json` parses and ends in `MissingSubcommand`, which the mapper turns into
 `COMMAND_REQUIRED`, instead of `USAGE` for an option the group "does not take". The checker's advisory
@@ -192,7 +192,7 @@ keyed by id and the completeness test of §3.3 keeps it honest.
   compile) names a reason registered under the code of its chain; every reason registered under a core code
   that is one of the situations of spec 7.3.3 uses the reserved name.
 - `warnings_registered`: every `meta.warnings` code the tool can emit has a `WarningInfo` row (a tool that declares
-  1.2 or earlier MAY have an error-registry row instead, spec 15.9); every code in both tables has the same meaning,
+  1.2 or earlier MAY have an error-registry row instead, spec 15.7); every code in both tables has the same meaning,
   and a 1.3 tool's error table holds a warning code only if it is also an error (spec 7.5.2).
 - `staging_per_write_leaf`: for each write leaf, a fault injected before the first backend call gives the
   precondition code (exit 2, nothing changed) and one after it the `_FAILED` code (exit 1); see §3.6.
@@ -200,7 +200,7 @@ keyed by id and the completeness test of §3.3 keeps it honest.
 ### 3.4 Field paths
 
 `--fields` and the projection share one small parser, `fieldpath::parse`, so the two cannot read a path
-differently (spec 6.10). Segments are `Name(String)`, `Each` (`[]`) and a bracketed key, which is a `Name` written
+differently (spec 6.10, Annex F1). Segments are `Name(String)`, `Each` (`[]`) and a bracketed key, which is a `Name` written
 as a JSON string: `attributes["http.status-code"]`, `["x.y"].value`. Inside the quotes only `\"` and `\\` are
 escapes, every other character except U+0000 stands for itself (argv cannot carry NUL, so a map key containing it
 is not selectable), and the quotes may enclose nothing (`attributes[""]`, the empty key); `\n` and `\u0041` are not escapes, so this is not `serde_json::from_str`. `parse` refuses a path that is not in its one spelling: a name that is an identifier
@@ -277,7 +277,7 @@ Moving `requires` from the `Debug` parse to the table removes the dependency on 
 
 ### 4.3 Domains
 
-A restriction of one argument's own value (spec 9.7.4, `domain`) comes from the table, keyed by argument, as a
+A restriction of one argument's own value (spec 9.7.4, Annex V, `domain`) comes from the table, keyed by argument, as a
 typed value rather than free JSON, so that only the profile can be written:
 
 ```rust
@@ -294,8 +294,8 @@ erases the type anyway, so the projection cannot read them back. `examples_parse
 check that the table's domain and the real parser agree on a value just inside and just outside every bound.
 
 
-A `pattern` is checked twice when the crate builds the document: through the restricted I-Regexp check of spec
-9.7.4 (the reasons for each restriction: approaches/implementation.md §5), which the crate implements (no `&&` or `~~` inside a class, among the rest), and by compiling it with the
+A `pattern` is checked twice when the crate builds the document: through the restricted I-Regexp check of Annex
+V2 (the reasons for each restriction: approaches/implementation.md §5), which the crate implements (no `&&` or `~~` inside a class, among the rest), and by compiling it with the
 `regex` crate's default limits, which is also what the tool's parser uses. The crate refuses to build a document
 whose pattern fails either. The restricted form matters for Rust even though the tool's own parser is Rust: the
 published pattern is also read by every ECMAScript validator of the self-description, and for `^[a&&b]+$` the two
@@ -303,12 +303,12 @@ disagree (`scripts/regex-cases.json`). The crate's test runs `domainRejects`-sty
 the published pattern and asserts the same answer. A `format` is published as an annotation and never enforced by
 the projection.
 
-Integers (spec 9.7.5): an `integer` argument parses into `i64` and is then refused outside ±(2^53-1) with the
+Integers (spec 9.7.5, Annex V3): an `integer` argument parses into `i64` and is then refused outside ±(2^53-1) with the
 argument's code, so `9007199254740993` is refused rather than accepted as a value JavaScript would round. A bound
 outside that range fails generation. An identifier that can exceed it is a `String` with a pattern.
 
 Checks outside the profile, such as a `value_parser` closure that checks a calendar date or a comparison of two
-arguments, are declared in the table as validators (spec 9.8.3): `Validator { arguments, code, description,
+arguments, are declared in the table as validators (spec 9.8.2): `Validator { arguments, code, description,
 rejects }`. The crate publishes them in `validators`, and its `constraints_hold` test runs every `rejects`
 invocation through the real parser and handler entry point and asserts that it is refused with that code and
 nothing else fails first. canon's `--before` (RFC 3339 or `YYYY-MM-DD`) is the first such validator.
@@ -330,12 +330,12 @@ schema's own `$id` and `$schema` removed: canon's report schemas carry `$id: "ur
 make `#/schemas/…` resolve against that URN instead of the command document (found by `scripts/check.ts` on the
 translated `purge` example). Artifacts have a JSON representation type of their own (`skills show` → `Guide`);
 streams have an event type and a result type (spec 9.9). A record schema of an output with `fields` must be
-projectable (spec 6.10); schemars emits `anyOf: [{$ref}, {type: null}]` for `Option<T>`, which is allowed.
+projectable (Annex F5); schemars emits `anyOf: [{$ref}, {type: null}]` for `Option<T>`, which is allowed.
 
 **Which schemars view.** schemars describes a type either as it is serialized or as it is deserialized, and the two
 differ exactly where a report is checked: `schema_for!` and the default `SchemaSettings` use the deserialize view,
 in which an `Option<T>` field and a `#[serde(default)]` field are never `required`, although serde prints every
-`Option` as `null` unless told otherwise. An output schema describes what the tool prints (spec 9.9.3), so every
+`Option` as `null` unless told otherwise. An output schema describes what the tool prints (spec 9.9.1), so every
 Rust tool generates it from one of two settings, chosen per output:
 
 - **The serialize view** (`SchemaSettings::draft2020_12().for_serialize()`), the default for reports. Every
@@ -350,7 +350,7 @@ Rust tool generates it from one of two settings, chosen per output:
 Either way L1.output-data (approaches/checker.md §6) checks the generated schema against real output, and one output
 does not mix the two views.
 
-The input **fragment** schema (spec 9.10) is generated from the clap node: one property per option that is not
+The input **fragment** schema (spec 9.9.2) is generated from the clap node: one property per option that is not
 flag-only (camelCase name; type from valueType in its encoded form, so an integer is
 `{"type": ["integer","string"], "pattern": "^-?(0|[1-9][0-9]*)$"}`; `type: array` for repeatable options except
 `count`), `operands` typed per operand, `additionalProperties: false`, and **no `required`**. canon's published
@@ -423,11 +423,11 @@ Version 0.52.0; clap derive; `schema` already walks the same clap tree and is pa
 |---|---|---|
 | Envelope | Flat `{command, schemaVersion, ok, …payload}`, pretty-printed; `schemaVersion` `0.48.0.check` encodes the release; `project_diagnostics` snake_case | Nest under `data`/`meta`; compact; per-output `1.0`; camelCase. Every consumer of lute JSON changes (website, harness scripts). |
 | Errors | `E-CLI-USAGE`, `E-CLI-IO`, `E-CLI-INPUT`; `{code, message, argument?, hint?, path?}`; diagnostics duplicated on stderr in JSON mode; patch refusals use a second shape | `USAGE`, `INPUT_INVALID`, I/O codes split by stage (spec 8.3); `field` replaces `argument`/`path`; `retryable`; no diagnostics on stderr in JSON mode (spec 5.2); patch refusals use the error object. The diagnostic registry (`codes/registry.rs`) gains `exit`, `retryable`, `fix` for CLI codes. The reasons of its input errors (an unreadable request file, a request that is not JSON) become registered reasons under `INPUT_INVALID` with the reserved names of spec 7.3.3. |
-| Exits | 0/1/2 plus 3 for incomplete walks; an accepted patch with semantic changes exits 1 with `ok: false` | Decided (spec 8.6): the incomplete walk is exit 1 with a registered code; the accepted patch is exit 0 with the changes in `data`. |
-| `schema` | Always JSON; refuses `--json`; no effect, idempotency, errors, examples, report schemas, constraints | Accept `--json`; text mode may keep printing JSON (spec 9.1.3); adopt the crate's projection; derive `JsonSchema` on reports; table rows. The hand-written outputs table (`envelope.rs:114-212`) becomes `CommandMeta.outputs`; `compile --stream` and `play --events` become `stream` outputs with the protocol of spec 13. |
+| Exits | 0/1/2 plus 3 for incomplete walks; an accepted patch with semantic changes exits 1 with `ok: false` | Decided (spec 8.2): the incomplete walk is exit 1 with a registered code; the accepted patch is exit 0 with the changes in `data`. |
+| `schema` | Always JSON; refuses `--json`; no effect, idempotency, errors, examples, report schemas, constraints | Accept `--json`; text mode may keep printing JSON (spec 9.1.1); adopt the crate's projection; derive `JsonSchema` on reports; table rows. The hand-written outputs table (`envelope.rs:114-212`) becomes `CommandMeta.outputs`; `compile --stream` and `play --events` become `stream` outputs with the protocol of spec 13. |
 | Grammar | Toolchain verbs, `--project`, bare-noun ids, vocabulary TSVs with mutation tests; `scenario` is runnable and a group; `-o` short | Split `scenario` (spec 4.1.2); `-o` stays, listed as `short`; keep the TSV gates. |
 | Input | No `--input`; `patch <FILE>` reads a strict JSON request from a file | `InputArgs` on every write. `patch` keeps its request file as its operand; its `--input` carries the arguments. |
 | Safety | `tag --renumber` previews and acts with `--commit`, not digest-bound | Add `--plan-digest`; plan = the renumbering; `PLAN_STALE` on drift. |
 | Guide | None in the binary; `llms.txt` on the website | `skills show` over embedded Markdown generated from the same sources as `llms.txt`. |
 | Telemetry | Every invocation, `schema` and `--help` included, writes local telemetry unless opted out | Record nothing for refusals, `schema`, `--help`, `--version` and previews (spec 11.2); successful runs may record, declared in `effectNote`. |
-| Warnings (1.1) | A diagnostics registry (`codes/registry.rs`) whose entries are mostly diagnostics reported next to a result rather than refusals | Those codes are the natural content of the warning registry (spec 7.5.2): `WarningInfo` rows generated from the same registry, printed by `schema --warnings` and `--warning`. A diagnostic that is a warning in one invocation and an error in another has a row in both registries with one meaning (spec 7.5.3). *Unmeasured:* which of its codes are reported both ways. |
+| Warnings (1.1) | A diagnostics registry (`codes/registry.rs`) whose entries are mostly diagnostics reported next to a result rather than refusals | Those codes are the natural content of the warning registry (spec 7.5.2): `WarningInfo` rows generated from the same registry, printed by `schema --warnings` and `--warning`. A diagnostic that is a warning in one invocation and an error in another has a row in both registries with one meaning (spec 7.5.2). *Unmeasured:* which of its codes are reported both ways. |

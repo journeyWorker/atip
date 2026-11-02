@@ -4,17 +4,19 @@
 
 A minor (15.1) that restates the contract as a protocol (D36). It adds no member, option, document kind or enum
 value, and no schema changes shape. Its new MUSTs bind only a document that declares `meta.contractVersion` `"1.3"`;
-a tool that declares 1.0, 1.1 or 1.2 stays conforming as that minor, held to that minor's release text (15.9), and
-a 1.2 caller reads every 1.3 document (15.10). Section numbers below are 1.3's; `approaches/migration.md` §8 maps the
+a tool that declares 1.0, 1.1 or 1.2 stays conforming as that minor, held to that minor's release text (15.7), and
+a 1.2 caller reads every 1.3 document (15.8). Section numbers below are 1.3's; `approaches/migration.md` §8 maps the
 1.2 sections.
 
 - **A protocol document.** The spec is reorganised around the messages that cross the boundary between caller and
   tool: 1.3 lists the exchanges; 4 is the invocation (the command tree, argv syntax, output selection, help, reserved
-  options, command design, tool-wide options, formerly 4 and 9); 5-8 the response (output channels, envelope, errors,
-  exit status); 9 the self-description; 10 input documents; 11 the destructive exchange; 12 long-running work; 13
-  streams. Text was tightened throughout: sections 1-16 are 1,391 lines and about 16,900 words, against 1,584 lines
-  and 20,000 words for 1.2.1's sections 1-18, while gaining the code-name convention, the exchange table and the
-  earlier-minor table.
+  options; the rules of command design and tool-wide options, formerly 4 and 9, are Annex S1); 5-8 the response
+  (output channels, envelope, errors, exit status); 9 the self-description; 10 input documents; 11 the destructive
+  exchange; 12 long-running work; 13 streams. Sections 1-16 are about 720 lines and 7,400 words against 1,584 lines
+  and 20,000 words in 1.2.1, with
+  algorithms, profiles and rule lists in three normative annexes (Annex F field selection, Annex V domains and
+  numbers, Annex S command design and self-description rules) and rationale and history in Appendix A and
+  `approaches/`. It gains the code-name convention, the exchange table and the earlier-minor table.
 - **Conformance is defined by the spec (3).** A claim is that the tool follows the rules of its level for its minor
   (3.5); the checker is a tool that tests the spec and gathers evidence (3.7, `approaches/checker.md`), no longer the
   definition of a level (1.2's 3.5 and 17 are gone).
@@ -23,8 +25,8 @@ a 1.2 caller reads every 1.3 document (15.10). Section numbers below are 1.3's; 
   `STALE`, `EXPIRED`, `DENIED`, `UNSUPPORTED`, `TOO_LARGE`, `UNAVAILABLE` (exit 2; only `UNAVAILABLE` retryable) and
   `FAILED`, `INCOMPLETE`, `TIMEOUT` (exit 1; `TIMEOUT` retryable, `FAILED` and `INCOMPLETE` may be when a repeat
   resumes without repeating effects). Each condition says what the caller does next. MUST for a 1.3 document (7.2.3);
-  warning codes SHOULD take the same shape (7.2.4). 7.2.5 renames three of canon's codes as examples. Replaces 1.2's
-  stage-naming SHOULD in 8.3.
+  warning codes SHOULD take the same shape (7.2.3, last sentence). `approaches/migration.md` §8 renames canon's codes as
+  examples. Replaces 1.2's stage-naming SHOULD in 8.3.
 - **Core codes (7.3).** The twelve codes every tool shares keep their names (five predate the grammar: `USAGE`,
   `UNKNOWN_COMMAND`, `INTERNAL`, `UNVERIFIABLE`, `OPERATION_REUSED`; renaming a core code is `atip/2`).
   `STOPPED_MIDWAY` is no longer a core code in a 1.3 document: a stop part-way after effects is the tool's own
@@ -36,9 +38,9 @@ a 1.2 caller reads every 1.3 document (15.10). Section numbers below are 1.3's; 
   constraint's `field` names when several qualify (9.8.1 keeps: one the caller can add or remove); whether an argument
   given at its default value changes a cursor's binding, and the exact content of the next-page entry (an `env` value
   still binds a cursor, 6.9); the argv conversion of an `--input` document (10.9 keeps: the answer equals direct
-  validation); the reasons behind the pattern form and the cross-engine record (9.7.4 keeps the form); the text-mode
+  validation); the reasons behind the pattern form and the cross-engine record (9.7.4 and Annex V2 keep the form); the text-mode
   error form (1.2's 7.4); a procedure for naming codes.
-- **Earlier minors (15.9, 15.10).** One table of what differs for a caller in a document of 1.0, 1.1 or 1.2; 1.2's
+- **Earlier minors (15.7, 15.8).** One table of what differs for a caller in a document of 1.0, 1.1 or 1.2; 1.2's
   15.9 and 15.10 histories are condensed into it.
 - **Examples and `scripts/check.ts`.** acme declares 1.3 and follows the convention (`DEPLOYMENT_FAILED`,
   `DEPLOYMENT_TIMEOUT`, `DEPLOYMENT_DENIED`, `DEPLOYMENT_INCOMPLETE` in place of `STOPPED_MIDWAY`, `TAG_INVALID`);

@@ -9,10 +9,12 @@ Every positive file is a complete conformance fixture: its schemas describe the 
 effect, and `meta.context` holds only context option names. Translations from canon mark what canon would have to
 change to print them (the "Proposed" column below).
 
-`scripts/check.ts` also tests the repository against the spec, beyond the examples: it fails when a schema in `schema/`
-lists string values for a member that has no row in the caller table (spec 15.6), it validates `examples/caller-*`
-read open (spec 15.8), and every rule of spec 9.13 has at least one invalid example that breaks it alone. The checker
-is a non-normative tool that tests documents; conformance is defined by the spec (3.7).
+`scripts/check.ts` also tests the repository against the spec, beyond the examples. The rules it applies come from the
+spec and its annexes (`spec/annex-fields.md`, `spec/annex-domains.md`, `spec/annex-schema.md`); the self-description
+rules are those of Annex S2. It fails when a schema in `schema/` lists string values for a member that has no row in
+the caller table (spec 15.4), it validates `examples/caller-*` read open (spec 15.6), and every rule of Annex S2 has at
+least one invalid example that breaks it alone. The checker is a non-normative tool that tests documents; conformance
+is defined by the spec (3.7).
 
 ## Two kinds of example
 
@@ -28,7 +30,7 @@ three kinds:
 - **proposed**: a behaviour change the contract requires of canon, not just a rename.
 - **not verified**: shown for completeness; nothing here establishes it.
 
-**A synthetic reference tool, `acme`** (`*-acme-*`), which declares contract 1.3 (`meta.contractVersion`, spec 15.7)
+**A synthetic reference tool, `acme`** (`*-acme-*`), which declares contract 1.3 (`meta.contractVersion`, spec 15.5)
 while canon's translations declare 1.0: an invented tool that exercises what neither translation does,
 so that every rule has a positive witness: a declared short option (`-t`), a required repeatable option and an
 `x-acme` extension member (`acme page label`), an `async` command with an operation key and the command that
@@ -50,7 +52,7 @@ domain. Nothing in it describes a real tool.
 |---|---|---|
 | `schema-command-canon-finding-close.json` | `unchanged` moves from canon's `meta.unchanged` into the report (so the report is `1.1`); the two value-conditional `constraints` with canon's codes (canon enforces them, its spec does not publish them); the `domain` `{minimum: 1}` on `--round` and `--seq` (canon enforces it with `FINDING_INVALID_ARGUMENT`); the examples completed by an inline `--input`, one of them a one-item batch | — |
 | `schema-command-canon-finding-list.json` | `--fields` paths in camelCase only and an unknown one refused with `USAGE` (canon: `UNKNOWN_FIELD`); `limit` default `100` typed (canon publishes `[]`) with `domain` `{minimum: 1}`; `CURSOR_INVALID` instead of canon's `INVALID_CURSOR` | which fields canon always keeps; `keep: [round, seq]` is illustrative |
-| `schema-command-canon-purge.json` | the `requires` constraints between `--commit` and `--plan-digest` (enforced, not published); the `planDigest` description, superseded by spec 11.6; the `--before` domain (a pattern) and the validator for calendar dates (spec 9.8.3), whose code `USAGE` is a guess: canon checks `<TIMESTAMP>` values, but which code it refuses them with is not recorded here | — (`PurgeReport` and its definitions are canon's own schema, with their `$id` removed, see approaches/rust.md §5) |
+| `schema-command-canon-purge.json` | the `requires` constraints between `--commit` and `--plan-digest` (enforced, not published); the `planDigest` description, superseded by spec 11.6; the `--before` domain (a pattern) and the validator for calendar dates (spec 9.8.2), whose code `USAGE` is a guess: canon checks `<TIMESTAMP>` values, but which code it refuses them with is not recorded here | — (`PurgeReport` and its definitions are canon's own schema, with their `$id` removed, see approaches/rust.md §5) |
 | `schema-command-canon-skills-show.json` | `NAME` optional (required today); data `{name, text, guides, full?}` instead of `{name, version, markdown}`, so `2.0` | — |
 | `schema-tree.json`, `schema-group.json`, `schema-tree-search.json` | — | the tree is shortened to the commands the other examples use; a real tree lists every node |
 | `schema-errors.json` | `WRITE_FAILED` exit 1 (canon: 2) per spec 8.3; `CURSOR_INVALID` replaces `INVALID_CURSOR`; meanings and fixes reworded | the registry lists the codes the examples use plus the reserved ones, not all 175 of canon's |
@@ -75,7 +77,7 @@ ones that are easiest to miss:
 |---|---|---|
 | a group's own `command` differs from its path | `invalid/schema-group-id-mismatch.json` | rejected |
 | a constraint `in` value outside an integer argument's domain; `in: ["1"]` not matching `--round 1` | `invalid/schema-constraint-in-wrong-type.json`, `invalid/schema-constraint-in-numeric-string.json` | rejected |
-| the same `atMostOne` rule twice | `invalid/schema-constraint-duplicate.json` | rejected (spec 9.8.2) |
+| the same `atMostOne` rule twice | `invalid/schema-constraint-duplicate.json` | rejected (spec 9.8.1) |
 | a fragment schema with a root `required` | `invalid/schema-fragment-required.json` | rejected |
 | a `next` display string that does not match its argv | `invalid/report-next-command-mismatch.json` | rejected |
 | a failed batch item without its error, also under a permissive tool batch schema; a nested item error with the wrong `retryable` | `invalid/report-batch-failed-without-error.json`, `invalid/report-acme-member-tag-batch-failed-without-error.json`, `invalid/report-batch-nested-retryable.json` | rejected |
@@ -96,7 +98,7 @@ ones that are easiest to miss:
 | a domain property *named* `$ref`; a real `$ref` keyword | `schema-command-acme-filter-test.json` (`--scope`); `invalid/schema-domain-ref.json` | accepted; rejected |
 | integers: ±9007199254740991; ±9007199254740992; `9007199254740993` against an unsafe bound; unsafe literal and string in a document | `schema-command-acme-member-show.json`; `invalid/schema-example-integer-max-plus-one.json`, `-min-minus-one.json`, `-unsafe.json`, `invalid/schema-domain-bound-unsafe.json`, `invalid/input-acme-member-tag-unsafe-*.json` | accepted; rejected, never rounded |
 | a `number` domain bound of `1e20`; a bound that is not finite | `schema-command-acme-filter-test.json` (`--weight`); `invalid/schema-domain-number-bound-not-finite.json` | accepted; rejected |
-| a `format: email` domain and the value `not-an-email` | `input-acme-member-tag-format-annotation.json` | accepted: `format` is an annotation (spec 9.7.4) |
+| a `format: email` domain and the value `not-an-email` | `input-acme-member-tag-format-annotation.json` | accepted: `format` is an annotation (Annex V1) |
 | a numeric string in a document against an integer `argumentsRef` | `input-acme-member-tag-numeric.json` | accepted (the argument object has numbers) |
 | a validator that `argumentsRef` also states; a validator witness that is also an example | `schema-command-acme-member-tag.json` (`TAG_INVALID`); `invalid/schema-validator-rejects-is-example.json` | accepted; rejected |
 | an optional variadic operand defaulting to an array, absent; the same without the default | `schema-command-acme-lint.json`, `input-acme-lint-empty.json`; `invalid/schema-example-variadic-without-default.json` | accepted; rejected |
@@ -111,7 +113,7 @@ that differs between Unicode versions) is recorded in `scripts/regex-cases.json`
 ## Contract 1.1
 
 acme declares 1.3, which includes what 1.1 adds; canon's translations declare 1.0, and every 1.1 addition in a
-document that declares 1.0 is rejected (spec 9.13 rule 16).
+document that declares 1.0 is rejected (spec Annex S2 rule 16).
 
 | Case | File | Result |
 |---|---|---|
@@ -150,10 +152,10 @@ bracketed path in its `meta`, or an unregistered warning in its schema answer is
 **Caller documents** (`caller-*.json`) are what a tool of a later minor might print: `contractVersion` `1.4` (they
 model a minor later than the 1.3 this repository describes) and
 members this repository does not define (`meta.costMs`, `page.exact`, `error.severity`, a registry entry's `docs`).
-A caller of this minor must read them (spec 15.6): each passes the contract schemas read open and fails them
+A caller of this minor must read them (spec 15.4): each passes the contract schemas read open and fails them
 closed. `invalid/caller-report-nothing-unknown.json` carries nothing unknown, and `invalid/caller-report-wrong-type.json`
 gives a known member the wrong type, so a caller reading open still rejects it. Values outside a listed set go
-through the caller's view of spec 15.8 first (`callerView` in `scripts/check.ts`): an unknown `data.kind`
+through the caller's view of spec 15.6 first (`callerView` in `scripts/check.ts`): an unknown `data.kind`
 (`caller-schema-acme-unknown-kind.json`), `valueType`, `effect`, output `kind` and tree entry `kind`
 (`caller-schema-command-acme-unknown-*.json`, `caller-schema-tree-acme-unknown-entry-kind.json`) are accepted that
 way, while an unknown major (`invalid/caller-report-unknown-major.json`) and a known member of the wrong type
@@ -165,7 +167,7 @@ read: the completeness rules it can no longer meet are dropped. A discriminator 
 type, not an unknown value: `invalid/caller-schema-command-effect-wrong-type.json` (`effect: {"bad": true}`) and
 `invalid/caller-schema-command-value-type-wrong-type.json` (`valueType: 77`) are rejected.
 
-Every row of the caller table of spec 15.6 has a fixture: `meta.contract` (`invalid/caller-report-unknown-major.json`),
+Every row of the caller table of spec 15.4 has a fixture: `meta.contract` (`invalid/caller-report-unknown-major.json`),
 `data.kind` (`caller-schema-acme-unknown-kind.json`), a tree entry's `kind` and `effect` and the tree's `level`
 (`caller-schema-tree-acme-unknown-entry-kind.json`, `-unknown-entry-effect.json`, `-unknown-level.json`), a command's
 `effect` and `idempotency`, an operand's and an option's `valueType`, a constraint's `rule`, `input.option`, a
@@ -181,9 +183,9 @@ map key containing U+0000 cannot be selected (`invalid/report-acme-member-list-f
 
 ## Contract 1.2
 
-1.2 adds no member, so its rules are checked by the declared minor (spec 9.13 rule 16): in a document that declares
+1.2 adds no member, so its rules are checked by the declared minor (spec Annex S2 rule 16): in a document that declares
 1.2 or later the paging and field-selection options are flag-only (spec 10.6), and in a document that declares exactly
-1.2 `STOPPED_MIDWAY` is a core code (spec 15.9). acme declares 1.3 and keeps the flag-only options; the two
+1.2 `STOPPED_MIDWAY` is a core code (spec 15.7). acme declares 1.3 and keeps the flag-only options; the two
 1.2-only rules have their witnesses in documents that declare 1.2. A third synthetic tool, **`tally`** (`*-tally-*`),
 stays on 1.1: its `entry list` is `ledger`'s with the map's `minProperties` removed (a 1.1 map is a cut node), and it
 shows that neither 1.2 rule applies below 1.2.
@@ -200,7 +202,7 @@ are behaviour, not documents; the checker tests them (approaches/checker.md).
 ## Contract 1.3
 
 1.3 adds no member, document kind or enum value either; its rules bind a document that declares 1.3 or later (spec
-15.1, 15.7). acme declares 1.3 and its codes are renamed to follow the convention of spec 7.2: `DEPLOY_FAILED` is
+15.1, 15.5). acme declares 1.3 and its codes are renamed to follow the convention of spec 7.2: `DEPLOY_FAILED` is
 `DEPLOYMENT_FAILED`, `DEPLOY_WAIT_TIMEOUT` is `DEPLOYMENT_TIMEOUT` (exit 1, retryable), `ENVIRONMENT_FROZEN` is the
 reason of `DEPLOYMENT_DENIED` (exit 2), `TAG_RESERVED` is `TAG_INVALID` with the reason `RESERVED`, and
 `STOPPED_MIDWAY` is acme's own `DEPLOYMENT_INCOMPLETE` (exit 1, not retryable) whose reason is the refused code,
@@ -232,7 +234,7 @@ both. The plans are shaped `{effects, inputs}` for illustration; the digest cove
 builds, and a tool that computes its digest another way (11.6 is a SHOULD) is not bound by them.
 
 What goes into a plan is the tool's choice, within what JCS can canonicalize the same everywhere. An integer beyond
-±(2^53-1) is written as a string, as spec 9.7.5 makes it for argument values (an identifier that can exceed the
+±(2^53-1) is written as a string, as Annex V3 makes it for argument values (an identifier that can exceed the
 range is a `string`): as a JSON number it would be rounded by some parsers, and its digest would depend on the
 implementation, so no vector holds one. A plan holds only valid Unicode, as I-JSON requires: a value that may not be
 (a file name that is not UTF-8, which can decode to a lone surrogate) is escaped or encoded by the tool before it

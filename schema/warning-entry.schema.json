@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://atip.dev/1/warning-entry.schema.json",
   "title": "atip/1 warning registry entry",
-  "description": "One row of a tool's warning registry (spec 7.5.2), printed by `schema --warnings` and `schema --warning <CODE>`. A warning has no exit and no retryability. Since 1.1. Closed for tools of the current minor; callers read it open (spec 15.8).",
+  "description": "One row of a tool's warning registry (spec 7.5.2), printed by `schema --warnings` and `schema --warning <CODE>`. A warning has no exit and no retryability. Since 1.1. Closed for tools of the current minor; callers read it open (spec 15.6).",
   "x-atip-since": "1.1",
   "type": "object",
   "required": ["code", "meaning", "fix"],

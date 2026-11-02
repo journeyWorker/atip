@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://atip.dev/1/schema-doc.schema.json",
   "title": "atip/1 self-description (`<tool> schema ... --json`)",
-  "description": "A successful `schema` answer (spec section 9). `data.kind` selects one of seven documents (`warnings` and `warning` since 1.1). Closed for tools of the current minor; callers read it open (spec 15.8). Level-neutral: rules that apply only at L2 (spec 11.4) are checked by the L2 checker, not here (spec 3.3). Rules JSON Schema cannot express are listed in spec 9.13.",
+  "description": "A successful `schema` answer (spec section 9). `data.kind` selects one of seven documents (`warnings` and `warning` since 1.1). Closed for tools of the current minor; callers read it open (spec 15.6). Level-neutral: rules that apply only at L2 (spec 11.4) are checked by the L2 checker, not here (spec 3.3). Rules JSON Schema cannot express are listed in Annex S2.",
   "allOf": [
     { "$ref": "envelope.schema.json#/$defs/success" },
     {
@@ -324,7 +324,7 @@
         "domain": { "$ref": "#/$defs/domain" },
         "env": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
         "flagOnly": {
-          "description": "true: the option cannot appear in an --input document (spec 10.6). Required for json, input, commit and plan-digest; in a document that declares 1.2 also for limit, cursor, all and fields, which depends on the declared minor and is checked by scripts/check.ts (spec 9.13 rule 8).",
+          "description": "true: the option cannot appear in an --input document (spec 10.6). Required for json, input, commit and plan-digest; in a document that declares 1.2 also for limit, cursor, all and fields, which depends on the declared minor and is checked by scripts/check.ts (spec Annex S2 rule 8).",
           "type": "boolean"
         },
         "help": { "type": "string", "minLength": 1 }
@@ -391,7 +391,7 @@
       "uniqueItems": true
     },
     "domain": {
-      "description": "The interoperable domain profile (spec 9.7.4): which keywords fit which valueType, safe-integer bounds and the I-Regexp form of `pattern` are checked by scripts/check.ts (spec 9.13 rule 3).",
+      "description": "The interoperable domain profile (Annex V1): which keywords fit which valueType, safe-integer bounds and the I-Regexp form of `pattern` are checked by scripts/check.ts (spec Annex S2 rule 3).",
       "$ref": "#/$defs/domainNode",
       "minProperties": 1
     },
@@ -406,7 +406,7 @@
         "minLength": { "type": "integer", "minimum": 0 },
         "maxLength": { "type": "integer", "minimum": 0 },
         "pattern": {
-          "description": "`^`, an I-Regexp (RFC 9485) body with the restrictions of spec 9.7.4, and `$`.",
+          "description": "`^`, an I-Regexp (RFC 9485) body with the restrictions of Annex V2, and `$`.",
           "type": "string",
           "pattern": "^\\^.*\\$$"
         },
@@ -426,7 +426,7 @@
         "description": { "type": "string" },
         "$comment": { "type": "string" },
         "format": {
-          "description": "An annotation only: it asserts nothing (spec 9.7.4).",
+          "description": "An annotation only: it asserts nothing (Annex V1).",
           "type": "string"
         }
       },
@@ -435,7 +435,7 @@
     "jsonType": { "enum": ["null", "boolean", "object", "array", "number", "string", "integer"] },
     "scalar": { "type": ["null", "boolean", "number", "string"] },
     "validator": {
-      "description": "A stateless check outside the domain profile and the constraint vocabulary (spec 9.8.3).",
+      "description": "A stateless check outside the domain profile and the constraint vocabulary (spec 9.8.2).",
       "type": "object",
       "required": ["arguments", "code", "description", "rejects"],
       "properties": {
@@ -608,7 +608,7 @@
       "properties": {
         "option": { "const": "--input" },
         "schemaRef": {
-          "description": "The fragment schema of one document: no `required`, additionalProperties false (spec 9.10).",
+          "description": "The fragment schema of one document: no `required`, additionalProperties false (spec 9.9.2).",
           "$ref": "#/$defs/schemaRef"
         },
         "argumentsRef": {

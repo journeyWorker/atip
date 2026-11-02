@@ -1,17 +1,17 @@
 // Validates every example in examples/ against the ATIP JSON Schemas and against the rules JSON Schema cannot
-// express (spec 9.13, and the semantic rules of sections 6, 7, 10 and 13). Run through scripts/validate.sh. The
+// express (Annex S2 of the spec, and the semantic rules of sections 6, 7, 10 and 13). Run through scripts/validate.sh. The
 // checker is a non-normative tool that tests documents against the spec; it is not the definition of conformance (3.7).
 //
 //   examples/*.json, *.ndjson          must pass every check
 //   examples/invalid/*.json, *.ndjson  must fail at least one check (the first problem found is printed)
 //
 // Which checks apply follows the file name:
-//   schema-*   a `schema` answer           schema-doc.schema.json + spec 9.13
+//   schema-*   a `schema` answer           schema-doc.schema.json + Annex S2
 //   input-*    an --input value            input-document.schema.json; `input-<tool>-<command>-…` also against
 //                                           that command's fragment schema and, unless the name contains
 //                                           `fragment`, its `argumentsRef`, `required` and `constraints` (10.7)
 //   stream-*   an NDJSON stream            stream-line.schema.json + spec 13
-//   caller-*   a document of a later minor that a caller of this one must read (spec 15.6, 15.8; also
+//   caller-*   a document of a later minor that a caller of this one must read (spec 15.4, 15.6; also
 //              caller-*.ndjson streams and caller-batch-* batch reports): its view must pass
 //              the contract schemas read open (`additionalProperties: false` ignored) and fail them closed, so it
 //              really carries unknown members; `caller-schema-*` against schema-doc, the rest against envelope
@@ -19,7 +19,7 @@
 //                                           output schema of the command's own self-description example
 //
 // Every tool document (all but caller-*) is also checked against the contract minor it declares in
-// `meta.contractVersion` (spec 15.7, 9.13 rule 16): absent means 1.0, which allows none of the 1.1 additions, and
+// `meta.contractVersion` (spec 15.5, Annex S2 rule 16): absent means 1.0, which allows none of the 1.1 additions, and
 // the rules a minor adds for its own documents apply from that minor: 1.2 makes more options flag-only and reserves
 // `STOPPED_MIDWAY` (for a document that declares exactly 1.2); 1.3 requires every error code of a registry to be a core
 // code or to follow the `<SUBJECT>_<CONDITION>` grammar with its condition's exit and retryability (7.2.3), and every
@@ -130,7 +130,7 @@ const V = {
 }
 
 /**
- * The contract schemas read open, as a caller reads them (spec 15.8): every `additionalProperties: false` dropped, and
+ * The contract schemas read open, as a caller reads them (spec 15.6): every `additionalProperties: false` dropped, and
  * the completeness rules that a caller's view can no longer meet once it has left out what it does not understand
  * (`minItems`, `contains`, and the conditional `if`/`then`/`else`): those are the producer's obligations, which the
  * tool checks above enforce. Types, `required` members and listed values stay.
@@ -153,7 +153,7 @@ const openSchema = (name: string): ValidateFunction => {
   return v
 }
 
-/** The contract minors this repository describes; a tool declares one of them (spec 15.7). */
+/** The contract minors this repository describes; a tool declares one of them (spec 15.5). */
 const MINORS = ["1.0", "1.1", "1.2", "1.3"]
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/
 
@@ -177,9 +177,9 @@ const PLACEHOLDER = /<[A-Z][A-Z0-9_]*>|\.\.\.|…/
 const INTEGER = /^-?(0|[1-9][0-9]*)$/
 const JSON_NUMBER = /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$/
 const FLAG_ONLY = ["json", "input", "commit", "plan-digest"]
-// Since 1.2 (spec 10.6, 9.13 rule 8), for a document that declares 1.2 or later: the paging and field-selection
+// Since 1.2 (spec 10.6, Annex S2 rule 8), for a document that declares 1.2 or later: the paging and field-selection
 // options are flag-only too. A 1.1 or 1.0 document is not held to it. `STOPPED_MIDWAY` is a core code only in a
-// document that declares exactly 1.2 (spec 15.9); in 1.3 it does not fit the grammar of 7.2.1.
+// document that declares exactly 1.2 (spec 15.7); in 1.3 it does not fit the grammar of 7.2.1.
 const FLAG_ONLY_SINCE_12 = ["limit", "cursor", "all", "fields"]
 const RESERVED_IN_12: Record<string, { exit: number; retryable: boolean }> = { STOPPED_MIDWAY: { exit: 1, retryable: false } }
 // Spec 7.2.1 and 7.2.2: a tool's own error code is `<SUBJECT>_<CONDITION>`; the condition fixes exit and retryability.
@@ -188,13 +188,13 @@ const CODE_GRAMMAR =
 const CONDITION_EXIT_1 = ["FAILED", "INCOMPLETE", "TIMEOUT"]
 const CONDITION_RETRYABLE = ["UNAVAILABLE", "TIMEOUT"]
 const CONDITION_MAY_RETRY = ["FAILED", "INCOMPLETE"]
-// Keywords a cut node may use (spec 6.10): annotations, and the shape keywords of its kind.
+// Keywords a cut node may use (Annex F5): annotations, and the shape keywords of its kind.
 const ANNOTATIONS = ["title", "description", "default", "examples", "deprecated", "readOnly", "writeOnly", "$comment"]
 const CUT_OBJECT: Record<string, true> = Object.fromEntries(
   [...ANNOTATIONS, "type", "properties", "required", "additionalProperties"].map((k) => [k, true]),
 )
 const CUT_ARRAY: Record<string, true> = Object.fromEntries([...ANNOTATIONS, "type", "items", "minItems", "maxItems"].map((k) => [k, true]))
-// The domain profile (spec 9.7.4): keywords by valueType, and the annotations a domain may carry.
+// The domain profile (spec Annex V1): keywords by valueType, and the annotations a domain may carry.
 const NUMERIC_KEYWORDS = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"]
 const STRING_KEYWORDS = ["minLength", "maxLength", "pattern"]
 const STRUCTURAL_KEYWORDS = ["type", "enum", "const", "properties", "required", "additionalProperties", "items"]
@@ -269,7 +269,7 @@ type Args = { operands: JsonValue[]; options: Map<string, JsonValue> }
 
 /**
  * Numeric strings of integer and number arguments denote numbers, in the JSON number grammar only (10.5). An integer
- * outside the safe range ±(2^53-1) stays a string, so it is refused rather than rounded (9.7.5).
+ * outside the safe range ±(2^53-1) stays a string, so it is refused rather than rounded (Annex V3).
  */
 function normalise(valueType: string, v: JsonValue): JsonValue {
   if (typeof v !== "string") return v
@@ -295,7 +295,7 @@ function validValue(arg: Arg, v: JsonValue): boolean {
 }
 
 /**
- * The I-Regexp (RFC 9485) syntax of the body of a domain pattern, with the restrictions of spec 9.7.4 that make the
+ * The I-Regexp (RFC 9485) syntax of the body of a domain pattern, with the restrictions of spec Annex V2 that make the
  * ECMAScript (`u` flag) and Rust `regex` readings of `^body$` agree: no `|` outside parentheses, no `.`, `^` or `$`
  * outside a character class, no `\-` outside a character class, and no `&&` or `~~` inside one (Rust's class
  * intersection and symmetric difference; `--` and a nested `[` are already not I-Regexp). Returns the first problem,
@@ -416,7 +416,7 @@ function iregexpProblem(body: string): string | undefined {
 
 /**
  * The recorded cross-engine results (scripts/regex-cases.json): what the Rust regex crate does with each pattern, as
- * verified by scripts/regex-parity. A pattern of the form must compile in both engines (9.7.4); the ECMAScript half
+ * verified by scripts/regex-parity. A pattern of the form must compile in both engines (Annex V2); the ECMAScript half
  * is checked here, the Rust half comes from the record, so every pattern an example uses must be recorded.
  */
 type UnicodeDifference = { kind: string; codePoint: string; ecmascript: string; rust: string }
@@ -432,7 +432,7 @@ type RegexRecord = { engines: { ecmascript: { unicode: string }; rust: { unicode
 const regexRecord = JSON.parse(readFileSync(join(repo, "scripts", "regex-cases.json"), "utf8")) as RegexRecord
 const regexCases = regexRecord.cases
 
-/** The form of spec 9.7.4: `^`, an I-Regexp body with its restrictions, `$`; ECMAScript `u` compiles it. */
+/** The form of spec Annex V2: `^`, an I-Regexp body with its restrictions, `$`; ECMAScript `u` compiles it. */
 function patternFormProblem(pattern: string): string | undefined {
   const body = pattern.startsWith("^") && pattern.endsWith("$") && pattern.length >= 2 ? pattern.slice(1, -1) : undefined
   if (body === undefined) return "is not ^…$"
@@ -460,7 +460,7 @@ function patternProblem(pattern: string): string | undefined {
 const hasCategory = (value: string, category: string) => new RegExp(`^\\p{${category}}$`, "u").test(value)
 
 /**
- * The ECMAScript half of a `unicode-version` difference (spec 9.7.4): the value is the recorded single code point, the
+ * The ECMAScript half of a `unicode-version` difference (spec Annex V2): the value is the recorded single code point, the
  * pattern depends on a category, the two recorded categories differ, and this engine's tables give the code point the
  * recorded ECMAScript category and not the Rust one. scripts/regex-parity verifies the Rust half.
  */
@@ -508,36 +508,36 @@ function checkRegexCases(): string[] {
   return problems
 }
 
-/** A domain uses only the profile of its argument's valueType (spec 9.7.4), checked structurally. */
+/** A domain uses only the profile of its argument's valueType (spec Annex V1), checked structurally. */
 function domainProblems(arg: Arg, node: JsonValue, at: string, problems: string[]) {
   const keywords = DOMAIN_KEYWORDS[arg.valueType]
-  if (!keywords) return void problems.push(`${at}: a ${arg.valueType} argument has no domain (spec 9.7.4)`)
+  if (!keywords) return void problems.push(`${at}: a ${arg.valueType} argument has no domain (spec Annex V1)`)
   if (!isObject(node)) return void problems.push(`${at}: a domain schema is an object`)
   const integral = arg.valueType === "integer" || arg.valueType === "count"
   for (const [k, v] of Object.entries(node)) {
     if (DOMAIN_ANNOTATIONS.includes(k)) continue
     if (!keywords.includes(k)) {
-      problems.push(`${at}: keyword ${k} is outside the domain profile of ${arg.valueType} (spec 9.7.4)`)
+      problems.push(`${at}: keyword ${k} is outside the domain profile of ${arg.valueType} (spec Annex V1)`)
       continue
     }
     if (NUMERIC_KEYWORDS.includes(k)) {
-      // Integer and count bounds are safe integers; number and json bounds are any finite binary64 (9.7.5).
+      // Integer and count bounds are safe integers; number and json bounds are any finite binary64 (Annex V3).
       if (typeof v !== "number" || !Number.isFinite(v)) problems.push(`${at}: ${k} is not a finite number`)
-      else if (integral && !Number.isSafeInteger(v)) problems.push(`${at}: ${k} ${v} is not a safe integer (spec 9.7.5)`)
+      else if (integral && !Number.isSafeInteger(v)) problems.push(`${at}: ${k} ${v} is not a safe integer (spec Annex V3)`)
       else if (k === "multipleOf" && v <= 0) problems.push(`${at}: multipleOf is not positive`)
     }
     if (k === "pattern") {
       const problem = typeof v === "string" ? patternProblem(v) : "is not a string"
-      if (problem) problems.push(`${at}: pattern ${JSON.stringify(v)}: ${problem} (spec 9.7.4)`)
+      if (problem) problems.push(`${at}: pattern ${JSON.stringify(v)}: ${problem} (spec Annex V2)`)
     }
     if ((k === "enum" || k === "const") && [v].flat().some((x) => x !== null && typeof x === "object"))
-      problems.push(`${at}: ${k} admits only scalar values in a domain (spec 9.7.4)`)
+      problems.push(`${at}: ${k} admits only scalar values in a domain (spec Annex V1)`)
     if (k === "properties" && isObject(v)) for (const [name, child] of Object.entries(v)) domainProblems(arg, child, `${at}/properties/${name}`, problems)
     if (k === "items" || (k === "additionalProperties" && typeof v !== "boolean")) domainProblems(arg, v, `${at}/${k}`, problems)
   }
 }
 
-/** The compiled `domain` of an argument (9.7.4), cached per argument object. */
+/** The compiled `domain` of an argument (Annex V1), cached per argument object. */
 const domains = new WeakMap<Arg, ValidateFunction>()
 function domainOf(arg: Arg): ValidateFunction | undefined {
   if (!arg.domain) return undefined
@@ -665,8 +665,8 @@ function argumentObject(doc: CommandDoc, args: Args): JsonObject {
 }
 
 /**
- * Step 6 of 10.7 on the merged arguments: requirements, constraints, and the informative `argumentsRef` (9.10). A
- * validator's `rejects` invocation skips `argumentsRef`, which may describe that very validator (9.13 rule 13).
+ * Step 6 of 10.7 on the merged arguments: requirements, constraints, and the informative `argumentsRef` (9.9.2). A
+ * validator's `rejects` invocation skips `argumentsRef`, which may describe that very validator (Annex S2 rule 13).
  */
 const argumentSchemas = new WeakMap<CommandDoc, ValidateFunction>()
 function checkArguments(doc: CommandDoc, args: Args, where: string, problems: string[], withArgumentsRef = true) {
@@ -699,7 +699,7 @@ function mergeArgs(argv: Args, document: Args, where: string, problems: string[]
   return { operands: argv.operands.length ? argv.operands : document.operands, options }
 }
 
-/** Parses a documented invocation by the grammar of spec 4.2 against a command document (9.13 rule 12). */
+/** Parses a documented invocation by the grammar of spec 4.2 against a command document (Annex S2 rule 12). */
 function parseInvocation(doc: CommandDoc, tool: string, line: string, problems: string[], withArgumentsRef = true) {
   const where = `example ${JSON.stringify(line)}`
   let words: string[]
@@ -799,7 +799,7 @@ function parseInvocation(doc: CommandDoc, tool: string, line: string, problems: 
   }
 }
 
-/** Frames and validates an inline `--input` value of an example as spec 10.2-10.7 say (9.13 rule 12). */
+/** Frames and validates an inline `--input` value of an example as spec 10.2-10.7 say (Annex S2 rule 12). */
 function inlineDocuments(doc: CommandDoc, text: string, where: string, problems: string[]): Args[] | undefined {
   if (!/^\s*[{[]/.test(text)) return void problems.push(`${where}: an example must not read stdin or a file (--input ${text})`)
   if (!doc.input) return void problems.push(`${where}: the command declares no input`)
@@ -823,12 +823,12 @@ function inlineDocuments(doc: CommandDoc, text: string, where: string, problems:
   })
 }
 
-// ---- projection (spec 6.10) ----
+// ---- projection (Annex F, spec 6.10) ----
 /** The decoded segments of an RFC 6901 pointer (`~1` is `/`, `~0` is `~`). */
 const decodePointer = (pointer: string) => pointer.split("/").slice(1).map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"))
 
 /**
- * The steps of a field path (spec 6.10): `.name`, or since 1.1 a bracketed JSON string `["a.b"]` for a member
+ * The steps of a field path (Annex F1): `.name`, or since 1.1 a bracketed JSON string `["a.b"]` for a member
  * whose name is not an identifier, each optionally followed by `[]`. Undefined when the path is malformed.
  */
 type Step = { name: string; array: boolean; bracket: boolean }
@@ -841,7 +841,7 @@ function parseFieldPath(path: string): Step[] | undefined {
     if (path.startsWith('["', i)) {
       let j = i + 2
       for (; j < path.length && path[j] !== '"'; j++) {
-        if (path[j] === "\u0000") return undefined // argv cannot carry NUL (spec 6.10)
+        if (path[j] === "\u0000") return undefined // argv cannot carry NUL (Annex F1)
         if (path[j] === "\\") {
           if (path[j + 1] !== '"' && path[j + 1] !== "\\") return undefined
           j++
@@ -868,12 +868,12 @@ function parseFieldPath(path: string): Step[] | undefined {
 }
 const stepNames = (path: string) => (parseFieldPath(path) ?? []).map((s) => s.name)
 
-/** Spec 9.13 rule 15: brackets exactly for names that are not identifiers. */
+/** Spec Annex S2 rule 15: brackets exactly for names that are not identifiers. */
 function fieldPathProblem(path: string): string | undefined {
   const steps = parseFieldPath(path)
-  if (!steps) return `field path ${path} is malformed (spec 6.10)`
+  if (!steps) return `field path ${path} is malformed (Annex F1)`
   const named = steps.find((s) => s.bracket && IDENT.test(s.name))
-  if (named) return `field path ${path} writes the identifier ${named.name} in brackets (spec 9.13 rule 15)`
+  if (named) return `field path ${path} writes the identifier ${named.name} in brackets (Annex S2 rule 15)`
   return undefined
 }
 
@@ -929,15 +929,15 @@ function nonNull(schemas: Record<string, SchemaNode>, node: SchemaNode | undefin
 const typesOf = (node: JsonObject) => [node.type].flat().filter((t): t is string => typeof t === "string")
 
 /**
- * Checks that every cut node along `trie` is projectable (spec 6.10, 9.13 rule 11). The caller passes the output's
+ * Checks that every cut node along `trie` is projectable (Annex F5, Annex S2 rule 11). The caller passes the output's
  * root schema and a trie that starts with the decoded `fields.records` segments, so the spine above the records is
  * checked as well as the records, the record and the ancestors of every declared path.
  */
 function checkCut(schemas: Record<string, SchemaNode>, node: SchemaNode | undefined, trie: Trie, at: string, problems: string[]) {
   if (node === undefined) return // a member the schema does not declare: rule 11's path check reports it
-  if (!isObject(node)) return void problems.push(`${at}: the boolean schema ${node} is not a projectable cut node (spec 6.10)`)
+  if (!isObject(node)) return void problems.push(`${at}: the boolean schema ${node} is not a projectable cut node (Annex F5)`)
   const annotationsOnly = (allowed: string) =>
-    Object.keys(node).filter((k) => k !== allowed && !ANNOTATIONS.includes(k)).forEach((k) => problems.push(`${at}: keyword ${k} beside ${allowed} in a cut node (spec 6.10)`))
+    Object.keys(node).filter((k) => k !== allowed && !ANNOTATIONS.includes(k)).forEach((k) => problems.push(`${at}: keyword ${k} beside ${allowed} in a cut node (Annex F5)`))
   if (typeof node.$ref === "string") {
     annotationsOnly("$ref")
     return checkCut(schemas, deref(schemas, node), trie, at, problems)
@@ -950,13 +950,13 @@ function checkCut(schemas: Record<string, SchemaNode>, node: SchemaNode | undefi
     return checkCut(schemas, branches.find((b) => !isNull(b)) as SchemaNode, trie, at, problems)
   }
   const types = typesOf(node)
-  if (!types.length) return void problems.push(`${at}: a cut node declares no type (spec 6.10)`)
+  if (!types.length) return void problems.push(`${at}: a cut node declares no type (Annex F5)`)
   if (types.includes("array") || node.items !== undefined) {
-    for (const k of Object.keys(node)) if (!CUT_ARRAY[k]) problems.push(`${at}: keyword ${k} in an array cut node (spec 6.10)`)
+    for (const k of Object.keys(node)) if (!CUT_ARRAY[k]) problems.push(`${at}: keyword ${k} in an array cut node (Annex F5)`)
     if (types.some((t) => t !== "array" && t !== "null")) problems.push(`${at}: an array cut node admits ${types}`)
     return checkCut(schemas, node.items as SchemaNode, trie, `${at}[]`, problems)
   }
-  for (const k of Object.keys(node)) if (!CUT_OBJECT[k]) problems.push(`${at}: keyword ${k} in an object cut node (spec 6.10)`)
+  for (const k of Object.keys(node)) if (!CUT_OBJECT[k]) problems.push(`${at}: keyword ${k} in an object cut node (Annex F5)`)
   if (types.some((t) => t !== "object" && t !== "null")) problems.push(`${at}: an object cut node admits ${types}`)
   const props = isObject(node.properties) ? node.properties : {}
   for (const [member, child] of trie) if (child !== WHOLE) checkCut(schemas, props[member] as SchemaNode, child, `${at}.${member}`, problems)
@@ -981,7 +981,7 @@ function recordSchema(schemas: Record<string, SchemaNode>, output: Output): Sche
 
 /**
  * The schema a field path names: a member the record schema declares, reached through an array only with `[]`; a
- * last step without `[]` may name a whole array (spec 6.10). Undefined when the path is not declared.
+ * last step without `[]` may name a whole array (Annex F4). Undefined when the path is not declared.
  */
 function pathNode(schemas: Record<string, SchemaNode>, record: SchemaNode | undefined, path: string): SchemaNode | undefined {
   let node = record
@@ -993,7 +993,7 @@ function pathNode(schemas: Record<string, SchemaNode>, record: SchemaNode | unde
     node = nonNull(schemas, props[step.name] as SchemaNode)
     const isArray = isObject(node) && (typesOf(node).includes("array") || node.items !== undefined)
     if (step.array !== isArray && (step.array || i < steps.length - 1)) return undefined
-    // Only an explicit `[]` descends into the items: a last step without it names the whole array (spec 6.10).
+    // Only an explicit `[]` descends into the items: a last step without it names the whole array (Annex F4).
     if (step.array && isObject(node)) node = nonNull(schemas, node.items as SchemaNode)
   }
   return node ?? true
@@ -1001,13 +1001,13 @@ function pathNode(schemas: Record<string, SchemaNode>, record: SchemaNode | unde
 const pathDeclared = (schemas: Record<string, SchemaNode>, record: SchemaNode | undefined, path: string) =>
   pathNode(schemas, record, path) !== undefined
 
-/** A map (spec 6.10): an object schema whose `additionalProperties` is a schema (`true` included) and whose `properties` is absent or empty. */
+/** A map (Annex F3): an object schema whose `additionalProperties` is a schema (`true` included) and whose `properties` is absent or empty. */
 const isMap = (node: SchemaNode | undefined) =>
   isObject(node) &&
   (node.properties === undefined || (isObject(node.properties) && Object.keys(node.properties).length === 0)) &&
   (isObject(node.additionalProperties) || node.additionalProperties === true)
 
-/** The declared map path a selected path extends by one key, if it is a map-key selection (spec 6.10). */
+/** The declared map path a selected path extends by one key, if it is a map-key selection (Annex F3). */
 function mapKeyOf(doc: CommandDoc, output: Output, path: string): string | undefined {
   const steps = parseFieldPath(path)
   if (!steps || steps.length < 2 || steps.at(-1)?.array) return undefined
@@ -1021,7 +1021,7 @@ function mapKeyOf(doc: CommandDoc, output: Output, path: string): string | undef
 }
 
 /**
- * The output schema with `required` reduced in every object cut node along the kept paths (spec 6.10). Cut nodes are
+ * The output schema with `required` reduced in every object cut node along the kept paths (Annex F5). Cut nodes are
  * inlined (cloned) so shared definitions are not changed, and null-admitting unions are kept around the projected
  * branch.
  */
@@ -1062,7 +1062,7 @@ function projectedSchema(doc: CommandDoc, output: Output, trie: Trie): ValidateF
   })
 }
 
-// ---- self-description (spec 9.13) ----
+// ---- self-description (Annex S2) ----
 function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11: boolean, v12: boolean) {
   const all = [...doc.operands, ...doc.options]
   // Rule 9: names and short letters are unique.
@@ -1087,7 +1087,7 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
   }
   const outputRefs = doc.outputs.map((o) => o.schemaRef)
   if (new Set(outputRefs).size !== outputRefs.length) problems.push("two outputs share a schemaRef")
-  // Rule 3: defaults valid and in their domains; domains within the profile of 9.7.4.
+  // Rule 3: defaults valid and in their domains; domains within the profile of Annex V1.
   for (const a of all) {
     if (a.valueType === "enum" && a.default !== null)
       for (const d of [a.default].flat()) if (!a.possibleValues?.includes(String(d))) problems.push(`default ${d} of ${a.name} not in possibleValues`)
@@ -1117,11 +1117,11 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
       else for (const v of c.if.in) checkValue(`constraint value for ${target.name}`, target, v, problems)
     }
     if (c.code && !doc.errors.includes(c.code)) problems.push(`constraint code ${c.code} not in errors`)
-    // The same relation twice, whatever the order of its names or values and whatever its code (9.8.2).
+    // The same relation twice, whatever the order of its names or values and whatever its code (9.8.1).
     const sorted = (xs: JsonValue[] | undefined) => xs && [...xs].map((x) => JSON.stringify(normalise(target?.valueType ?? "string", x))).sort()
     const key = JSON.stringify([c.rule, sorted(c.names), c.if?.name, sorted(c.if?.in), sorted(c.then)])
     const earlier = relations.get(key)
-    if (earlier !== undefined) problems.push(`constraint ${index} repeats constraint ${earlier} (spec 9.8.2)`)
+    if (earlier !== undefined) problems.push(`constraint ${index} repeats constraint ${earlier} (spec 9.8.1)`)
     else relations.set(key, index)
   }
   // Rule 4: a command lists the reserved code of each feature it offers (7.3.1).
@@ -1134,12 +1134,12 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
     [has("cursor"), ["CURSOR_INVALID"]],
   ]
   for (const [offered, codes] of featureCodes) if (offered) for (const c of codes) if (!doc.errors.includes(c)) problems.push(`${doc.command} offers the feature of ${c} but does not list it in errors (spec 7.3.1)`)
-  // Rule 13: stateless validators (9.8.3).
+  // Rule 13: stateless validators (9.8.2).
   for (const v of doc.validators ?? []) {
     for (const n of v.arguments) if (!names.has(n)) problems.push(`validator names unknown argument ${n}`)
     if (!doc.errors.includes(v.code)) problems.push(`validator code ${v.code} not in errors`)
     const entry = registered(tool, v.code)
-    if (entry && entry.exit !== 2) problems.push(`validator code ${v.code} exits ${entry.exit}, not 2 (spec 9.8.3)`)
+    if (entry && entry.exit !== 2) problems.push(`validator code ${v.code} exits ${entry.exit}, not 2 (spec 9.8.2)`)
     for (const line of v.rejects) {
       if (doc.examples.includes(line)) problems.push(`validator rejects example ${JSON.stringify(line)} is also a valid example`)
       const before: string[] = []
@@ -1159,14 +1159,14 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
     if (reservedShape[o.name] && o.valueType !== reservedShape[o.name]) problems.push(`reserved option --${o.name} must be ${reservedShape[o.name]}`)
     if (FLAG_ONLY.includes(o.name) && o.flagOnly !== true) problems.push(`--${o.name} must be flagOnly`)
     if (v12 && FLAG_ONLY_SINCE_12.includes(o.name) && o.flagOnly !== true)
-      problems.push(`--${o.name} must be flagOnly in a document that declares 1.2 (spec 10.6, 9.13 rule 8)`)
+      problems.push(`--${o.name} must be flagOnly in a document that declares 1.2 (spec 10.6, Annex S2 rule 8)`)
   }
   // Rule 10: the fragment contract.
   if (doc.input) {
     const fragment = deref(doc.schemas, doc.schemas[refName(doc.input.schemaRef)])
     if (!isObject(fragment)) problems.push("the fragment schema is not an object schema")
     else {
-      if (fragment.required !== undefined) problems.push("the fragment schema has a root required list (spec 9.10)")
+      if (fragment.required !== undefined) problems.push("the fragment schema has a root required list (spec 9.9.2)")
       if (fragment.additionalProperties !== false) problems.push("the fragment schema does not set additionalProperties: false")
       const allowed = new Set(["operands", ...doc.options.filter((o) => !o.flagOnly).map((o) => camel(o.name))])
       for (const key of Object.keys(isObject(fragment.properties) ? fragment.properties : {}))
@@ -1178,7 +1178,7 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
     if (!o.fields) continue
     const record = recordSchema(doc.schemas, o)
     const declared = [...o.fields.paths, ...(o.fields.keep ?? [])]
-    // Cut nodes (6.10): every schema from the output root to a selectable field. The trie starts with the decoded
+    // Cut nodes (Annex F5): every schema from the output root to a selectable field. The trie starts with the decoded
     // records segments; below the records it holds every proper ancestor of a declared path and, in a document
     // that declares 1.1, every declared map, whose keys are selectable. A 1.0 document keeps a map whole.
     const ancestors: Trie = new Map()
@@ -1229,7 +1229,7 @@ const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"
 const commandDocs = new Map<string, CommandDoc>()
 const registries = new Map<string, RegistryEntry[]>()
 const warningRegistries = new Map<string, WarningEntry[]>()
-/** The minor each example tool's build declares, from its schema answers (the fixture's claim, spec 15.7). */
+/** The minor each example tool's build declares, from its schema answers (the fixture's claim, spec 15.5). */
 const toolMinors = new Map<string, string>()
 for (const f of readdirSync(exampleDir).filter((f) => f.startsWith("schema-") && f.endsWith(".json"))) {
   const answer = readJson(join(exampleDir, f)) as { data: SchemaData; meta: Meta }
@@ -1243,13 +1243,13 @@ const registered = (tool: string, code: string): RegistryEntry | undefined =>
   registries.get(tool)?.find((e) => e.code === code) ?? (RESERVED[code] ? { code, ...RESERVED[code] } : undefined)
 const warningRegistered = (tool: string, code: string) => warningRegistries.get(tool)?.some((e) => e.code === code) ?? false
 
-// ---- the contract minor a document declares (spec 15.7, 9.13 rule 16) ----
+// ---- the contract minor a document declares (spec 15.5, Annex S2 rule 16) ----
 const declaredMinor = (meta: Meta) => meta.contractVersion ?? "1.0"
 /** Whether the document may use the 1.1 additions; reports a minor this repository does not describe. */
 function minorOf(meta: { contractVersion?: string }, problems: string[]): boolean {
   const minor = meta.contractVersion ?? "1.0"
-  if (meta.contractVersion === "1.0") problems.push('contractVersion is never written as "1.0": 1.0 is its absence (spec 15.7)')
-  else if (!MINORS.includes(minor)) problems.push(`contractVersion ${minor} is not a minor this repository describes (spec 15.7)`)
+  if (meta.contractVersion === "1.0") problems.push('contractVersion is never written as "1.0": 1.0 is its absence (spec 15.5)')
+  else if (!MINORS.includes(minor)) problems.push(`contractVersion ${minor} is not a minor this repository describes (spec 15.5)`)
   return minor !== "1.0"
 }
 /** Whether the document declares 1.2 or later, so that the rules 1.2 adds for its own documents apply. */
@@ -1257,7 +1257,7 @@ const declares12 = (meta: Meta) => MINORS.indexOf(declaredMinor(meta)) >= MINORS
 /** Whether the document declares 1.3 or later, so that the rules 1.3 adds for its own documents apply (7.2.3, 7.5.2). */
 const declares13 = (meta: Meta) => MINORS.indexOf(declaredMinor(meta)) >= MINORS.indexOf("1.3")
 const since11 = (allowed: boolean, what: string, problems: string[]) =>
-  allowed || problems.push(`${what} is since 1.1, but the document declares contract 1.0 (spec 9.13 rule 16)`)
+  allowed || problems.push(`${what} is since 1.1, but the document declares contract 1.0 (Annex S2 rule 16)`)
 
 /**
  * Spec 7.2.3, for a document that declares 1.3: an error code of a registry is a core code or follows the grammar of
@@ -1267,7 +1267,7 @@ const since11 = (allowed: boolean, what: string, problems: string[]) =>
 function codeNameProblems(e: RegistryEntry, problems: string[]) {
   if (RESERVED[e.code]) return
   const condition = CODE_GRAMMAR.exec(e.code)?.[2]
-  if (!condition) return void problems.push(`code ${e.code} is neither a core code nor <SUBJECT>_<CONDITION> (spec 7.2.3, 9.13 rule 14)`)
+  if (!condition) return void problems.push(`code ${e.code} is neither a core code nor <SUBJECT>_<CONDITION> (spec 7.2.3, Annex S2 rule 14)`)
   const exit = CONDITION_EXIT_1.includes(condition) ? 1 : 2
   if (e.exit !== exit) problems.push(`code ${e.code} is registered with exit ${e.exit}, but its condition ${condition} fixes exit ${exit} (spec 7.2.3)`)
   const retryable = CONDITION_RETRYABLE.includes(condition)
@@ -1292,7 +1292,7 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
   const v11 = minorOf(meta, problems)
   checkMeta(meta, v11, problems)
   if (meta.schemaVersion !== declaredMinor(meta))
-    problems.push(`a schema answer's schemaVersion ${meta.schemaVersion} is not its contract version ${declaredMinor(meta)} (spec 9.1.4)`)
+    problems.push(`a schema answer's schemaVersion ${meta.schemaVersion} is not its contract version ${declaredMinor(meta)} (spec 9.1.2)`)
   if (data.kind === "warnings" || data.kind === "warning") since11(v11, `data.kind ${data.kind}`, problems)
   if (data.kind === "command") {
     for (const o of data.outputs)
@@ -1321,14 +1321,14 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
     // Rule 14: codes once, reserved codes as reserved, reasons once within their code.
     const seen = new Set<string>()
     for (const e of entries) {
-      if (seen.has(e.code)) problems.push(`code ${e.code} is registered twice (spec 9.13 rule 14)`)
+      if (seen.has(e.code)) problems.push(`code ${e.code} is registered twice (Annex S2 rule 14)`)
       seen.add(e.code)
       const reserved = RESERVED[e.code] ?? (meta.contractVersion === "1.2" ? RESERVED_IN_12[e.code] : undefined)
       if (reserved && (reserved.exit !== e.exit || reserved.retryable !== e.retryable)) problems.push(`reserved ${e.code} has the wrong exit or retryable`)
       if (declares13(meta)) codeNameProblems(e, problems)
       if (e.reasons) since11(v11, `the reasons of ${e.code}`, problems)
       const reasons = (e.reasons ?? []).map((r) => r.reason)
-      for (const r of new Set(reasons.filter((r, i) => reasons.indexOf(r) !== i))) problems.push(`reason ${r} appears twice under ${e.code} (spec 7.6.1)`)
+      for (const r of new Set(reasons.filter((r, i) => reasons.indexOf(r) !== i))) problems.push(`reason ${r} appears twice under ${e.code} (spec 7.6)`)
     }
   }
   if (data.kind === "errors") {
@@ -1339,7 +1339,7 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
   }
   if (data.kind === "warnings") {
     const codes = data.warnings.map((w) => w.code)
-    for (const c of new Set(codes.filter((c, i) => codes.indexOf(c) !== i))) problems.push(`warning ${c} is registered twice (spec 9.13 rule 14)`)
+    for (const c of new Set(codes.filter((c, i) => codes.indexOf(c) !== i))) problems.push(`warning ${c} is registered twice (Annex S2 rule 14)`)
   }
 }
 
@@ -1382,7 +1382,7 @@ function checkNext(meta: Meta, problems: string[]) {
     problems.push("page.nextCursor without a next entry carrying that cursor (spec 6.9)")
 }
 
-/** Spec 7.4.2-7.4.3 and 7.6.2: a code is registered, its exit and retryability are the registry's, its reason too. */
+/** Spec 7.4.2 and 7.6: a code is registered, its exit and retryability are the registry's, its reason too. */
 function checkCode(tool: string, error: ErrorBody, at: string, problems: string[]): number | undefined {
   const entry = registered(tool, error.code)
   if (!entry) return void problems.push(`${at}${error.code} is not registered`)
@@ -1391,22 +1391,22 @@ function checkCode(tool: string, error: ErrorBody, at: string, problems: string[
   return entry.exit
 }
 
-/** Spec 7.6.2: a reason is registered under its code. */
+/** Spec 7.6: a reason is registered under its code. */
 function checkReason(tool: string, error: { code: string; reason?: string }, at: string, problems: string[]) {
   if (error.reason === undefined) return
   const entry = registered(tool, error.code)
   if (entry && !(entry.reasons ?? []).some((r) => r.reason === error.reason))
-    problems.push(`${at}reason ${error.reason} is not registered under ${error.code} (spec 7.6.2)`)
+    problems.push(`${at}reason ${error.reason} is not registered under ${error.code} (spec 7.6)`)
 }
 
 /**
- * The checks every ATIP-owned `meta` gets, whatever the document (spec 6, 7.5, 9.13 rule 16): `next` and paging,
+ * The checks every ATIP-owned `meta` gets, whatever the document (spec 6, 7.5, Annex S2 rule 16): `next` and paging,
  * registered warnings, and the field paths of `meta.fields` against the declared minor.
  */
 function checkMeta(meta: Meta, v11: boolean, problems: string[]) {
   checkNext(meta, problems)
   // Spec 7.5.1-7.5.2: every warning code is registered. A 1.3 document's codes are in the warning registry; an earlier
-  // minor may keep a warning code in the error registry only (7.5.3).
+  // minor may keep a warning code in the error registry only (7.5.2).
   for (const w of meta.warnings ?? []) {
     if (declares13(meta)) {
       if (!warningRegistered(meta.tool, w.code)) problems.push(`warning ${w.code} is not in the warning registry, which a 1.3 document requires (spec 7.5.2)`)
@@ -1420,7 +1420,7 @@ function checkMeta(meta: Meta, v11: boolean, problems: string[]) {
 }
 
 /**
- * The checks every ATIP error object gets, at the top of a failure or in a batch item (spec 7.1, 7.4, 7.6, 9.13
+ * The checks every ATIP error object gets, at the top of a failure or in a batch item (spec 7.1, 7.4, 7.6, Annex S2
  * rule 16): its code and reason are registered, its `details` too, and a 1.1 document's command hints split.
  * Returns the code's registered exit.
  */
@@ -1455,12 +1455,12 @@ function checkEnvelope(value: unknown, problems: string[], stream?: { output?: O
     const exit = checkError(meta, env.error, v11, "", problems)
     if (exit === 2 && env.data !== undefined) problems.push(`refusal ${env.error.code} carries data (spec 6.4)`)
     if (env.error.code === "BATCH_INCOMPLETE" && env.data === undefined) problems.push("BATCH_INCOMPLETE without the batch report (spec 10.11)")
-    // Spec 7.4.4: `schema --error` given a code only the warning registry has points at `schema --warning`.
+    // Spec 7.4.3: `schema --error` given a code only the warning registry has points at `schema --warning`.
     const asked = env.error.received
     if (meta.command === "schema" && env.error.field === "--error" && typeof asked === "string" && warningRegistered(meta.tool, asked)
       && !registries.get(meta.tool)?.some((e) => e.code === asked)) {
       const want = `${meta.tool} schema --warning ${asked} --json`
-      if (env.error.hint !== want) problems.push(`schema --error ${asked}: a warning-only code, so the hint is ${JSON.stringify(want)} (spec 7.4.4)`)
+      if (env.error.hint !== want) problems.push(`schema --error ${asked}: a warning-only code, so the hint is ${JSON.stringify(want)} (spec 7.4.3)`)
     }
   }
   if (!meta.command && meta.schemaVersion !== "1.0") problems.push(`unresolved command with schemaVersion ${meta.schemaVersion}, not 1.0 (spec 6.11)`)
@@ -1495,7 +1495,7 @@ function checkEnvelope(value: unknown, problems: string[], stream?: { output?: O
     for (const segment of decodePointer(declared.records)) records = isObject(records) ? records[segment] : null
     const found: string[] = []
     leaks(records, trie, declared.records, found)
-    for (const f of found) problems.push(`unselected member ${f} present (spec 6.10)`)
+    for (const f of found) problems.push(`unselected member ${f} present (Annex F4)`)
     schema = projectedSchema(doc, output, trie)
   }
   if (!schema(env.data)) problems.push(`data fails ${refName(output.schemaRef)}${meta.fields ? " (projected)" : ""}: ${ajvErrors(schema)}`)
@@ -1549,7 +1549,7 @@ function checkStream(text: string, problems: string[]) {
   if (last?.type !== "end") problems.push("last line is not end: the stream was cut off (spec 13.2)")
   lines.slice(1, -1).forEach((l, i) => l.type !== "event" && problems.push(`line ${i + 2} is ${l.type}, not event`))
   if (first?.type !== "start") return
-  // Spec 15.7 and 9.13 rule 16: the start line declares the stream's minor, as an envelope does.
+  // Spec 15.5 and Annex S2 rule 16: the start line declares the stream's minor, as an envelope does.
   minorOf(first, problems)
   // Spec 13.1: the start line names the stream output when there are several; events are decoded by it at once.
   const doc = commandDocs.get(`${first.tool} ${first.command}`)
@@ -1565,12 +1565,12 @@ function checkStream(text: string, problems: string[]) {
   if (last?.type !== "end" || !last.result) return
   const result = last.result
   if (result.meta?.command !== first.command || result.meta?.tool !== first.tool) problems.push("end result is for another command or tool (spec 13.1)")
-  if (result.meta?.contractVersion !== first.contractVersion) problems.push("the end result declares another contract version than the start line (spec 15.7)")
+  if (result.meta?.contractVersion !== first.contractVersion) problems.push("the end result declares another contract version than the start line (spec 15.5)")
   if (first.output && result.meta?.output !== first.output) problems.push(`end meta.output ${result.meta?.output ?? "(none)"} is not the start line's ${first.output}`)
   checkEnvelope(result, problems, { output })
 }
 
-// ---- the caller (spec 15.6, 15.8) ----
+// ---- the caller (spec 15.4, 15.6) ----
 /** The values of a listed set, read from the contract schemas themselves so that they cannot drift. */
 const schemaFile = (name: string) => JSON.parse(readFileSync(join(repo, "schema", name), "utf8")) as JsonObject & { $defs: Record<string, JsonObject> }
 const docDefs = schemaFile("schema-doc.schema.json").$defs
@@ -1595,7 +1595,7 @@ const KNOWN = {
 
 /**
  * Every string-valued `enum` or `const` in the contract schemas that a document's member takes (not one inside a
- * condition, a `not` or `propertyNames`), as `file#pointer`. Each must have a row in the table of spec 15.6 and a
+ * condition, a `not` or `propertyNames`), as `file#pointer`. Each must have a row in the table of spec 15.4 and a
  * treatment in the caller's view below; `checkCallerCoverage` fails when a schema gains one that is not covered.
  */
 const CALLER_COVERED: Record<string, string> = {
@@ -1635,27 +1635,27 @@ function checkCallerCoverage(): string[] {
     for (const [k, v] of Object.entries(node)) if (!SKIP.has(k) && k !== "examples" && k !== "default") walk(v, `${pointer}/${k}`, file)
   }
   for (const f of readdirSync(join(repo, "schema"))) walk(JSON.parse(readFileSync(join(repo, "schema", f), "utf8")) as JsonValue, "", f)
-  return found.filter((f) => !CALLER_COVERED[f]).map((f) => `${f} lists string values, but the caller table of spec 15.6 has no row for it`)
+  return found.filter((f) => !CALLER_COVERED[f]).map((f) => `${f} lists string values, but the caller table of spec 15.4 has no row for it`)
 }
 
 /**
- * One row of the table of spec 15.6, applied to one member: a known string is kept; an unknown string returns false
+ * One row of the table of spec 15.4, applied to one member: a known string is kept; an unknown string returns false
  * so that the caller applies the row's treatment; a non-string, or a missing required member, is a wrong shape and
  * is reported in `problems`.
  */
 function knownValue(value: JsonValue | undefined, set: JsonValue[], at: string, problems: string[], required = false): boolean {
   if (value === undefined) {
-    if (required) problems.push(`${at} is missing (spec 15.6: a required listed member)`)
+    if (required) problems.push(`${at} is missing (spec 15.4: a required listed member)`)
     return true
   }
   if (typeof value !== "string") {
-    problems.push(`${at} is ${JSON.stringify(value)}, not a string (spec 15.6: a known member of the wrong type)`)
+    problems.push(`${at} is ${JSON.stringify(value)}, not a string (spec 15.4: a known member of the wrong type)`)
     return true
   }
   return set.includes(value)
 }
 
-/** Whether a domain uses only known keywords and known JSON type names, recursively (spec 15.6, `domain` row). */
+/** Whether a domain uses only known keywords and known JSON type names, recursively (spec 15.4, `domain` row). */
 function domainKnown(node: JsonValue, at: string, problems: string[]): boolean {
   if (!isObject(node)) return true
   for (const [k, v] of Object.entries(node)) {
@@ -1668,7 +1668,7 @@ function domainKnown(node: JsonValue, at: string, problems: string[]): boolean {
 }
 
 /**
- * A caller's view of a `schema` answer: every unknown string handled as the table of spec 15.6 says. `notes` says
+ * A caller's view of a `schema` answer: every unknown string handled as the table of spec 15.4 says. `notes` says
  * what was done; `problems` gets every wrong shape.
  */
 function schemaAnswerView(answer: JsonValue, notes: string[], problems: string[]): JsonValue {
@@ -1742,7 +1742,7 @@ function schemaAnswerView(answer: JsonValue, notes: string[], problems: string[]
   return view
 }
 
-/** A caller's view of a batch report: items of an unknown `status` are left out (spec 15.6, batch-report row). */
+/** A caller's view of a batch report: items of an unknown `status` are left out (spec 15.4, batch-report row). */
 function batchView(envelope: JsonValue, notes: string[], problems: string[]): JsonValue {
   const view = structuredClone(envelope)
   if (!isObject(view) || !isObject(view.data) || !Array.isArray(view.data.items)) return view
@@ -1755,8 +1755,8 @@ function batchView(envelope: JsonValue, notes: string[], problems: string[]): Js
 }
 
 /**
- * Spec 15.6 and 15.8: a document of a later minor (or one with members this repository does not know) that a caller
- * of this minor must read. Its view (every unknown string handled as the table of 15.6 says) passes the contract
+ * Spec 15.4 and 15.6: a document of a later minor (or one with members this repository does not know) that a caller
+ * of this minor must read. Its view (every unknown string handled as the table of 15.4 says) passes the contract
  * schemas read open, and the document itself fails them closed, so that it really exercises what a caller must
  * ignore. A document whose `meta.contract` names another major stays rejected.
  *   caller-schema-*  a `schema` answer       caller-batch-*  a batch report (its data against batch-report)
@@ -1799,7 +1799,7 @@ function checkCallerDocument(name: string, text: string, problems: string[]) {
 }
 
 /**
- * Spec 15.7: a tool whose build declares 1.1 or later sets `contract` and `contractVersion` on every envelope (a stream's end
+ * Spec 15.5: a tool whose build declares 1.1 or later sets `contract` and `contractVersion` on every envelope (a stream's end
  * result included) and on every stream start line, so that an unmarked document is always a 1.0 document. Checked
  * last, so that a document's own first problem is reported first.
  */
@@ -1808,7 +1808,7 @@ function checkMarkers(name: string, text: string, problems: string[]) {
     const minor = (tool && toolMinors.get(tool)) ?? "1.0"
     if (minor === "1.0") return
     if (!o?.contract || !o.contractVersion)
-      problems.push(`${tool} declares ${minor}, but ${what} lacks contract or contractVersion (spec 15.7)`)
+      problems.push(`${tool} declares ${minor}, but ${what} lacks contract or contractVersion (spec 15.5)`)
   }
   if (name.endsWith(".ndjson")) {
     const lines = text.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as StreamLine & { meta?: Meta })
@@ -1890,7 +1890,7 @@ references.length ? failed++ : passed++
 console.log(`${references.length ? "FAIL" : "ok  "}  spec/atip-1.md cross-references${references.map((p) => `\n      ${p}`).join("")}`)
 const coverage = checkCallerCoverage()
 coverage.length ? failed++ : passed++
-console.log(`${coverage.length ? "FAIL" : "ok  "}  every listed string member has a caller treatment (spec 15.6)${coverage.map((p) => `\n      ${p}`).join("")}`)
+console.log(`${coverage.length ? "FAIL" : "ok  "}  every listed string member has a caller treatment (spec 15.4)${coverage.map((p) => `\n      ${p}`).join("")}`)
 const regex = checkRegexCases()
 regex.length ? failed++ : passed++
 console.log(`${regex.length ? "FAIL" : "ok  "}  scripts/regex-cases.json (${regexCases.length} cases, ECMAScript side and form)${regex.map((p) => `\n      ${p}`).join("")}`)

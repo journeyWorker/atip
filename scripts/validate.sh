@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validate every example against the atip/1 JSON Schemas and the rules JSON Schema cannot express
-# (spec 9.13 and the other semantic rules listed in scripts/check.ts), and the cross-engine pattern record
-# scripts/regex-cases.json (spec 9.7.4), and recomputes the plan digest test vectors in examples/plan-digest/
+# (Annex S2 of the spec and the other semantic rules listed in scripts/check.ts), and the cross-engine pattern record
+# scripts/regex-cases.json (Annex V2), and recomputes the plan digest test vectors in examples/plan-digest/
 # (spec 11.6) with scripts/plan-digest.ts.
 #
 #   examples/*            must pass
