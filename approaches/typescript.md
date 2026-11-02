@@ -1,7 +1,7 @@
 # TypeScript and Effect 4: spec-first commands
 
 Not normative. How a TypeScript tool built on Effect 4 can become ATIP conformant, and what the shared package
-`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.2.
+`@journeykit/atip` should look like. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.2.0.
 
 ## 1. Where a TypeScript tool starts
 
@@ -187,12 +187,15 @@ with no value, is `USAGE` with `field` `--input` (spec 11.2), raised by the argv
 6. **Output JSON Schemas.** `Schema.toJsonSchemaDocument(schema)` (draft 2020-12) of every output, with
    `definitions` lifted into the command document's `schemas` and refs rewritten to `#/schemas/<Name>`. An
    artifact output declares its JSON representation Schema (`skills show` → `Guide`), a stream output its event
-   and result Schemas.
+   and result Schemas. A test that pins a published report schema compares it by meaning, never byte for byte:
+   Effect 4.1 writes a nullable member as `anyOf: [X, {"type": "null"}]` where a hand-written schema says
+   `type: [..., "null"]` (both are the nullable forms of spec 6.10), and gives `Schema.Int` a `maximum`, which the
+   safe-integer rule of spec 10.7.5 already implies. Neither is a contract promise about bytes.
 7. **Envelope and exit.** The handler's success becomes `{ok: true, data, meta}`; the output is checked against
    its Schema (`onExcessProperty: "error"`) before printing, so a report can never drift from what `schema`
    publishes; a typed failure becomes the error object, with its `reason` when it has one, and the registry's
    exit. `meta.contract` and `meta.contractVersion` come from one constant of the package
-   (`CONTRACT_VERSION = "1.1"`), set on every envelope including the `result` of a stream's `end` line; a tool does
+   (`CONTRACT_VERSION = "1.2"`), set on every envelope including the `result` of a stream's `end` line; a tool does
    not write the minor itself (spec 15.7).
 8. **Field paths.** `--fields` and the projection share one parser for field paths (spec 6.10): dotted names,
    `[]`, and a bracketed key for a name that is not an identifier (`attributes["http.status-code"]`, `attributes[""]`;
@@ -261,9 +264,11 @@ export const defaulted = <S extends Schema.Top>(schema: S, value: S["Encoded"]) 
   schema.pipe(Schema.withDecodingDefault(Effect.succeed(value))).annotate({ default: value })
 ```
 
-The generator reads `default` from the annotation; a test decodes `{}` through the field and asserts the result
-equals the annotated value, so the two cannot drift. A default computed at run time is not `defaulted`: the field
-is `optionalKey` with a `defaultNote`, and the handler computes it.
+The generator reads `default` from the annotation. `defineCommand` decodes `{}` through every field that declares a
+`default` when the command is defined, before any invocation, and refuses the definition when the decoder requires
+the key or yields another value than the annotation: the published `default` says the option may be left out, and a
+decoder that requires the key would refuse every invocation that does so. The two cannot drift. A default computed
+at run time is not `defaulted`: the field is `optionalKey` with a `defaultNote`, and the handler computes it.
 
 ### 3.5 Operands, destructive commands, batches, long-running work
 
@@ -331,6 +336,14 @@ the normalised form.
 The argument object leaves out flag-only options (spec 11.7 step 6), and the cursor is bound to them too: add
 to the digest the flag-only options the invocation gave, `--json` and a tool's own (canon's `repo` and `as`, which
 can change the result set), except `--input`, which only carries arguments that are already in the object.
+
+**A tool that declares 1.2** (spec 6.9, 11.6 since 1.2) binds the cursor to every argument except `--json`,
+`--limit`, `--all`, `--cursor` and `--fields`, and counts an argument given with its default value as given. The
+last four are flag-only there, so they are already out of the argument object; leave `--json` out of the digest as
+well, and leave out every value that step 5 or 6 filled in from a `default`, so that an argument given explicitly
+with its default value differs from one left out. Keep `env` values and the tool's own flag-only options that can
+change the result set. The helpers that declare the reserved paging and selection options mark them `flagOnly`
+when the tool declares 1.2.
 
 ## 4. A tool on `effect/cli` in the meantime
 

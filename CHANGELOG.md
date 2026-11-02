@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.2.0 (unreleased)
+
+A minor (15.1) from implementer feedback. It adds no member, option, document kind or enum value. Its new rules
+bind only a tool that declares `meta.contractVersion` `"1.2"`; a tool that declares 1.1 or 1.0 stays conforming
+without a change (10.13 rule 16, D27's pattern), and nothing a 1.1 caller relied on changes (15.10).
+
+- **Cursor binding (6.9, D32).** In a 1.2 tool a cursor is bound to every argument except the reserved options that
+  never change the result set, `--json`, `--limit`, `--all`, `--cursor` and `--fields`, and an argument given
+  explicitly with its default value is given. The one relaxation, continuing a page after `--all` or `--json`
+  changed, keeps the result set, so callers already handle it (15.1, 15.10). `approaches/typescript.md` §3.8: the
+  1.2 digest leaves out `--json` and the values filled in from defaults.
+- **`--fields` without `--json` (6.10, D32).** A 1.2 tool parses and validates `--fields` the same in both modes;
+  what it does to text is the tool's.
+- **Flag-only paging and selection (9.8, 11.6, 10.13 rule 8, D32).** In a 1.2 tool `limit`, `cursor`, `all` and
+  `fields` are flag-only, like `json`, `input`, `commit` and `plan-digest`.
+- **Order of the stateless checks (11.7 step 6, D32).** A 1.2 tool checks `required`, domains, constraints and
+  validators in that order, constraints and validators in declaration order, and answers with the first failure.
+- **`STOPPED_MIDWAY` (7.2.1, 7.2.3, 8.3.2, 10.13 rule 14, D33).** A reserved code (exit 1, not retryable) for a
+  command that works in steps and stops after a step made effects, because a later step meets what the command
+  refuses before its work; `reason` is that refusal's code, `meta.next` SHOULD read what was done. SHOULD for a
+  1.2 tool, so a tool with a code of its own stays conforming; a 1.2 tool that registers the name gives it that exit,
+  retryability and meaning. `BATCH_INCOMPLETE` stays the batch's code; a stopped item is `failed` with
+  `STOPPED_MIDWAY`. Reserved reason `PLAN_STALE` for a commit that detects a changed plan between effects (12.7).
+- **Wording a patch could carry (D34).** A check that reads an option's `env` value is a validator; a configured
+  role is a precondition (10.8.1). A constraint's `field` is the first argument at fault in the rule's own order,
+  not argv's (10.8.1).
+- **Approaches.** `typescript.md`: report schemas compare by meaning (Effect 4.1's `anyOf` nullable form and
+  `Schema.Int`'s `maximum`); `defineCommand` decodes `{}` through every defaulted field at definition; the 1.2
+  cursor digest. `migration.md` §7: moving from 1.1 to 1.2. The contract constants say `"1.2"`.
+- **Checker (`approaches/checker.md`).** A fixture invocation listed to succeed and refused with a registered code
+  that is not a parse refusal makes its checks `unprovided`, naming the code (§5); `unprovided` still fails the
+  level. L1.walk names rule 3's `in` check on switches and counts. L2.input-pointer's omitted key is omitted from
+  argv too. L2.input-conflict's same-value case uses other spellings (member order, `1.0`/`1`, `-0`/`0`). New
+  L2.input-env: an `env` value applies only to an argument absent after the merge. For a 1.2 claim: L1.grammar
+  (four more flag-only options), L1.registry (`STOPPED_MIDWAY`), L1.paging (`--all` instead of `--limit` continues,
+  an explicit default refuses), L1.fields (`--fields` without `--json`), new L1.check-order, L2.input-refusals
+  (paging keys in a document). A §8 obligation for `STOPPED_MIDWAY`. Seeded violations for each.
+- **Checker changes that can fail a tool that passed the 1.1.2 checker, at its own claim.** L2.input-conflict's
+  spelling variants, L2.input-env and L2.input-pointer's truly omitted key enforce 11.7 steps 3 and 5 and 11.8,
+  which 1.0 already had. Every other new row runs only for a 1.2 claim, and the refused-invocation rule turns some
+  `fail` results into `unprovided`, which still fails the level.
+- **Examples and validator.** acme declares 1.2: its paging and selection options are flag-only, its registry
+  reserves `STOPPED_MIDWAY` with the reason `ENVIRONMENT_FROZEN`, and `acme deploy start` stops part-way in
+  `report-failure-acme-deploy-start-stopped-midway.json`. A new tool `tally` stays on 1.1 to show the 1.2 rules do
+  not apply there. Caller documents of a later minor now declare `1.3`. `scripts/check.ts` knows minor 1.2 and
+  applies rules 8 and 14 by the declared minor; invalid examples for each.
+
 ## 1.1.2 (2026-11-01)
 
 A patch (15.1): wording, approaches and checker rows from implementer feedback and the round-12 notes. No member,

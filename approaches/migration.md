@@ -3,7 +3,7 @@
 Not normative. How an existing command-line tool moves to ATIP, level by level, with canon 0.31.0 and lute 0.52.0
 (both Rust, clap) as worked examples. Their status below is from their source and their read-only `schema`
 output; anything not established that way is marked *unmeasured*. Section numbers ("spec 11.7") refer to
-`spec/atip-1.md`, version 1.1.2.
+`spec/atip-1.md`, version 1.2.0.
 
 The contract is not softened to ease adoption; where a rule costs a tool real work, the cost is recorded here (§4).
 
@@ -229,3 +229,31 @@ rejects the members 1.1 adds, and must be changed before it meets a 1.1 tool.
    (approaches/rust.md §3.6, approaches/typescript.md §3.7).
 6. Add the fixture's `contractVersion`, `registry`, `warnings`, `globalOptions` and `missingValue`, run the checker
    at the claimed level, and record in the changelog what changed.
+
+## 7. From 1.1 to 1.2
+
+For the author of a tool that conforms to 1.1, and for the author of a caller. 1.2.0 changes nothing a 1.1 caller
+relied on (spec 15.10).
+
+**Nothing is forced.** A 1.1 tool stays conforming as a 1.1 tool; every 1.2 rule applies only to a tool that
+declares 1.2 (spec 10.13 rule 16). Declaring 1.2 turns on:
+
+| Rule | Spec | Strength for a 1.2 tool |
+|---|---|---|
+| A cursor is bound to every argument except `--json`, `--limit`, `--all`, `--cursor`, `--fields`; an argument given with its default value is given | 6.9 | MUST |
+| `--fields` parsed and validated with or without `--json`; its effect on text is the tool's | 6.10 | MUST |
+| `limit`, `cursor`, `all` and `fields` are flag-only (`flagOnly: true`, not in the fragment schema) | 9.8, 11.6, 10.13 rule 8 | MUST |
+| Step 6 checks `required`, domains, constraints, validators in that order, each list in declaration order; the first failure answers | 11.7 | MUST |
+| A stop after a step made effects is `STOPPED_MIDWAY` (exit 1, not retryable), `reason` the refusal's code, `next` reading what was done | 7.2.1, 8.3.2 | SHOULD; a registered `STOPPED_MIDWAY` has that exit, retryability and meaning |
+
+A tool moves by setting its contract constant to `"1.2"` (approaches/rust.md §3.1, approaches/typescript.md §3.2),
+marking the four options flag-only, changing its cursor digest (approaches/typescript.md §3.8), and replacing any
+during-the-work twins of refusal codes with `STOPPED_MIDWAY` and one reason per refusal (a tool that already has a
+code of its own for this keeps it until it chooses to move; spec 9.10 applies to the rename). Its fixture gets
+`contractVersion: "1.2"`, and the checker then runs the 1.2 halves of L1.grammar, L1.registry, L1.paging,
+L1.fields, L1.check-order and L2.input-refusals (approaches/checker.md §6).
+
+**A caller.** Nothing changes for a caller that pages with `meta.next`. With a tool that declares 1.2, a caller may
+also replace `--limit` by `--all` while paging; it puts `--limit`, `--cursor`, `--all` and `--fields` on argv,
+never in a document; and it reads `STOPPED_MIDWAY` as any exit 1 after effects: read what was done (`next`) before
+acting on the reason.

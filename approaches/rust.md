@@ -1,7 +1,7 @@
 # Rust: clap stays the source, the self-description is generated
 
 Not normative. How a Rust tool built on clap 4 derive, such as canon and lute, can become ATIP conformant without a second
-description of their command trees. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.1.2.
+description of their command trees. Section numbers ("spec 11.7") refer to `spec/atip-1.md`, version 1.2.0.
 
 ## 1. The principle
 
@@ -114,7 +114,7 @@ printed by `schema --warnings` (`data.kind` `warnings`) and `schema --warning <C
 warning in one invocation and as an error in another has a row in both tables, and a test asserts the two
 `meaning`s are equal (spec 7.5.3); a tool without a warning table keeps such a code in the error table only.
 
-**The contract constant.** `pub const CONTRACT_VERSION: &str = "1.1"` in the crate is the one place the minor is
+**The contract constant.** `pub const CONTRACT_VERSION: &str = "1.2"` in the crate is the one place the minor is
 written. `Meta` sets `contractVersion` from it on every envelope, the `result` of a stream's `end` line included,
 and `schema` uses it for the self-description's `meta.schemaVersion` (spec 10.1.4, 15.7). A tool does not copy it.
 
