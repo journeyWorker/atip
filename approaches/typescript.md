@@ -146,8 +146,8 @@ ready-made `reasons` objects the tool spreads into its own `INPUT_INVALID` defin
 retryability, so `defineError` takes them from the condition and the author writes neither: `exit` and `retryable`
 are optional and, when given, must equal the condition's (a mismatch fails at definition time). `defineError` checks
 the `code` string against the grammar of spec 7.2.1 when the module loads and refuses a name that ends in no
-condition (`PROMOTE_REFUSED`), a code of the tool's own that takes a core code's name, and `retryable: true` on any
-condition but `FAILED` and `INCOMPLETE` (spec 7.2.3). The core codes (`USAGE`, `INTERNAL`, `PLAN_STALE`, …) are
+condition (`PROMOTE_REFUSED`), a code of the tool's own that takes a core code's name, and a `retryable` other than the
+condition's default on any condition but `FAILED`, `INCOMPLETE` and `TIMEOUT` (spec 7.2.3). The core codes (`USAGE`, `INTERNAL`, `PLAN_STALE`, …) are
 ready-made definitions in the package with their exit and retryability as spec 7.3.1 gives them. `STOPPED_MIDWAY` is
 one of them only when `CONTRACT_VERSION` is `"1.2"`; a 1.3 tool reports a stop part-way with its own
 `<SUBJECT>_INCOMPLETE` definition whose `reasons` include the refused code (spec 8.3.2). That a subject is a noun is

@@ -116,12 +116,12 @@ error in another has a row in both tables, and a test asserts the two `meaning`s
 declares 1.2 or earlier without a warning table keeps its warning codes in the error table (spec 15.7).
 
 **Code names (1.3).** A tool's own code is `<SUBJECT>_<CONDITION>` (spec 7.2) and the condition fixes the exit and the
-retryability, so the crate takes the condition, not the exit, as the input. `Condition` is an enum of the fourteen
+retryability, so the crate takes the condition, not the exit, as the input. `Condition` is an enum of the fifteen
 conditions of spec 7.2.2; its methods give `exit()` (`Failed`, `Incomplete` and `Timeout` are `Exit::Failed`, the rest
-`Exit::Refused`) and `retryable()` (`Unavailable` and `Timeout` true, the rest false). The registry macro writes
+`Exit::Refused`) and `retryable()` (`Unavailable` and `Timeout` true, the rest false, as the default). The registry macro writes
 `FINDING { NotFound }` and builds the code string by `concat!` from the subject and the condition's suffix, so a name
 that does not end in a condition cannot be written, and a `Code` whose `exit` disagrees with its condition does not
-exist. `retryable: true` is accepted only on `Failed` and `Incomplete`, for the replay-safe command of spec 7.2.3. The
+exist. A registered `retryable` that differs from the default is accepted only on `Failed`, `Incomplete` and `Timeout`, where repeating the same invocation is safe or not (spec 7.2.3). The
 core codes (`USAGE`, `INTERNAL`, `PLAN_STALE`, …) are a fixed list in the crate with their exit and retryability
 written out, as 7.3.1 gives them; a tool's own code is refused at compile time when it takes one of their names.
 `STOPPED_MIDWAY` is in that list only for a tool that declares 1.2; a 1.3 tool reports a stop part-way with its own

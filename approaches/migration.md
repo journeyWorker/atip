@@ -30,10 +30,10 @@ Legend: ✅ conforms · 🟡 close, mechanical change · 🔴 missing or differe
 | Error members (7.1) | `field`, `expected` nested in an array; no `retryable` | ✅ (+ nulls) | 🔴 no `retryable`/`field`/`expected` |
 | UPPER_SNAKE codes (7.1) | prefixed or lower-case codes | ✅ | 🔴 `E-CLI-*` |
 | Core codes (7.3) | finer variants of `INPUT_INVALID`, a renamed `PLAN_STALE` | 🟡 `USAGE` for unknown command, `PLAN_CHANGED`, nine `INPUT_*` variants, `INPUT_ELEMENT_FAILED` | 🔴 |
-| Registry `{code,exit,retryable,meaning,fix}` (7.4.1) | codes without an exit or a fix | ✅ 175 codes | 🔴 no exit/retryable per code |
-| Exit from registry only; precondition and during-the-work codes (7.4.2, 8.3) | call sites that set an exit; one I/O code for both stages | 🔴 `with_exit`, batch overrides; `WRITE_FAILED` exit 2 | 🔴 |
+| Registry `{code,exit,retryable,meaning,fix}` (7.4.1) | codes without an exit or a fix | ✅ 178 codes | 🔴 no exit/retryable per code |
+| Exit from registry only; precondition and during-the-work codes (7.4.2, 8.3) | call sites that set an exit; one I/O code for both stages | ✅ exit from the registry row; `WRITE_FAILED` exit 1 | 🔴 |
 | Exits 0/1/2 only (8.2) | exit 3 and up; a successful change reported as a failure | ✅ | 🔴 exit 3; accepted patch exit 1 |
-| Code names: a tool's own code is `<SUBJECT>_<CONDITION>`; refusal conditions (`*_INVALID`, `*_NOT_FOUND`, `*_UNAVAILABLE`, …) exit 2, `*_FAILED`, `*_INCOMPLETE`, `*_TIMEOUT` exit 1 (7.2; MUST for a 1.3 tool) | one I/O code for both stages | 🟡 `WRITE_FAILED` exit 2 today | 🔴 |
+| Code names: a tool's own code is `<SUBJECT>_<CONDITION>`; refusal conditions (`*_INVALID`, `*_NOT_FOUND`, `*_CORRUPT`, `*_UNAVAILABLE`, …) exit 2, `*_FAILED`, `*_INCOMPLETE`, `*_TIMEOUT` exit 1 (7.2; MUST for a 1.3 tool) | one I/O code for both stages; a refusal named as a failure | 🔴 49 renames and 78 codes to split or decide (§8) | 🔴 |
 | A refusal prints nothing on stdout in text mode; exit 1 may print its result (5.3) | a refusal that prints partial output | *unmeasured* | *unmeasured* |
 | Signals: a wait status or a launcher's 128+n, never another code (8.4, SHOULD) | a JavaScript or shell launcher that exits 1 when the binary is killed | *unmeasured* | *unmeasured* |
 | `schema --errors` and `--error <CODE>` at L0 (7.4.3, SHOULD) | an L0 tool whose registry the checker cannot see | ✅ | 🔴 `--explain` text |
@@ -272,7 +272,7 @@ callers are Appendix A D36).
 
 | Rule | Spec | Strength for a 1.3 tool |
 |---|---|---|
-| Every error code is a core code or `<SUBJECT>_<CONDITION>`, and its exit and retryability are its condition's (`FAILED` and `INCOMPLETE` may be retryable when a repeat resumes without repeating effects) | 7.2.1-7.2.3 | MUST |
+| Every error code is a core code or `<SUBJECT>_<CONDITION>`, and its exit and retryability are its condition's (a `FAILED`, `INCOMPLETE` or `TIMEOUT` code is registered retryable exactly when repeating the same invocation is safe) | 7.2.1-7.2.3 | MUST |
 | Every warning code is in the warning registry; the error registry keeps a warning code only when it is also an error | 7.5.2 | MUST |
 | A stop part-way after effects is a code of the tool's own whose condition is `INCOMPLETE`, `reason` the refused code; `STOPPED_MIDWAY` is not a core code and does not fit the grammar | 8.3.2 | SHOULD (the code name itself is MUST, 7.2.3) |
 | Warning code names follow `<SUBJECT>_<STATE>` | 7.2.3 | SHOULD |
@@ -304,35 +304,30 @@ of the registry and warning checks (approaches/checker.md §6).
 6. Renaming a code is a breaking change of the tool's command surface (spec 15.3): one release, every caller
    migrated in it, the tool's changelog listing each old name with its new one, and no aliases (Annex S1 item 7).
 
-**canon as the worked example.** The examples of renamed codes live in this section: codes from canon's registry (`canon schema --errors --json`) that do not follow
-7.2, with the name the convention gives. The codes the owner cited (`PROMOTE_REFUSED`, `INVENTORY_ABORTED`,
-`PLUGIN_SYNC_ERRORS`) come first; the rest show each kind of change.
+**Renames across tools.** A tool that renames its codes for 1.3 does it in a release that its own versioning marks as
+breaking. A tool that branches on another tool's codes (one CLI driving another) accepts both the old and the new name
+during the transition, keyed on the other tool's declared `contractVersion` or its release, and drops the old name
+once the other tool's 1.3 release is the minimum it supports.
+
+**canon as a worked example.** canon 0.34 registers 178 error codes; its own mapping against the 1.3 draft finds 11
+core codes, 40 that already conform, 49 plain renames and 78 that need a split or a decision by canon from its call
+sites. A few renames whose answer is certain, each showing one kind of change:
 
 | canon today | Exit, retryable | Under 7.2 | Why |
 |---|---|---|---|
-| `PROMOTE_REFUSED` | 1, no | `PROMOTION_FAILED`, reason `GATE` | ran; the gate's answer is negative. "Refused" is the word of exit 2 |
-| `PROMOTE_FAILED` | 1, no | `PROMOTION_FAILED`, reason `WRITE` | same subject, same condition and caller action (read `data`); a reason tells the two apart |
-| `INVENTORY_ABORTED` | 1, no | `INVENTORY_INCOMPLETE` | ran, and covered less than it was asked; `data.roots` says what was not indexed |
-| `INVENTORY_REFUSED` | 2, no | `CONFIG_INVALID` and `INDEX_UNAVAILABLE` (retryable) | one name hid two caller actions: fix the configuration, or wait for the lock |
-| `PLUGIN_SYNC_ERRORS` | 1, no | `PLUGIN_WRITE_FAILED` | `PLUGIN_SYNC_FAILED` is taken by an exit-2 meaning and is never reused |
-| `PLUGIN_SYNC_FAILED` | 2, no | `CONFIG_INVALID`, `PLUGIN_REQUIRED` | "could not start" splits by cause |
 | `FINDING_INVALID_ARGUMENT` | 2, no | `FINDING_ARGUMENT_INVALID` | condition last |
-| `FINDING_SEQ_OCCUPIED` | 2, no | `FINDING_EXISTS` | the object to create exists |
 | `FINDING_STAGED` | 2, no | `FINDING_CONFLICT` | the target's state forbids the act |
-| `CONFIG_MISSING`, `NO_COMMIT`, `CHANGE_AMBIGUOUS` | 2, no | `CONFIG_REQUIRED`, `COMMIT_REQUIRED`, `CHANGE_REQUIRED` | the caller supplies something |
-| `UNKNOWN_ROLE` | 2, no | `ROLE_INVALID` | a value the caller gave (through `CANON_ROLE`) |
+| `NO_COMMIT` | 2, no | `COMMIT_REQUIRED` | the caller supplies something; the subject is never empty |
 | `HUMAN_ONLY` | 2, no | `ACTOR_DENIED` | only a person may act (spec 11.9) |
 | `RELAY_DIGEST_MISMATCH` | 2, no | `RELAY_DIGEST_STALE` | a value from an earlier answer no longer matches |
-| `OLD_LAYOUT` | 2, no | `LAYOUT_UNSUPPORTED` | well-formed, but this build cannot work on it |
-| `ARTIFACTS_STORE_UNREACHABLE` | 2, yes | `ARTIFACTS_STORE_UNAVAILABLE` | same meaning, the condition's word |
-| `DASHBOARD_PORT_IN_USE` | 1, yes | `PORT_UNAVAILABLE` (exit 2) | a precondition: nothing ran yet |
-| `DISPATCH_END_IN_PROGRESS` | 1, yes | `RUN_UNAVAILABLE` (exit 2) | another process holds the run; nothing ran yet |
-| `SKILLS_DRIFT`, `REPORT_STALE`, `FORMAT_VIOLATIONS`, `GATE_VIOLATIONS` | 1, no | `SKILLS_CHECK_FAILED`, `REPORT_CHECK_FAILED`, `FORMAT_CHECK_FAILED`, `GATE_CHECK_FAILED`, reasons `DRIFT`, `STALE`, … | a check's negative answer is `FAILED`; `STALE` and `INVALID` are exit-2 words |
-| `MIGRATE_STOPPED` | 1, no | `MIGRATION_INCOMPLETE`, MAY be retryable | "running it again finishes the rest" is what 7.2.3 allows to be retryable |
-| `WRITE_FAILED`, `WRITE_UNAVAILABLE`, `FINDING_NOT_FOUND`, `SUBJECT_EXISTS`, … | | unchanged | already follow 7.2 |
+| `OLD_LAYOUT` | 2, no | `LAYOUT_MIGRATION_REQUIRED` | the caller runs `canon migrate`; canon already has this code for the same action |
+| `DASHBOARD_PORT_IN_USE` | 1, yes | `DASHBOARD_PORT_UNAVAILABLE` (exit 2) | a precondition: nothing ran yet |
+| `PLUGIN_SYNC_ERRORS` | 1, no | `PLUGIN_SYNC_INCOMPLETE` | some roots were written and some not |
+| `MIGRATE_STOPPED` | 1, no | `MIGRATION_INCOMPLETE`, not retryable | repeating the same `--commit --plan-digest` meets `PLAN_STALE`, so it is not safe to repeat |
 
-The exact split of a code with several causes (`PLUGIN_SYNC_FAILED`) is canon's to decide from its call sites; the
-table shows the direction, not canon's release.
+The rest (the `*_REFUSED` and `*_UNREADABLE` families, the codes that are both a warning and an error, the gate
+refusals that move to exit 2 under spec 7.2.2, the stored-state codes that take `CORRUPT`) is canon's mapping to
+decide and to ship in its own release.
 
 **A caller.** Nothing changes for a caller that branches on `code`, `retryable` and the exit status. In a document
 that declares 1.3, a caller MAY also read an unknown code's condition (spec 7.2): `NOT_FOUND` means look the name up,
@@ -342,7 +337,7 @@ the warning registry only. While paging, a 1.3 tool may continue a cursor given 
 default value, where a 1.2 tool refuses it; a caller that pages with `meta.next` never meets the difference.
 
 **Section numbers.** 1.3 restructures the spec as a protocol document with three normative annexes. Citations of
-1.2 sections map as follows (the rest keep their numbers: 6.1-6.9, 6.11, 7.1, 7.5.1, 8.1-8.5, 14.2, 16):
+1.2 sections map as follows (the rest keep their numbers: 2.1, 6.1-6.9, 6.11, 7.1, 7.5.1, 8.1-8.5, 14.1, 14.2, 15.1, 16):
 
 | 1.2 | 1.3 |
 |---|---|

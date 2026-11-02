@@ -117,18 +117,21 @@ answer in different hands:
    half of the conditions. A failure category that happens at both stages gets two codes (`STORE_UNAVAILABLE`,
    `STORE_FAILED`); conservative staging (spec 8.3.1) uses the exit-1 code.
 2. **Pick the condition by the caller's next action** (spec 7.2.2): fix a value (`INVALID`), supply something
-   (`REQUIRED`), find the right name (`NOT_FOUND`), reread and retry with a fresh value (`STALE`), wait and repeat
-   (`UNAVAILABLE`), hand over to a person (`DENIED`), read what was done (`FAILED`, `INCOMPLETE`), repeat the wait
-   (`TIMEOUT`, only for a command that waits, spec 12.3; a write whose backend call ran out of time is `FAILED` or
-   `INCOMPLETE`, so that no agent repeats it blindly). A value above its domain maximum is `INVALID`; `TOO_LARGE` is
-   the size or count of a request or input. Two situations with the same action and the same subject are one code
-   with two reasons.
+   (`REQUIRED`), find the right name (`NOT_FOUND`), reread and retry with a fresh value (`STALE`), repair stored state
+   (`CORRUPT`), wait and repeat (`UNAVAILABLE`), hand over to a person (`DENIED`), read what was done (`FAILED`,
+   `INCOMPLETE`), repeat the wait (`TIMEOUT`, only for a command that waits, spec 12.3; a write whose backend call ran
+   out of time is `FAILED` or `INCOMPLETE`, so that no agent repeats it blindly). A value above its domain maximum is
+   `INVALID`; `TOO_LARGE` is a request too big, too many or too costly (`QUERY_TOO_LARGE`); a live-run or rate quota
+   that frees up with time is `UNAVAILABLE`; a missing configuration is `REQUIRED`, never `UNAVAILABLE`. A gate that
+   refuses before writing anything is exit 2 with a refusal condition, whatever the command calls it. Two situations
+   with the same subject and condition whose next steps differ are one code with two reasons, unless they differ in
+   retryability.
 3. **Name the subject with a noun the tool already uses**, preferably a group of its command tree (`FINDING`,
    `MEMBER`, `DEPLOYMENT`) or the resource at fault (`STORE`, `CONFIG`, `LOCK`). A verb becomes its noun
    (`PROMOTE` → `PROMOTION`, `DEPLOY` → `DEPLOYMENT`). Keep the subject short: the condition carries the meaning.
 4. **Never reuse a retired name with another meaning** (spec 15.3). When a rename would land on a name the tool used
-   for something else (`PLUGIN_SYNC_FAILED` was exit 2 "could not start"; the exit-1 failure cannot take it), pick
-   another subject (`PLUGIN_WRITE_FAILED`).
+   for something else (canon's `PLUGIN_SYNC_FAILED` meant exit 2 "could not start"), the new meaning takes another
+   name: the old one is retired, never reassigned.
 5. **Words that hide the stage are gone**: `REFUSED` (exit 2 in some tools, exit 1 in others), `ERRORS`, `ABORTED`,
    `MISMATCH`, `VIOLATIONS`, `DRIFT`. Their situations map to a condition plus, where the caller acts differently, a
    reason: a check that found drift is `<CHECK>_FAILED` with reason `DRIFT`; a digest that no longer matches is

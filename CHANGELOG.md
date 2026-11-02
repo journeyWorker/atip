@@ -21,14 +21,19 @@ a 1.2 caller reads every 1.3 document (15.8). Section numbers below are 1.3's; `
   (3.5); the checker is a tool that tests the spec and gathers evidence (3.7, `approaches/checker.md`), no longer the
   definition of a level (1.2's 3.5 and 17 are gone).
 - **Error code names (7.2).** A tool's own code is `<SUBJECT>_<CONDITION>`: the subject a noun phrase, the condition
-  one of fourteen whose exit and retryability are fixed: `INVALID`, `REQUIRED`, `NOT_FOUND`, `EXISTS`, `CONFLICT`,
-  `STALE`, `EXPIRED`, `DENIED`, `UNSUPPORTED`, `TOO_LARGE`, `UNAVAILABLE` (exit 2; only `UNAVAILABLE` retryable) and
-  `FAILED`, `INCOMPLETE`, `TIMEOUT` (exit 1; `TIMEOUT` retryable, `FAILED` and `INCOMPLETE` may be when a repeat
-  resumes without repeating effects; the error's `retryable` stays authoritative). Each condition says what the
-  caller does next. `TIMEOUT` is only for a command that waits (12.3); `TOO_LARGE` is the size or count of a request,
-  a value outside its domain is `INVALID`; finer parse codes are `OPTION_INVALID`, `OPTION_REQUIRED` (7.3.2). MUST for
-  a 1.3 document (7.2.3); warning codes SHOULD take the same shape (7.2.3, last sentence). `approaches/migration.md` §8 renames canon's codes as
-  examples. Replaces 1.2's stage-naming SHOULD in 8.3.
+  one of fifteen with a fixed exit and a default retryability: `INVALID`, `REQUIRED`, `NOT_FOUND`, `EXISTS`,
+  `CONFLICT`, `STALE`, `EXPIRED`, `DENIED`, `UNSUPPORTED`, `TOO_LARGE`, `CORRUPT`, `UNAVAILABLE` (exit 2; only
+  `UNAVAILABLE` retryable) and `FAILED`, `INCOMPLETE`, `TIMEOUT` (exit 1; `TIMEOUT` retryable by default, and each of
+  the three registered retryable exactly when repeating the same invocation is safe; the error's `retryable` stays
+  authoritative). Each condition says what kind of step the caller takes; the subject and `hint` name it. The subject
+  is never empty. `TIMEOUT` is only for a command that waits (12.3); `TOO_LARGE` is a request too big, too many or too
+  costly, a value outside its domain is `INVALID`, and a rate or quota that clears with time is `UNAVAILABLE`;
+  `CORRUPT` is state the tool keeps or wrote, `INVALID` a value the caller gave. A refusal before any effect is exit 2
+  whatever the command calls it. Conditions bind `error.code` only, never a warning that shares the name. Situations
+  that differ in retryability are different codes; reason names are a namespace of their own per code. Finer parse
+  codes are `OPTION_INVALID`, `OPTION_REQUIRED` (7.3.2). 12.4's refusal of a repeat it cannot reconcile is a
+  `REQUIRED` code. MUST for a 1.3 document (7.2.3); warning codes SHOULD take the same shape (7.2.3, last sentence).
+  `approaches/migration.md` §8 shows renames of canon's codes as examples. Replaces 1.2's stage-naming SHOULD in 8.3.
 - **Core codes (7.3).** The twelve codes every tool shares keep their names (five predate the grammar: `USAGE`,
   `UNKNOWN_COMMAND`, `INTERNAL`, `UNVERIFIABLE`, `OPERATION_REUSED`; renaming a core code is `atip/2`).
   `STOPPED_MIDWAY` is no longer a core code in a 1.3 document: a stop part-way after effects is the tool's own

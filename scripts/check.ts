@@ -184,10 +184,11 @@ const FLAG_ONLY_SINCE_12 = ["limit", "cursor", "all", "fields"]
 const RESERVED_IN_12: Record<string, { exit: number; retryable: boolean }> = { STOPPED_MIDWAY: { exit: 1, retryable: false } }
 // Spec 7.2.1 and 7.2.2: a tool's own error code is `<SUBJECT>_<CONDITION>`; the condition fixes exit and retryability.
 const CODE_GRAMMAR =
-  /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*_(INVALID|REQUIRED|NOT_FOUND|EXISTS|CONFLICT|STALE|EXPIRED|DENIED|UNSUPPORTED|TOO_LARGE|UNAVAILABLE|FAILED|INCOMPLETE|TIMEOUT)$/
+  /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*_(INVALID|REQUIRED|NOT_FOUND|EXISTS|CONFLICT|STALE|EXPIRED|DENIED|UNSUPPORTED|TOO_LARGE|CORRUPT|UNAVAILABLE|FAILED|INCOMPLETE|TIMEOUT)$/
 const CONDITION_EXIT_1 = ["FAILED", "INCOMPLETE", "TIMEOUT"]
 const CONDITION_RETRYABLE = ["UNAVAILABLE", "TIMEOUT"]
-const CONDITION_MAY_RETRY = ["FAILED", "INCOMPLETE"]
+// Registered either way, by whether repeating the same invocation is safe.
+const CONDITION_EITHER = ["FAILED", "INCOMPLETE", "TIMEOUT"]
 // Keywords a cut node may use (Annex F5): annotations, and the shape keywords of its kind.
 const ANNOTATIONS = ["title", "description", "default", "examples", "deprecated", "readOnly", "writeOnly", "$comment"]
 const CUT_OBJECT: Record<string, true> = Object.fromEntries(
@@ -1261,8 +1262,8 @@ const since11 = (allowed: boolean, what: string, problems: string[]) =>
 
 /**
  * Spec 7.2.3, for a document that declares 1.3: an error code of a registry is a core code or follows the grammar of
- * 7.2.1; its exit and retryability are its condition's (7.2.2), except that a `FAILED` or `INCOMPLETE` code may be
- * retryable.
+ * 7.2.1; its exit is its condition's (7.2.2), and so is its retryability, except that a `FAILED`, `INCOMPLETE` or
+ * `TIMEOUT` code may be registered either way.
  */
 function codeNameProblems(e: RegistryEntry, problems: string[]) {
   if (RESERVED[e.code]) return
@@ -1271,7 +1272,7 @@ function codeNameProblems(e: RegistryEntry, problems: string[]) {
   const exit = CONDITION_EXIT_1.includes(condition) ? 1 : 2
   if (e.exit !== exit) problems.push(`code ${e.code} is registered with exit ${e.exit}, but its condition ${condition} fixes exit ${exit} (spec 7.2.3)`)
   const retryable = CONDITION_RETRYABLE.includes(condition)
-  if (e.retryable !== retryable && !(e.retryable && CONDITION_MAY_RETRY.includes(condition)))
+  if (e.retryable !== retryable && !CONDITION_EITHER.includes(condition))
     problems.push(`code ${e.code} is registered retryable: ${e.retryable}, but its condition ${condition} fixes ${retryable} (spec 7.2.3)`)
 }
 
