@@ -1,9 +1,9 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.3.1, release candidate**: a patch (15.1) that aligns the conformance checker's description with the
-reference checker and states where an `INVALID` without `field` names its file (Appendix A D37). Version 1.3.0, adopted
-2026-11-03 after two rounds of independent review and three implementer reviews, is a minor (15.1) that restates the
-contract as a protocol (Appendix A D36).
+Status: **1.3.1**, adopted 2026-11-03 after one round of independent review: a patch (15.1) that aligns the
+conformance checker's description with the reference checker and says what the caller of an `INVALID` without `field`
+changes (Appendix A D37). Version 1.3.0, adopted 2026-11-03 after two rounds of independent review and three
+implementer reviews, is a minor (15.1) that restates the contract as a protocol (Appendix A D36).
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
 (V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 
@@ -286,7 +286,7 @@ UPPER     = %x41-5A
 
 | Condition | Exit | Retryable | The command | The caller |
 |---|---|---|---|---|
-| `INVALID` | 2 | no | refused a value the caller or its user supplied (an argument, a document, a file it named, a configuration the user edits) | changes the value `field` names; with no `field` (a configuration file), the file the `hint` names |
+| `INVALID` | 2 | no | refused a value the caller or its user supplied (an argument, a document, a file it named, a configuration the user edits) | changes the value `field` names (with no `field`, as `hint` says) |
 | `REQUIRED` | 2 | no | needs something not given or not set up (an argument, a choice, a configuration, a login, an outcome to reconcile, 12.4) | supplies it, as `hint` or `next` says |
 | `NOT_FOUND` | 2 | no | was named an object that does not exist | checks the name, or lists |
 | `EXISTS` | 2 | no | would create an object that exists | uses it or another name |
@@ -875,7 +875,7 @@ sections of this version.
 
 | # | Owner decision 2026-11-03, version 1.3.1, a patch (15.1) from implementer feedback | Where |
 |---|---|---|
-| D37 | The conformance checker's description follows the reference checker (canon's `atip-check`), answering its L2 questions; `approaches/checker.md` is not normative (3.7), so none of this changes what a tool or caller must do. The async fixture's `worker` names the environment variable the test build reads and the checker sets it to the outcome word; an outcome `outcomes` leaves out makes L2.async unprovided; "`next[0]` waits" means it carries `--wait`, and a schema with no `--wait` makes the row unsupported. A size refusal's `field` is `--input`. Snapshots count files, not directories; the `allowedEffects` glob is defined (`*` one segment, `**` many, `~/` for `HOME`). L2.skills owns "`skills show` writes nothing". A finer replacement of `USAGE` is a registered exit-2 code whose `field` names an argument. A batch constraint on a flag-only argument is given on argv, and one no item can break is skipped. A `notRun` command refused at its start with a registered precondition code is unprovided, any other refusal a fixture error. An unlisted write never makes a check unsupported. L1.tree passes a tree at or above the claimed level. L2.idempotency leaves `allowedEffects` paths out of the repeat comparison, and `appends` never describes an audit line. L2.input-env probes only an option that alone declares its variable. L2.input-fragment, -normalise and -env compare exit, `ok`, `error.code` and `field` and `data` without the paths that differ between two runs of the argv form. L2.input-dash-values tries the next string argument when a precondition refusal leaves a candidate undecided, and passes a refusal that names the argument and echoes the value. The checker reads `--plan-digest=<digest>` as one word. In the spec, one clause: an `INVALID` with no `field` (a configuration file) names the file in its `hint`, which is where the caller finds what to change. | 7.2.2, approaches/checker.md |
+| D37 | The conformance checker's description follows the reference checker (canon's `atip-check`), answering its L2 questions; `approaches/checker.md` is not normative (3.7), so none of this changes what a tool or caller must do. The async fixture's `worker` names the environment variable the test build reads and the checker sets it to the outcome word; an outcome `outcomes` leaves out makes L2.async unprovided; L2.async always checks the start and that `next[0]` is a read command, and checks the outcomes only when `next[0]` carries `--wait` (without one, only that part is unsupported). A size refusal's `field` is `--input`. Snapshots count files, not directories; the `allowedEffects` glob is defined (`*` one segment, `**` many, `~/` for `HOME`). L2.skills owns "`skills show` writes nothing". A finer replacement of `USAGE` is a registered exit-2 code whose `field` names an argument. A batch constraint on a flag-only argument is given on argv, and one no item can break is skipped. A `notRun` command refused at its start with a registered precondition code is unprovided, any other refusal a fixture error. An unlisted write never makes a check unsupported. L1.tree passes a tree at or above the claimed level and reports that the higher level went unchecked. L2.idempotency leaves out of the repeat comparison only `allowedEffects` paths for a side effect the command's `effectNote` names, and lists them; `appends` never describes an audit line. L2.input-env probes only an option that alone declares its variable. L2.input-fragment, -normalise and -env compare exit, `ok`, `error.code` and `field` and `data` without the paths that differ between two runs of the argv form. L2.input-dash-values tries the next string argument when a precondition refusal leaves a candidate undecided, and passes a refusal that names the argument and echoes the value. The checker reads `--plan-digest=<digest>` as one word. In the spec, one clause: the caller of an `INVALID` with no `field` (a configuration file) changes what `hint` says. | 7.2.2, approaches/checker.md |
 
 ## Appendix B. Prior art
 

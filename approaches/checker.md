@@ -20,7 +20,8 @@ atip check --bin target/release/canon --level L2 --fixture checker-fixture.json
 ```
 
 - `--level` is the claimed level. For L1/L2 the checker also reads `data.level` from `schema --json` and fails
-  when it is below the claimed level (levels are cumulative, so a tree at L2 meets an L1 claim; L1.tree).
+  when it is below the claimed level (levels are cumulative, so a tree at L2 meets an L1 claim; L1.tree, whose
+  report then says that the higher level went unchecked).
 - `--fixture` is the tool's fixture file (§5): the state and the invocations the stateful checks need.
 - `--contract` is the claimed minor (spec 15.5): `1.0`, `1.1`, `1.2` or `1.3`. It defaults to the fixture's
   `contractVersion`, and to `1.0` when the fixture has none; given with a fixture member that says otherwise it
@@ -339,7 +340,7 @@ registry says and need no fixture.
 
 | Id | | Invocation | Pass when | Rule | Needs |
 |---|---|---|---|---|---|
-| L1.tree | M | `schema --json` | validates against `schema-doc.schema.json`; Annex S2 rule 1; every group before its commands; ids unique; `level` at or above the claimed level (levels are cumulative) | 3.5, 9.3, Annex S2 | — |
+| L1.tree | M | `schema --json` | validates against `schema-doc.schema.json`; Annex S2 rule 1; every group before its commands; ids unique; `level` at or above the claimed level (levels are cumulative; when it is above, the report says that the higher claim went unchecked) | 3.5, 9.3, Annex S2 | — |
 | L1.no-state | M | `schema --json` in an empty directory, minimal environment | succeeds, and nothing is written (§4) | 9.2 | — |
 | L1.walk | M | `schema <path> --json` for every tree entry | validates; Annex S2 rules 1-11 and 13 (rule 12, the examples, is L1.examples; rule 3 includes refusing a constraint's `in` on a switch or a count); group → its tree children exactly | 9.4, 9.5, Annex S2 | — |
 | L1.quoted-path | M | `schema "<a b>" --json` for one two-word command | equals the split form | 9.1.1 | — |
@@ -392,14 +393,14 @@ registry says and need no fixture.
 | L2.batch-preflight | M | a batch whose last item fails a state-independent check (a type, a constraint); a constraint on a flag-only argument is given on argv, and one an item cannot break that way is skipped (every one: `unsupported`) | exit 2, that item's code, `field` `/<index>/…`, no `data` | 10.11 | `commands` |
 | L2.batch-incomplete | M | fixture `batchFailsAt` and `batchFailsFirst` | exit 1, `BATCH_INCOMPLETE`, `field` `/<index>`, `data.items` one per submitted item in order, statuses as in spec 10.11, the failed item's own `error`, `meta.output` the batch output | 10.11 | `commands` |
 | L2.batch-ok | M | a batch of the fixture's `ok` invocations | exit 0, batch report, every status `written` or `unchanged` | 10.11 | `commands` |
-| L2.idempotency | M | each `ok` write run twice in one sequence | `replay-safe`: second run `unchanged` or same result, no new effect; `once`: second run exit 2 and nothing changed; `content-keyed`: same. Paths matching the command's `allowedEffects` (an audit line its `effectNote` names) are left out of "no new effect": `appends` describes the command's records (spec 11.3), never an audit line | 11.3 | `commands` |
+| L2.idempotency | M | each `ok` write run twice in one sequence | `replay-safe`: second run `unchanged` or same result, no new effect; `once`: second run exit 2 and nothing changed; `content-keyed`: same. A path matching the command's `allowedEffects` is left out of "no new effect" only when the command's `effectNote` names that side effect (an audit line); the report lists the paths left out. `appends` describes the command's records (spec 11.3), never an audit line | 11.3 | `commands` |
 | L2.destructive-safety | M | command documents | every destructive command has `commit` and `plan-digest`, `flagOnly`, and no batch | 11.4, 11.8 | — |
 | L2.destructive-preview | M | every destructive command, fixture `preview` | exit 0; `planDigest`, `effects`, `committed: false`; `meta.next[0].argv` contains `--commit`, `--plan-digest <that digest>` (two words, or one word `--plan-digest=<that digest>`) and `--json`; nothing written | 11.2, 11.4, 11.5 | `commands` |
 | L2.destructive-preview-stdin | M | the preview with its arguments given via `--input -` | `meta.next[0].argv` does not contain `--input -` and replays to the same plan | 11.5 | `commands` |
 | L2.destructive-stale | M | the commit argv with a digest that differs in one character, in the form `next[0]` writes it (one word or two) | exit 2 `PLAN_STALE`, `meta.next[0]` the preview | 11.7 | `commands` |
 | L2.destructive-half | M | `--commit` alone; `--plan-digest x` alone | exit 2 `USAGE`, its registered finer replacement (spec 7.3.2), or the `code` of the `requires` rule that states the relation (spec 9.8.1) | 11.7 | `commands` |
 | L2.destructive-commit | M | the preview's `next[0]` | exit 0, `committed: true`, the effects happened | 11.7 | `commands` |
-| L2.async | M (when offered) | the fixture's async start, then `next[0]`, with the worker set to `done`, `failed`, `timeout` | start exits 0 with `async: true` in the document and an identifier; `next[0]` waits (carries `--wait`; when no command in the schema has `--wait`, the row is `unsupported`); `done` → 0; `failed` → 1 with a registered code; `timeout` → 1, retryable, `next[0]` the same wait | 12.2, 12.3 | `commands` |
+| L2.async | M (when offered) | the fixture's async start, then `next[0]`, with the worker set to `done`, `failed`, `timeout` | always: start exits 0 with `async: true` in the document and an identifier, and `next[0]` is present and names a `read` command. When `next[0]` carries `--wait`: `done` → 0; `failed` → 1 with a registered code; `timeout` → 1, retryable, `next[0]` the same wait. Without `--wait` (no command in the schema has it), only the outcome part is `unsupported` | 12.2, 12.3 | `commands` |
 | L2.operation-key | M (when offered) | the async start twice with the same `--operation`, then twice concurrently with a fresh key, then once with another payload | the repeats return the same identifier and start nothing (the worker sees one start per key, also under the concurrent pair); the other payload is `OPERATION_REUSED` | 12.4 | `commands` |
 | L2.stream | M (when offered) | each stream command with `--json`, every declared stream output (`when`) | start line first, naming its output when the command has several, and that output's `meta.output` again in the end result; events, end line last; every event's `data` validates against the output's `eventRef`; the end `result` passes every envelope check (L0.ok-exit, L1.output-data, `meta.output` naming the stream output); start and end agree on tool, command and version; exit equals the end result's; a usage error prints one plain failure envelope that is a refusal | 13 | `commands` |
 | L2.skills | M | `skills show --json`, then each listed guide, then `skills show nosuch-xyz --json` | data validates against `guide.schema.json`; works in an empty directory; nothing written; the unknown name exits 2 with `expected` | 14 | — |
@@ -457,8 +458,9 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | document `{"round":"1"}` refused | L2.input-normalise |
 | document value `-x` read as an option | L2.input-dash-values |
 | document value `-x` refused with `field` naming its option and `received: "-x"` | (none: L2.input-dash-values passes; the value was read as a value) |
-| a tree that declares L2 checked with `--level L1` | (none: L1.tree passes; levels are cumulative) |
-| a `replay-safe` write whose second run appends only to a file its `allowedEffects` lists | (none: L2.idempotency passes) |
+| a tree that declares L2 checked with `--level L1` | (none: L1.tree passes, and its report says the L2 claim went unchecked) |
+| a `replay-safe` write whose second run appends only to an audit file its `allowedEffects` lists and its `effectNote` names | (none: L2.idempotency passes and lists the path) |
+| the same, with an `effectNote` that does not name the file | L2.idempotency |
 | a preview whose `next[0]` writes `--plan-digest=<digest>` as one word | (none: L2.destructive-preview passes) |
 | a `data` member holding the current time, different in the argv and the document forms | (none: L2.input-fragment leaves volatile paths out) |
 | first batch item failure returns the item's code and no data | L2.batch-incomplete |
