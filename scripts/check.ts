@@ -1847,9 +1847,7 @@ function check(path: string): string[] {
  */
 function checkSpecReferences(): string[] {
   const spec = readFileSync(join(repo, "spec", "atip-1.md"), "utf8")
-  const labels = new Set(
-    spec.split("\n").flatMap((line) => line.match(/^(?:#+ |\*\*)?(\d+(?:\.\d+)*)\.? /)?.slice(1, 2) ?? []),
-  )
+  const labels = specLabels()
   let inAppendixA = false
   const checked = spec
     .split("\n")
@@ -1873,6 +1871,61 @@ function checkSpecReferences(): string[] {
   return [...missing].map((r) => `spec refers to section ${r}, which does not exist`)
 }
 
+/** The section labels of the spec: headings and numbered paragraphs. */
+function specLabels(): Set<string> {
+  const spec = readFileSync(join(repo, "spec", "atip-1.md"), "utf8")
+  return new Set(spec.split("\n").flatMap((line) => line.match(/^(?:#+ |\*\*)?(\d+(?:\.\d+)*)\.? /)?.slice(1, 2) ?? []))
+}
+
+/**
+ * The annexes' sections (`F1`, `V2`, `S2`) and, for each section, the numbers of its top-level numbered list items
+ * (the rules of S2, the items of S1).
+ */
+function annexLabels(): Map<string, Set<number>> {
+  const labels = new Map<string, Set<number>>()
+  for (const f of readdirSync(join(repo, "spec")).filter((f) => /^annex-.*\.md$/.test(f))) {
+    let section: Set<number> | undefined
+    for (const line of readFileSync(join(repo, "spec", f), "utf8").split("\n")) {
+      const heading = /^## ([A-Z]\d+)\. /.exec(line)
+      if (heading) labels.set(heading[1], (section = new Set()))
+      const item = /^(\d+)\. /.exec(line)
+      if (item && section) section.add(Number(item[1]))
+    }
+  }
+  return labels
+}
+
+/**
+ * Every `spec <N.N>` reference in the annexes and the repository documents, and every `Annex <X><n>` reference
+ * (with its `rule <n>` or `item <n>`) there and in the spec, names something that exists. The CHANGELOG is left out:
+ * its entries cite the sections of their own release.
+ */
+function checkDocumentReferences(): string[] {
+  const spec = specLabels()
+  const annex = annexLabels()
+  const files = [
+    ...readdirSync(join(repo, "spec")).filter((f) => f.endsWith(".md")).map((f) => join("spec", f)),
+    ...readdirSync(join(repo, "approaches")).filter((f) => f.endsWith(".md")).map((f) => join("approaches", f)),
+    "README.md",
+    join("examples", "README.md"),
+  ]
+  const problems: string[] = []
+  for (const file of files) {
+    const text = readFileSync(join(repo, file), "utf8")
+    if (file !== join("spec", "atip-1.md"))
+      for (const m of text.matchAll(/\bspec (\d+\.\d+(?:\.\d+)?)(?![\w]|\.\d)/g))
+        if (!spec.has(m[1])) problems.push(`${file} refers to spec ${m[1]}, which does not exist`)
+    for (const m of text.matchAll(/\bAnnex ([A-Z]\d+)(?: (?:rules?|items?) (\d+)(?:(?:-| and |, )(\d+))*)?/g)) {
+      const section = annex.get(m[1])
+      if (!section) problems.push(`${file} refers to Annex ${m[1]}, which does not exist`)
+      else
+        for (const n of [m[2], m[3]].filter(Boolean))
+          if (!section.has(Number(n))) problems.push(`${file} refers to Annex ${m[1]} ${n}, which does not exist`)
+    }
+  }
+  return problems
+}
+
 let failed = 0
 let passed = 0
 for (const [dir, mustPass] of [[exampleDir, true], [join(exampleDir, "invalid"), false]] as const) {
@@ -1888,6 +1941,11 @@ for (const [dir, mustPass] of [[exampleDir, true], [join(exampleDir, "invalid"),
 const references = checkSpecReferences()
 references.length ? failed++ : passed++
 console.log(`${references.length ? "FAIL" : "ok  "}  spec/atip-1.md cross-references${references.map((p) => `\n      ${p}`).join("")}`)
+const documentReferences = checkDocumentReferences()
+documentReferences.length ? failed++ : passed++
+console.log(
+  `${documentReferences.length ? "FAIL" : "ok  "}  references in the annexes and documents (spec sections, annex items)${documentReferences.map((p) => `\n      ${p}`).join("")}`,
+)
 const coverage = checkCallerCoverage()
 coverage.length ? failed++ : passed++
 console.log(`${coverage.length ? "FAIL" : "ok  "}  every listed string member has a caller treatment (spec 15.4)${coverage.map((p) => `\n      ${p}`).join("")}`)

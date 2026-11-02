@@ -79,7 +79,8 @@ breaks several independent rules, each owner check reports its own failure, and 
 surfaces is attributed to the check that owns the rule, not dropped. Three consequences for reading the tables: an `exit 2` in a row is shorthand for
 "refused with a code whose registered exit is 2"; the row asserts the code and `L0.ok-exit` asserts the number. A
 `USAGE` in a row's expected result stands for "`USAGE` or its registered finer replacement (spec 7.3.2)", as
-L1.registry says: a tool that registers `UNKNOWN_OPTION` and never emits `USAGE` for that situation passes. And
+L1.registry says: a tool that registers `OPTION_INVALID` (for a claim below 1.3 any name, such as `UNKNOWN_OPTION`) and
+never emits `USAGE` for that situation passes. And
 every envelope is validated against `schema/envelope.schema.json` once, by `L0.envelope`; a finding that belongs to
 another rule (a `null`, a member added in a later minor than the claim) is reported by that rule's check, not by
 the schema check.

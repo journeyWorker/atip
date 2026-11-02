@@ -119,7 +119,10 @@ answer in different hands:
 2. **Pick the condition by the caller's next action** (spec 7.2.2): fix a value (`INVALID`), supply something
    (`REQUIRED`), find the right name (`NOT_FOUND`), reread and retry with a fresh value (`STALE`), wait and repeat
    (`UNAVAILABLE`), hand over to a person (`DENIED`), read what was done (`FAILED`, `INCOMPLETE`), repeat the wait
-   (`TIMEOUT`). Two situations with the same action and the same subject are one code with two reasons.
+   (`TIMEOUT`, only for a command that waits, spec 12.3; a write whose backend call ran out of time is `FAILED` or
+   `INCOMPLETE`, so that no agent repeats it blindly). A value above its domain maximum is `INVALID`; `TOO_LARGE` is
+   the size or count of a request or input. Two situations with the same action and the same subject are one code
+   with two reasons.
 3. **Name the subject with a noun the tool already uses**, preferably a group of its command tree (`FINDING`,
    `MEMBER`, `DEPLOYMENT`) or the resource at fault (`STORE`, `CONFIG`, `LOCK`). A verb becomes its noun
    (`PROMOTE` → `PROMOTION`, `DEPLOY` → `DEPLOYMENT`). Keep the subject short: the condition carries the meaning.

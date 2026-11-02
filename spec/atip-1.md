@@ -92,7 +92,8 @@ tool whose findings against a built binary are evidence, and the tool's own test
 4.1.1. A path is a group noun and a verb (`finding close`) or one root word (`schema`); it SHOULD be at most two
 words, each `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`. [Appendix A D4, D11.14]
 
-4.1.2. A node is a group or a command, never both; a group run bare refuses with `COMMAND_REQUIRED`.
+4.1.2. A node is a group or a command, never both; a group run bare refuses with `COMMAND_REQUIRED`, `expected` its
+commands.
 
 ### 4.2. Argv syntax
 
@@ -203,7 +204,7 @@ Shape: `schema/envelope.schema.json`. [Appendix A D1]
 | `schemaVersion` | always | the version of the output `data` follows (6.11); on a `schema` answer, the declared minor |
 | `tool`, `toolVersion` | always | the executable name and its release |
 | `command` | once a path resolved | the command id, or the longest path resolved before the failure |
-| `contract`, `contractVersion` | always (15.5) | `"atip/1"` and the declared minor |
+| `contract`, `contractVersion` | as 15.5 says (from 1.1, always) | `"atip/1"` and the declared minor |
 | `output` | with `data`, when the command has several outputs | which output schema `data` follows |
 | `context`, `next`, `warnings`, `coverage` | OPTIONAL | 6.7, 6.8, 7.5, what a check examined (8.5) |
 | `page`, `truncated`, `fields` | on a paged, cut or projected answer | 6.9, 6.10 |
@@ -221,8 +222,9 @@ name and `argv`; a tool SHOULD single-quote the words that need it. In JSON mode
 6.9. **Paging and truncation.** A paged answer carries `meta.page` (`returned`, `nextCursor` exactly when more items
 follow, `total` when known), and with `nextCursor` a next-page entry in `meta.next`: the same invocation with
 `--cursor <nextCursor>`, which continues the listing in the same environment. A cursor is bound to every value that
-decides the result set (every argument except `--json`, `--limit`, `--all`, `--cursor` and `--fields`, whether given
-or taken from an `env` variable); given with other values, or not issued by this command, it refuses with
+decides the result set (every argument except `--json`, `--limit`, `--all`, `--cursor` and `--fields`, values taken
+from an `env` variable included; whether an explicit default differs from an absent argument is the tool's,
+`approaches/implementation.md` §3); given with other values, or not issued by this command, it refuses with
 `CURSOR_INVALID`, `field` `--cursor`. A caller pages with the next-page entry, changing at most `--limit`, `--all` and
 `--fields`. `meta.page` is authoritative over any paging members a report keeps. An answer cut by size carries
 `meta.truncated` and a `next` entry that reaches the rest. [Appendix A D11.5, D16.1, D32]
@@ -254,12 +256,14 @@ input. [Appendix A D2, D21]
 that starts with the tool name and a space is a command line that splits like `next[].command`. Callers MUST NOT run
 a hint that has placeholders. [Appendix A D26]
 
-7.1.3. A `USAGE` error SHOULD carry `field`; without one, its `hint` SHOULD be `<tool> schema <command> --json`.
+7.1.3. A `USAGE` error SHOULD carry `field`; without one, its `hint` SHOULD be `<tool> schema <command> --json`
+(`<tool> schema --json` when no command resolved).
 
 ### 7.2. Code names
 
-A code a tool defines names a subject and a condition; the condition alone fixes the exit, the retryability and what
-the caller does, as an HTTP client acts on 404, 409 or 503 without knowing the server. [Appendix A D36]
+A code a tool defines names a subject and a condition; the condition fixes the exit and what the caller does, and
+gives the default retryability (7.2.3), as an HTTP client acts on 404, 409 or 503 without knowing the server; the
+error's `retryable` stays authoritative. [Appendix A D36]
 
 7.2.1. **Grammar.** The subject is a noun phrase naming what the condition is about (an object kind, an argument, a
 resource, a unit of work as a noun: `PROMOTION`, not `PROMOTE`), spelt the same in every code of a tool.
@@ -285,19 +289,21 @@ UPPER     = %x41-5A
 | `EXPIRED` | 2 | no | was given something time-limited that lapsed (a login, a token, a lease) | obtains a new one |
 | `DENIED` | 2 | no | does not permit this caller (a role, a policy, a person-only act) | hands it over (`hint`) |
 | `UNSUPPORTED` | 2 | no | cannot do a well-formed request here (build, platform, remote version) | uses another way |
-| `TOO_LARGE` | 2 | no | met a request beyond a declared limit | splits or narrows it |
+| `TOO_LARGE` | 2 | no | met a request or input whose size or count exceeds a declared limit (a value outside its domain is `INVALID`) | splits or narrows it |
 | `UNAVAILABLE` | 2 | yes | lacks something now (an unreachable backend, a held lock, a rate limit) | repeats later |
-| `FAILED` | 1 | no | ran, and the outcome is negative (a check found problems, a step failed) | reads `data` and `next` |
-| `INCOMPLETE` | 1 | no | ran and stopped before covering everything; what was done stays done | reads what was done first |
-| `TIMEOUT` | 1 | yes | ran out of time; the work may still finish | repeats the wait (`next`) |
+| `FAILED` | 1 | no | ran, and the outcome is negative (a check found problems, an operation or step failed) | reads `data` and `next` |
+| `INCOMPLETE` | 1 | no | ran and stopped with work left undone (a batch item or a later step stopped it, 8.3.2; a scope it could not reach whole); what was done stays done | reads what was done first |
+| `TIMEOUT` | 1 | yes | waited (12.3) and ran out of time; the work may still finish | repeats the wait (`next`) |
 
 When two seem to fit, the one whose caller action resolves the situation is right.
 
 7.2.3. **Rules**, for a document that declares 1.3: every error code is a core code (7.3) or follows 7.2.1 and never
 takes a core code's name; its registered `exit` and `retryable` are its condition's, except that a `FAILED` or
-`INCOMPLETE` code MAY be retryable when a repeat resumes the work without repeating any effect. Situations that need
-another condition or stage (8.3) are another code; situations with one condition and one caller action are one code
-with reasons (7.6). Warning codes SHOULD have the same shape and MAY end in another state word (`MEMBER_ARCHIVED`).
+`INCOMPLETE` code MAY be retryable when a repeat resumes the work without repeating any effect. A command that does
+not wait and runs out of time uses a `FAILED` or `INCOMPLETE` code, and a category with its own during-the-work code
+(`WRITE_FAILED`) keeps it. Situations that need another condition or stage (8.3) are another code; situations with
+one condition and one caller action are one code with reasons (7.6). Warning codes SHOULD have the same shape and MAY
+end in another state word (`MEMBER_ARCHIVED`).
 
 ### 7.3. Core codes
 
@@ -310,7 +316,7 @@ a core code is a major change. [Appendix A D11.9, D12.2, D16.1, D36]
 |---|---|---|---|---|
 | `USAGE` | 2 | no | — | the command line does not parse or breaks a declared requirement, constraint or domain |
 | `UNKNOWN_COMMAND` | 2 | no | — | a command word is not in the tree; `expected` the valid words there |
-| `COMMAND_REQUIRED` | 2 | no | `REQUIRED` | a group or the bare tool ran without a command |
+| `COMMAND_REQUIRED` | 2 | no | `REQUIRED` | a group or the bare tool ran without a command; `expected` its commands |
 | `INTERNAL` | 1 | no | — | a bug in the tool |
 | `UNVERIFIABLE` | 1 | no | — | a check ran but could examine nothing (8.5) |
 | `INPUT_INVALID` | 2 | no | `INVALID` | `--input` cannot be read or framed, or fails its fragment schema |
@@ -321,8 +327,10 @@ a core code is a major change. [Appendix A D11.9, D12.2, D16.1, D36]
 | `OPERATION_REUSED` | 2 | no | — | an operation key reused with another payload (12.4) |
 | `CURSOR_INVALID` | 2 | no | `INVALID` | a cursor not issued by this command, or for other arguments (6.9) |
 
-7.3.2. Finer parse codes MAY replace `USAGE` for a situation the tool never reports as `USAGE`; under any other core
-code, situations are told apart by reasons.
+7.3.2. Finer parse codes MAY replace `USAGE` for a situation the tool never reports as `USAGE`; in a 1.3 document they
+follow 7.2 (`OPTION_INVALID` for an unknown or malformed option, `OPTION_REQUIRED` for a missing one). A caller treats
+any exit-2 code whose `field` names an argument as a usage problem. Under any other core code, situations are told
+apart by reasons.
 
 7.3.3. **Reserved reasons**, SHOULD names for these situations: `INPUT_INVALID` `UNREADABLE`, `STDIN_TTY`, `EMPTY`,
 `NOT_JSON`, `NOT_OBJECT`, `BATCH_UNSUPPORTED`, `UNKNOWN_KEY`, `FLAG_ONLY_KEY`, `INVALID_VALUE`; `INPUT_TOO_LARGE`
@@ -388,7 +396,8 @@ SHOULD re-raise or exit 128+n. A tool SHOULD release what it claimed and keep th
 [Appendix A D26]
 
 8.5. A check that ran but examined nothing in its scope MUST NOT exit 0: it fails with `UNVERIFIABLE` and SHOULD say
-in `meta.coverage` what it looked for. A scope that was read and holds nothing is an empty success.
+in `meta.coverage` what it looked for. A scope that does not exist, or a configuration the command needs that is
+absent, is a refusal with its own code; a scope that was read and holds nothing is an empty success.
 
 8.6. A passthrough command (`exec -- …`) declares its exit exception in `effectNote` (3.6).
 
@@ -406,9 +415,10 @@ Shape: `schema/schema-doc.schema.json`; rules beyond it: Annex S2 (normative). [
 <tool> schema --search "<TASK>" --json                ranked commands (9.10.1, OPTIONAL)
 ```
 
-9.1.1. Path words MUST be accepted as separate words or one quoted string; the forms are mutually exclusive
-(`USAGE`); an unknown path refuses with `UNKNOWN_COMMAND`, `expected` the valid words at that position. Without
-`--json`, `schema` prints text, which MAY be the JSON document. [Appendix A D11.2, D30]
+9.1.1. Path words MUST be accepted as separate words or one quoted string. A path, `--errors`, `--error`,
+`--warnings`, `--warning` and `--search` exclude each other (`USAGE`); an unknown path refuses with
+`UNKNOWN_COMMAND`, `expected` the valid words at that position. Without `--json`, `schema` prints text, which MAY be
+the JSON document. [Appendix A D11.2, D30]
 
 9.1.2. The answer's `meta.command` is `"schema"` and its `meta.schemaVersion` the declared minor. [Appendix A D20, D22]
 
@@ -418,12 +428,14 @@ Shape: `schema/schema-doc.schema.json`; rules beyond it: Annex S2 (normative). [
 refuse for missing context, MUST NOT depend on the environment (an explicit option MAY filter it), and writes
 nothing (11.2). For one build it SHOULD be byte-identical across runs.
 
-### 9.3. `tree` and `group`
+### 9.3. `tree`
 
-9.3. The tree lists every group and command once, a group before its commands, `schema` included (a command for the
-tool's own use MAY be left out); `level` is the claimed level (3.5).
+The tree lists every group and command once, in a stable order, a group before its commands, `schema` included (a
+command for the tool's own use MAY be left out); `level` is the claimed level (3.5).
 
-9.4. `schema <GROUP>` answers with the group and the tree entries of its direct children.
+### 9.4. `group`
+
+`schema <GROUP>` answers with the group and the tree entries of its direct children.
 
 ### 9.5. `command`
 
@@ -661,7 +673,8 @@ placeholders are substituted (shell pipelines are exempt). Guides SHOULD tell ag
 
 15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.3.0`). A PATCH changes no
 rule. A MINOR adds OPTIONAL members, options, kinds and values, SHOULD and MAY rules, and MUST rules that bind only
-documents that declare it, and relaxes a rule only where every answer it then permits is one callers already handle.
+documents that declare it; for those documents it may withdraw a core code whose use the previous minor only
+recommended; and it relaxes a rule only where every answer it then permits is one callers already handle.
 A MAJOR (`atip/2`) removes or renames a member, option, core code or kind, changes a meaning, or adds a MUST an
 existing tool can fail. A tool that conforms to `1.x` keeps conforming as a `1.x` tool. [Appendix A D20]
 
@@ -675,7 +688,8 @@ S1), recorded in the tool's changelog. A name is never reused with another meani
 15.4. **Unknown members and values.** A caller MUST ignore unknown members of every object this document defines and
 MUST NOT fail a document for an unknown *string* in a member with listed values; it never infers that what it did not
 understand is satisfied, done or safe. A non-string listed value, or a missing required member, is a wrong shape.
-An unknown error code is read by its exit, `retryable`, registry entry and, in a 1.3 document, its condition.
+An unknown error code is read by its exit, `retryable`, registry entry and, in a 1.3 document, its condition; a
+condition word the caller does not know (a later minor's) leaves it with the exit and `retryable`.
 [Appendix A D20, D28, D29]
 
 | Unknown string in | The caller |
@@ -705,7 +719,7 @@ rejects only a view that fails. `$id`s stay under `https://atip.dev/1/`. [Append
 | Declared | Differs from 1.3 |
 |---|---|
 | 1.0 | `contract` may be absent outside `schema`; no reasons, warning registry, bracketed paths or map-key selection; warning codes in the error registry; a hint may be prose starting with the tool name |
-| 1.0, 1.1 | a cursor also binds `--json` and `--all`; `--fields` may need `--json`; `limit`, `cursor`, `all`, `fields` may be document keys |
+| 1.0, 1.1 | a cursor also binds `--json` and `--all`, and need not bind `env` values (a variable changed between pages may change the listing silently); `--fields` may need `--json`; `limit`, `cursor`, `all`, `fields` may be document keys |
 | 1.1, 1.2 | warning codes may be in the error registry only |
 | 1.2 | `STOPPED_MIDWAY` is a core code (exit 1, not retryable, `reason` the refused code) |
 | 1.0-1.2 | code names need not follow 7.2 |
@@ -835,7 +849,7 @@ sections of this version.
 
 | # | Owner decision 2026-11-03, version 1.3.0, a minor (15.1) | Where |
 |---|---|---|
-| D36 | ATIP is a protocol: this document defines conformance, and a conformance checker is a tool that tests it, not its definition. The spec is restated as the messages that cross the boundary (invocation, envelope and stream lines, the error object, exit status, `next`, the self-description, input documents, the destructive exchange, paging and field selection, versioning), each as shape, meaning and exchange rules, pointing to the JSON Schemas rather than restating them; algorithms, profiles and long rule lists are normative annexes: field selection and projection (Annex F), argument domains, the pattern dialect and numbers (Annex V), command design and the self-description rules (Annex S). Rationale, examples and history moved to Appendix A and `approaches/`. Rules whose only purpose was an exact checker verdict are recommendations in `approaches/implementation.md`: the order among the stateless checks of step 6 (stateless checks still precede every state read), which argument a constraint's `field` names when several qualify (it still names one the caller can add or remove), whether an argument given at its default value changes a cursor's binding (an `env` value still binds it) and what the next-page entry carries exactly, and the argv conversion of an `--input` document (its answer must still equal direct validation). Error codes: a tool's own code is `<SUBJECT>_<CONDITION>`, the subject a noun phrase, the condition one of fourteen (`INVALID`, `REQUIRED`, `NOT_FOUND`, `EXISTS`, `CONFLICT`, `STALE`, `EXPIRED`, `DENIED`, `UNSUPPORTED`, `TOO_LARGE`, `UNAVAILABLE` exit 2; `FAILED`, `INCOMPLETE`, `TIMEOUT` exit 1), and the condition fixes exit and retryability (`UNAVAILABLE` and `TIMEOUT` retryable; `FAILED` and `INCOMPLETE` may be when a repeat resumes without repeating effects); MUST for a document that declares 1.3, SHOULD-shape for warning codes. The twelve core codes keep their names, five of which predate the grammar, because renaming a core code is `atip/2`. `STOPPED_MIDWAY` leaves the core set for 1.3: a stop part-way is the tool's own `INCOMPLETE` code with the refused code as `reason`. D33 declined an `*_INCOMPLETE` name because exit 1 also covers incomplete answers that made no effect; under the convention the effect class says whether a stop left effects, and the caller action (read what was done before repeating) is the same, so the condition carries it. A 1.3 tool keeps its warning codes in the warning registry, so that its error registry holds only codes that follow the convention. 1.3 adds no member, document kind or enum value; a tool that declares 1.0, 1.1 or 1.2 is held to that minor's release text. | 3, 4.6, 6.10, 7.2, 7.3, 7.5.2, 8.3.2, 9.8.1, 10.7, 15.7, 15.8, Annex F, Annex V, Annex S, approaches/implementation.md, approaches/checker.md |
+| D36 | ATIP is a protocol: this document defines conformance, and a conformance checker is a tool that tests it, not its definition. The spec is restated as the messages that cross the boundary (invocation, envelope and stream lines, the error object, exit status, `next`, the self-description, input documents, the destructive exchange, paging and field selection, versioning), each as shape, meaning and exchange rules, pointing to the JSON Schemas rather than restating them; algorithms, profiles and long rule lists are normative annexes: field selection and projection (Annex F), argument domains, the pattern dialect and numbers (Annex V), command design and the self-description rules (Annex S). Rationale, examples and history moved to Appendix A and `approaches/`. Rules whose only purpose was an exact checker verdict are recommendations in `approaches/implementation.md`: the order among the stateless checks of step 6 (stateless checks still precede every state read), which argument a constraint's `field` names when several qualify (it still names one the caller can add or remove), whether an argument given at its default value changes a cursor's binding (an `env` value still binds it) and what the next-page entry carries exactly, and the argv conversion of an `--input` document (its answer must still equal direct validation). Error codes: a tool's own code is `<SUBJECT>_<CONDITION>`, the subject a noun phrase, the condition one of fourteen (`INVALID`, `REQUIRED`, `NOT_FOUND`, `EXISTS`, `CONFLICT`, `STALE`, `EXPIRED`, `DENIED`, `UNSUPPORTED`, `TOO_LARGE`, `UNAVAILABLE` exit 2; `FAILED`, `INCOMPLETE`, `TIMEOUT` exit 1), and the condition fixes the exit and the caller's action and gives the default retryability (`UNAVAILABLE` and `TIMEOUT` retryable; `FAILED` and `INCOMPLETE` may be when a repeat resumes without repeating effects), the error's `retryable` staying authoritative; `TIMEOUT` is only for a command that waits, so that a write whose backend ran out of time is never forced retryable; `TOO_LARGE` is the size or count of a request, a value outside its domain `INVALID`; a finer parse code is `OPTION_INVALID`/`OPTION_REQUIRED`; MUST for a document that declares 1.3, SHOULD-shape for warning codes. The twelve core codes keep their names, five of which predate the grammar, because renaming a core code is `atip/2`. `STOPPED_MIDWAY` leaves the core set for 1.3, which 15.1's MINOR row allows because 1.2 only recommended its use: a stop part-way is the tool's own `INCOMPLETE` code with the refused code as `reason`. D33 declined an `*_INCOMPLETE` name because exit 1 also covers incomplete answers that made no effect; under the convention the effect class says whether a stop left effects, and the caller action (read what was done before repeating) is the same, so the condition carries it. A 1.3 tool keeps its warning codes in the warning registry, so that its error registry holds only codes that follow the convention. 1.3 adds no member, document kind or enum value; a tool that declares 1.0, 1.1 or 1.2 is held to that minor's release text. | 3, 4.6, 6.10, 7.2, 7.3, 7.5.2, 8.3.2, 9.8.1, 10.7, 15.7, 15.8, Annex F, Annex V, Annex S, approaches/implementation.md, approaches/checker.md |
 
 ## Appendix B. Prior art
 

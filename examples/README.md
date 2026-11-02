@@ -13,8 +13,9 @@ change to print them (the "Proposed" column below).
 spec and its annexes (`spec/annex-fields.md`, `spec/annex-domains.md`, `spec/annex-schema.md`); the self-description
 rules are those of Annex S2. It fails when a schema in `schema/` lists string values for a member that has no row in
 the caller table (spec 15.4), it validates `examples/caller-*` read open (spec 15.6), and every rule of Annex S2 has at
-least one invalid example that breaks it alone. The checker is a non-normative tool that tests documents; conformance
-is defined by the spec (3.7).
+least one invalid example that breaks it alone. It also checks that every section reference in the spec, and every
+`spec <N.N>` and `Annex <X><n>` reference in the annexes, `approaches/` and the READMEs, names something that exists.
+The checker is a non-normative tool that tests documents; conformance is defined by the spec (3.7).
 
 ## Two kinds of example
 

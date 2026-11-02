@@ -24,13 +24,17 @@ a 1.2 caller reads every 1.3 document (15.8). Section numbers below are 1.3's; `
   one of fourteen whose exit and retryability are fixed: `INVALID`, `REQUIRED`, `NOT_FOUND`, `EXISTS`, `CONFLICT`,
   `STALE`, `EXPIRED`, `DENIED`, `UNSUPPORTED`, `TOO_LARGE`, `UNAVAILABLE` (exit 2; only `UNAVAILABLE` retryable) and
   `FAILED`, `INCOMPLETE`, `TIMEOUT` (exit 1; `TIMEOUT` retryable, `FAILED` and `INCOMPLETE` may be when a repeat
-  resumes without repeating effects). Each condition says what the caller does next. MUST for a 1.3 document (7.2.3);
-  warning codes SHOULD take the same shape (7.2.3, last sentence). `approaches/migration.md` §8 renames canon's codes as
+  resumes without repeating effects; the error's `retryable` stays authoritative). Each condition says what the
+  caller does next. `TIMEOUT` is only for a command that waits (12.3); `TOO_LARGE` is the size or count of a request,
+  a value outside its domain is `INVALID`; finer parse codes are `OPTION_INVALID`, `OPTION_REQUIRED` (7.3.2). MUST for
+  a 1.3 document (7.2.3); warning codes SHOULD take the same shape (7.2.3, last sentence). `approaches/migration.md` §8 renames canon's codes as
   examples. Replaces 1.2's stage-naming SHOULD in 8.3.
 - **Core codes (7.3).** The twelve codes every tool shares keep their names (five predate the grammar: `USAGE`,
   `UNKNOWN_COMMAND`, `INTERNAL`, `UNVERIFIABLE`, `OPERATION_REUSED`; renaming a core code is `atip/2`).
   `STOPPED_MIDWAY` is no longer a core code in a 1.3 document: a stop part-way after effects is the tool's own
   `INCOMPLETE` code whose `reason` is the refused code (8.3.2). It stays a core code in a document that declares 1.2.
+  15.1's MINOR row now allows a minor to withdraw, for its own documents, a core code the previous minor only
+  recommended.
 - **Warning registry (7.5.2).** A 1.3 tool keeps its warning codes in the warning registry; the error registry holds
   a warning code only when it is also an error.
 - **Rules moved to `approaches/implementation.md`** (recommendations for a 1.3 tool, still MUSTs for a 1.2 tool): the
@@ -47,7 +51,8 @@ a 1.2 caller reads every 1.3 document (15.8). Section numbers below are 1.3's; `
   canon and ledger stay 1.0 and tally 1.1. `check.ts` knows 1.3: code names, condition exits and retryability, warning
   codes in the warning registry; `STOPPED_MIDWAY` is reserved only in a 1.2 document. New invalid examples break each
   1.3 rule; `caller-*` examples now model a later minor as 1.4. The spec's cross-reference check reads Appendix A's
-  Where column, while the decision texts keep the section numbers of their own release.
+  Where column, while the decision texts keep the section numbers of their own release; a second check verifies
+  every `spec <N.N>` and `Annex <X><n>` reference in the annexes, `approaches/` and the READMEs.
 - **Approaches.** `approaches/checker.md` is a conformance tool that tests the spec: `L1.code-names` and the 1.3
   halves of the registry and warning checks; the 1.2 rows that 1.3 made recommendations are advisories for a 1.3
   claim. `approaches/migration.md` §8: from 1.2 to 1.3, with canon's registry as the worked example of renaming codes
