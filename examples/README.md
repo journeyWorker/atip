@@ -23,7 +23,7 @@ three kinds:
 - **proposed**: a behaviour change the contract requires of canon, not just a rename.
 - **not verified**: shown for completeness; nothing here establishes it.
 
-**A synthetic reference tool, `acme`** (`*-acme-*`), which declares contract 1.1 (`meta.contractVersion`, spec 15.7)
+**A synthetic reference tool, `acme`** (`*-acme-*`), which declares contract 1.2 (`meta.contractVersion`, spec 15.7)
 while canon's translations declare 1.0: an invented tool that exercises what neither translation does,
 so that every rule has a positive witness: a declared short option (`-t`), a required repeatable option and an
 `x-acme` extension member (`acme page label`), an `async` command with an operation key and the command that
@@ -105,8 +105,8 @@ that differs between Unicode versions) is recorded in `scripts/regex-cases.json`
 
 ## Contract 1.1
 
-acme declares 1.1 and uses what 1.1 adds; canon's translations declare 1.0, and every 1.1 addition in a document
-that declares 1.0 is rejected (spec 10.13 rule 16).
+acme declares 1.2, which includes what 1.1 adds; canon's translations declare 1.0, and every 1.1 addition in a
+document that declares 1.0 is rejected (spec 10.13 rule 16).
 
 | Case | File | Result |
 |---|---|---|
@@ -142,7 +142,7 @@ bracketed path in its `meta`, or an unregistered warning in its schema answer is
 | the empty map key `attributes[""]`, a map under `labels[]`, a map written with `properties: {}` | `report-acme-member-list-fields-map-keys.json` | accepted |
 | `labels.region` where `labels` is an array of maps; the empty key left in unselected | `invalid/report-acme-member-list-fields-map-key-without-descent.json`, `invalid/report-acme-member-list-fields-empty-key-leak.json` | rejected |
 
-**Caller documents** (`caller-*.json`) are what a tool of a later minor might print: `contractVersion` `1.2` and
+**Caller documents** (`caller-*.json`) are what a tool of a later minor might print: `contractVersion` `1.3` and
 members this repository does not define (`meta.costMs`, `page.exact`, `error.severity`, a registry entry's `docs`).
 A caller of this minor must read them (spec 15.6): each passes the contract schemas read open and fails them
 closed. `invalid/caller-report-nothing-unknown.json` carries nothing unknown, and `invalid/caller-report-wrong-type.json`
@@ -169,7 +169,23 @@ report read open) and a stream line's `type` (`caller-stream-acme-build-unknown-
 rejected: a constraint `rule` of `77` or missing, a batch `status` of `5`, a stream line `type` of `3`, and an exit
 outside `1` and `2` (`invalid/caller-*`).
 
-A 1.1 tool marks every document: `invalid/report-acme-markers-missing.json`, `invalid/schema-tree-acme-markers-missing.json`
+A 1.1 or later tool marks every document: `invalid/report-acme-markers-missing.json`, `invalid/schema-tree-acme-markers-missing.json`
 and `invalid/stream-acme-build-markers-missing.ndjson` omit `contract` and `contractVersion` and are rejected. A
 map key containing U+0000 cannot be selected (`invalid/report-acme-member-list-fields-map-key-nul.json`).
 
+## Contract 1.2
+
+1.2 adds no member, so its rules are checked by the declared minor (spec 10.13 rule 16): acme declares 1.2, and its
+paging and field-selection options are flag-only (spec 11.6) and its registry reserves `STOPPED_MIDWAY`. A third
+synthetic tool, **`tally`** (`*-tally-*`), stays on 1.1: its `entry list` is `ledger`'s with the map's
+`minProperties` removed (a 1.1 map is a cut node), and it shows that neither 1.2 rule applies below 1.2.
+
+| Case | File | Result |
+|---|---|---|
+| a 1.2 command document whose `--limit`, `--cursor`, `--all` and `--fields` are flag-only | `schema-command-acme-member-list.json` | accepted |
+| the same with `--limit` not flag-only; a 1.1 document with none of them flag-only | `invalid/schema-command-acme-member-list-limit-not-flag-only.json`; `schema-command-tally-entry-list.json` | rejected; accepted |
+| `STOPPED_MIDWAY` in a 1.2 registry, with a reason that names the refusal (`ENVIRONMENT_FROZEN`), and a failure that uses it | `schema-errors-acme.json`, `report-failure-acme-deploy-start-stopped-midway.json` | accepted |
+| `STOPPED_MIDWAY` at exit 2 in a 1.2 registry; a 1.1 tool's own `STOPPED_MIDWAY` that is retryable | `invalid/schema-errors-acme-stopped-midway-exit-2.json`; `schema-errors-tally.json` | rejected; accepted |
+
+The other 1.2 rules (which arguments bind a cursor, `--fields` without `--json`, the order of the stateless checks)
+are behaviour, not documents; the checker tests them (approaches/checker.md).
