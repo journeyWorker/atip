@@ -20,7 +20,7 @@ atip check --bin target/release/canon --level L2 --fixture checker-fixture.json
 ```
 
 - `--level` is the claimed level. For L1/L2 the checker also reads `data.level` from `schema --json` and fails
-  when the two differ.
+  when it is below the claimed level (levels are cumulative, so a tree at L2 meets an L1 claim; L1.tree).
 - `--fixture` is the tool's fixture file (§5): the state and the invocations the stateful checks need.
 - `--contract` is the claimed minor (spec 15.5): `1.0`, `1.1`, `1.2` or `1.3`. It defaults to the fixture's
   `contractVersion`, and to `1.0` when the fixture has none; given with a fixture member that says otherwise it
@@ -69,21 +69,21 @@ rules declares, and the result is reported for every rule of the group. Rules of
 codes make the expected refusal ambiguous, and the check fails. The same relation written twice is not a group:
 it is invalid (spec 9.8.1, Annex S2 rule 4) and L1.walk reports it.
 
-**One owner per pass condition.** Each pass condition belongs to exactly one check. Other checks that observe the
-same run do not re-assert it: the unknown-option check asserts the refusal code and `field`, while `L0.ok-exit`
-owns "the exit equals the code's registered exit", `L0.json-mode-preparse` owns "a JSON envelope despite the parse
-failure", `L0.one-document` owns "exactly one document", `L0.refusal-effects` owns "a refusal changes nothing", and
-`L0.registry` owns "every emitted code, reason and warning is registered". So a seeded violation of one rule fails
-exactly its owner check (§7.2). Ownership decides where a finding is reported, never whether it is: when one run
-breaks several independent rules, each owner check reports its own failure, and a finding that schema validation
-surfaces is attributed to the check that owns the rule, not dropped. Three consequences for reading the tables: an `exit 2` in a row is shorthand for
-"refused with a code whose registered exit is 2"; the row asserts the code and `L0.ok-exit` asserts the number. A
-`USAGE` in a row's expected result stands for "`USAGE` or its registered finer replacement (spec 7.3.2)", as
-L1.registry says: a tool that registers `OPTION_INVALID` (for a claim below 1.3 any name, such as `UNKNOWN_OPTION`) and
-never emits `USAGE` for that situation passes. And
-every envelope is validated against `schema/envelope.schema.json` once, by `L0.envelope`; a finding that belongs to
-another rule (a `null`, a member added in a later minor than the claim) is reported by that rule's check, not by
-the schema check.
+**One owner per pass condition.** Each pass condition belongs to exactly one check. Other checks that observe the same
+run do not re-assert it: the unknown-option check asserts the refusal code and `field`, while `L0.ok-exit` owns "the
+exit equals the code's registered exit", `L0.json-mode-preparse` owns "a JSON envelope despite the parse failure",
+`L0.one-document` owns "exactly one document", `L0.refusal-effects` owns "a refusal changes nothing", and `L0.registry`
+owns "every emitted code, reason and warning is registered". So a seeded violation of one rule fails exactly its owner
+check (§7.2). Ownership decides where a finding is reported, never whether it is: when one run breaks several
+independent rules, each owner check reports its own failure, and a finding that schema validation surfaces is attributed
+to the check that owns the rule, not dropped. Three consequences for reading the tables: an `exit 2` in a row is
+shorthand for "refused with a code whose registered exit is 2"; the row asserts the code and `L0.ok-exit` asserts the
+number. A `USAGE` in a row's expected result stands for "`USAGE` or its registered finer replacement (spec 7.3.2)": a
+registered exit-2 code the tool uses instead of `USAGE`, whose `field` names an argument. As L1.registry says, a tool
+that registers `OPTION_INVALID` (for a claim below 1.3 any name, such as `UNKNOWN_OPTION`) and never emits `USAGE` for
+that situation passes. And every envelope is validated against `schema/envelope.schema.json` once, by `L0.envelope`; a
+finding that belongs to another rule (a `null`, a member added in a later minor than the claim) is reported by that
+rule's check, not by the schema check.
 
 ## 3. How it runs a binary
 
@@ -111,11 +111,14 @@ the schema check.
 ## 4. The effects check
 
 The checker snapshots the invocation's directory and `HOME` (path, size, SHA-256 of every file) before and after
-the invocation, and asks the fixture's `probe` command for remote state when one is declared.
+the invocation, and asks the fixture's `probe` command for remote state when one is declared. Snapshots count files
+only: a directory created to hold an allowed file is not an effect. An `allowedEffects` pattern is a path relative to
+the invocation's directory (a leading `./` allowed) or, written `~/…`, to `HOME`; `*` matches within one path segment,
+`**` across segments (`**/` also matches nothing), `?` one character other than `/`, and the whole path must match.
 
 - For every **refusal** (exit 2; owned by `L0.refusal-effects`), every **destructive preview**, every `--dry-run`,
   `--help`, `--version`, `schema` and `skills show`: any change is a MUST `fail` (spec 8.2, 11.2). `effectNote` is
-  not consulted.
+  not consulted. One check owns each: L1.no-state for `schema`, L2.skills for `skills show`, L2.effects for the rest.
 - For a successful **`read`** command: a change is allowed only if it matches the fixture's `allowedEffects` glob
   list for that command, and the command has an `effectNote`. Any other change is a MUST `fail`; the report names
   the changed paths.
@@ -197,27 +200,30 @@ with its argv, so that whoever reviews a level claim sees what was made outside 
 checker stops, reports the step and its answer, and reports no check. The
 effects check (§4) starts from that copy, so nothing `prepare` or `setup` made counts as an effect of a checked
 invocation. The checker never runs a `write` or `destructive` command that the fixture does not list. A command with
-no fixture entry makes its stateful checks `unprovided`.
+no fixture entry makes its stateful checks `unprovided`, never `unsupported`: an unlisted write does not decide
+whether the tool offers a feature.
 
 `notRun` lists commands, by path, that do not end on their own: a command that serves until it is signalled, whose
-`effectNote` says so (spec 9.5). Every listed command must be in `schema` with a non-empty `effectNote`, and none
-may be the `probe`, or the fixture is in error, as for a failing `prepare` step; at L0, where there is no `schema`,
-the list is taken as given. The checker runs each listed command **once**: its first fixture `ok` invocation, else
-its first example, with `--json`. It reads stdout up to the end of the first JSON document, checks that the process
-is still running, then signals it (SIGTERM, then SIGKILL after a grace period). That document goes to the checks of
-every envelope (L0.envelope, L0.no-null, L0.contract-version, L0.next) and to L1.output-data; the checks that read
-the exit status or the whole of stdout (L0.ok-exit, L0.one-document) do not apply to it, since the run ended by the
-checker's signal (spec 8.4). A listed command that exits on its own within the timeout, before or after its first
-document, is a fixture error: it ends, so it belongs in no `notRun`. One that prints no document before the timeout
-fails L0.envelope. Without an `ok` entry or an example (at L0, without an `ok` entry) the one run is `unprovided`.
-Beyond that run, the runs that the checker expects to be refused still run, since a refusal ends: the generated
-refusals of L1.constraints, L1.numbers, L1.validators and L1.check-order, and the out-of-range values of L1.domains.
-Skipped are the other runs that would succeed and so never end: the command's other examples (L1.example-runs,
-L1.output-data), a `meta.next` entry that names it (L1.next), the in-range values of L1.domains, its successful run
-in L2.effects, and its other fixture entries (further `ok` invocations, `paged`, `fields`, `preview`). Each check
-computes its result from its other runs and reports the runs it skipped with the reason `notRun`; a check whose
-every run was skipped this way is `unprovided`, so listing commands cannot pass a level. The report lists the
-`notRun` commands, as it lists the `prepare` steps.
+`effectNote` says so (spec 9.5). Every listed command must be in `schema` with a non-empty `effectNote`, and none may be
+the `probe`, or the fixture is in error, as for a failing `prepare` step; at L0, where there is no `schema`, the list is
+taken as given. The checker runs each listed command **once**: its first fixture `ok` invocation, else its first
+example, with `--json`. It reads stdout up to the end of the first JSON document, checks that the process is still
+running, then signals it (SIGTERM, then SIGKILL after a grace period). That document goes to the checks of every
+envelope (L0.envelope, L0.no-null, L0.contract-version, L0.next) and to L1.output-data; the checks that read the exit
+status or the whole of stdout (L0.ok-exit, L0.one-document) do not apply to it, since the run ended by the checker's
+signal (spec 8.4). A listed command that exits on its own within the timeout, before or after its first document, is a
+fixture error: it ends, so it belongs in no `notRun`. So is one refused at its start, except with a registered
+precondition code (not one of the stateless steps 1-6 of spec 10.7): that refusal makes the run `unprovided`, and the
+report names the code, as for any refused fixture invocation below. One that prints no document before the timeout fails
+L0.envelope. Without an `ok` entry or an example (at L0, without an `ok` entry) the one run is `unprovided`. Beyond that
+run, the runs that the checker expects to be refused still run, since a refusal ends: the generated refusals of
+L1.constraints, L1.numbers, L1.validators and L1.check-order, and the out-of-range values of L1.domains. Skipped are the
+other runs that would succeed and so never end: the command's other examples (L1.example-runs, L1.output-data), a
+`meta.next` entry that names it (L1.next), the in-range values of L1.domains, its successful run in L2.effects, and its
+other fixture entries (further `ok` invocations, `paged`, `fields`, `preview`). Each check computes its result from its
+other runs and reports the runs it skipped with the reason `notRun`; a check whose every run was skipped this way is
+`unprovided`, so listing commands cannot pass a level. The report lists the `notRun` commands, as it lists the `prepare`
+steps.
 
 `paged` lists invocations of a command that return `meta.page.nextCursor` in the fixture state; L0.page and
 L1.paging run them. Which commands page is not taken from the fixture. From L1, a command pages when its command
@@ -278,9 +284,12 @@ offers no `schema --errors` and the fixture has none); the level cannot pass the
 domain. The checker substitutes each into the command's first `ok` invocation (spec 9.7.4, Annex V1). It cannot generate
 such values itself: a string outside an arbitrary regular expression needs a solver.
 
-For asynchronous commands the fixture names a **controllable worker**: a stub the tool's test build accepts (an
-environment variable selecting a fake backend) that completes, fails or hangs on command. The checker drives
-`done`, `failed` and `timeout` outcomes through it instead of waiting on real work.
+For asynchronous commands the fixture names a **controllable worker**: a stub the tool's test build accepts that
+completes, fails or hangs on command. `worker` is the name of the environment variable the test build reads; the
+checker sets it to the outcome word (`done`, `failed`, `timeout`) for the start and for the wait, instead of waiting
+on real work. `outcomes` lists the outcomes the stub supports; one it leaves out is not driven, and L2.async is then
+`unprovided`. A wait driven to `timeout` without a `--timeout` of its own is given `--timeout 1s` when the command
+accepts it.
 
 ## 6. Checks by level
 
@@ -330,7 +339,7 @@ registry says and need no fixture.
 
 | Id | | Invocation | Pass when | Rule | Needs |
 |---|---|---|---|---|---|
-| L1.tree | M | `schema --json` | validates against `schema-doc.schema.json`; Annex S2 rule 1; every group before its commands; ids unique | 9.3, Annex S2 | — |
+| L1.tree | M | `schema --json` | validates against `schema-doc.schema.json`; Annex S2 rule 1; every group before its commands; ids unique; `level` at or above the claimed level (levels are cumulative) | 3.5, 9.3, Annex S2 | — |
 | L1.no-state | M | `schema --json` in an empty directory, minimal environment | succeeds, and nothing is written (§4) | 9.2 | — |
 | L1.walk | M | `schema <path> --json` for every tree entry | validates; Annex S2 rules 1-11 and 13 (rule 12, the examples, is L1.examples; rule 3 includes refusing a constraint's `in` on a switch or a count); group → its tree children exactly | 9.4, 9.5, Annex S2 | — |
 | L1.quoted-path | M | `schema "<a b>" --json` for one two-word command | equals the split form | 9.1.1 | — |
@@ -370,34 +379,34 @@ registry says and need no fixture.
 |---|---|---|---|---|---|
 | L2.input-present | M | command documents | every `write`/`destructive` command has `input` | 10.1 | — |
 | L2.input-example | M | none | `input.example` validates against the fragment schema and satisfies `required`, the domains and `constraints`; when `argumentsRef` is present, its argument object (spec 10.7 step 6, numbers as numbers, defaults applied) validates against it | 9.9.2 | — |
-| L2.input-refusals | M | for every command with `input`, in the fixture state: `{"bogusKey":1}`; `{"json":true}`; `{"commit":true}`; the example with one key `null`; `{"operands":[]}`; `[{}]` where `batch` is false; `./missing-xyz.json`; a value one byte over `maxBytes`; `{"bogusOne":1,"bogusTwo":2}`; for a claim of 1.2 or later, a document key for each of `limit`, `cursor`, `all` and `fields` the command offers | exit 2; `INPUT_INVALID` (`INPUT_TOO_LARGE` for the size case); `field` a JSON pointer or `--input`; the two-key case has `details` with two entries | 10.2-10.8, 10.10 | `commands` |
+| L2.input-refusals | M | for every command with `input`, in the fixture state: `{"bogusKey":1}`; `{"json":true}`; `{"commit":true}`; the example with one key `null`; `{"operands":[]}`; `[{}]` where `batch` is false; `./missing-xyz.json`; a value one byte over `maxBytes`; `{"bogusOne":1,"bogusTwo":2}`; for a claim of 1.2 or later, a document key for each of `limit`, `cursor`, `all` and `fields` the command offers | exit 2; `INPUT_INVALID` (`INPUT_TOO_LARGE` for the size case); `field` a JSON pointer, or `--input` for a framing failure (the size case included, spec 10.7 step 1); the two-key case has `details` with two entries | 10.2-10.8, 10.10 | `commands` |
 | L2.input-tty | M | `--input -` with a pty on stdin | exit 2 `INPUT_INVALID`, `field: "--input"`, within the timeout | 10.3 | — |
 | L2.input-usage | M for a tool that declares 1.1 or later, S for one that declares 1.0 (spec 15.1: a minor adds no MUST an existing tool can fail) | an `ok` invocation with `--input '{}'` given twice; one with `--input` as its last word | `USAGE` or its registered finer replacement (spec 7.3.2), with `field: "--input"`; never `INPUT_INVALID` | 10.2 | `commands` |
 | L2.input-reasons | S (when the registry lists reasons under `INPUT_INVALID` or `INPUT_TOO_LARGE`) | the framing failures of L2.input-refusals and L2.input-tty | the error carries the reserved reason of spec 7.3.3 for its situation (`NOT_JSON`, `NOT_OBJECT`, `UNKNOWN_KEY`, `FLAG_ONLY_KEY`, `INVALID_VALUE`, `UNREADABLE`, `STDIN_TTY`, `TOO_MANY_BYTES`, `BATCH_UNSUPPORTED`) | 7.3.3 | `commands` |
-| L2.input-fragment | M | each `ok` fixture invocation split into argv operands + a document holding the rest | same result as the argv form | 10.7 | `commands` |
-| L2.input-normalise | M | an `ok` invocation whose integer arguments are given as numeric strings in the document | same result | 10.5 | `commands` |
+| L2.input-fragment | M | each `ok` fixture invocation split into argv operands + a document holding the rest | same result as the argv form: the same exit, `ok`, `error.code` and `error.field`, and the same `data` except the paths that differ between two runs of the argv form on fresh copies of the same state (a timestamp), which are volatile and left out | 10.7 | `commands` |
+| L2.input-normalise | M | an `ok` invocation whose integer arguments are given as numeric strings in the document | same result, compared as in L2.input-fragment | 10.5 | `commands` |
 | L2.input-conflict | M | an `ok` invocation plus a document giving one of its arguments another value; and one giving the same value, spelt differently where the command has such an argument (a `json` object with its members in another order, a `number` written `1.0` against `1`, an integer `-0` against `0` or as a numeric string) | `INPUT_CONFLICT` with the document pointer; the same-value cases succeed: values are compared after normalisation, never as text | 10.7 | `commands` |
-| L2.input-env | M (when a command with `input` has an option that declares `env`) | that option's key given in a document with a valid value, while its `env` variable is set to a value its argument refuses (a wrong type, outside the domain) | the same result as without the variable: an `env` value applies only to an argument absent after the merge (spec 10.7 step 5), so it neither conflicts nor is validated here | 10.7 | `commands` |
-| L2.input-pointer | M | a document violating one `constraints` rule, or omitting a required key that argv does not give either (the run really omits it) | the constraint's code (or `USAGE`), `field` a document pointer | 10.8 | `commands` |
-| L2.input-dash-values | M | a document whose string value starts with `-`, `{` and `[` | accepted as values (no option, file or inline-JSON misreading) | 10.9, implementation.md §4 | `commands` |
-| L2.batch-preflight | M | a batch whose last item fails a state-independent check (a type, a constraint) | exit 2, that item's code, `field` `/<index>/…`, no `data` | 10.11 | `commands` |
+| L2.input-env | M (when a command with `input` has an option that is the only one in the schema declaring its `env` variable; none: `unsupported`) | that option's key given in a document with a valid value, while its `env` variable is set to a value its argument refuses (a wrong type, outside the domain) | the same result as without the variable, compared as in L2.input-fragment: an `env` value applies only to an argument absent after the merge (spec 10.7 step 5), so it neither conflicts nor is validated here. A variable two options declare is not probed: it does not say which of them it fills, and filling an absent flag-only option from it is correct | 10.7 | `commands` |
+| L2.input-pointer | M | a document violating one `constraints` rule, or omitting a required key that argv does not give either (the run really omits it); a rule that names a flag-only argument is not broken in a document | the constraint's code (or `USAGE`), `field` a document pointer | 10.8 | `commands` |
+| L2.input-dash-values | M | a document whose string value starts with `-`, `{` and `[`, given to the first string argument that admits such values (up to four, in declaration order); a candidate whose runs are all refused with a registered precondition code cannot tell, and the next is tried | accepted as values (no option, file or inline-JSON misreading); a refusal whose `field` names that argument and whose `received` is the value also passes, since the value was read as a value. `unprovided` only when no candidate decides | 10.9, implementation.md §4 | `commands` |
+| L2.batch-preflight | M | a batch whose last item fails a state-independent check (a type, a constraint); a constraint on a flag-only argument is given on argv, and one an item cannot break that way is skipped (every one: `unsupported`) | exit 2, that item's code, `field` `/<index>/…`, no `data` | 10.11 | `commands` |
 | L2.batch-incomplete | M | fixture `batchFailsAt` and `batchFailsFirst` | exit 1, `BATCH_INCOMPLETE`, `field` `/<index>`, `data.items` one per submitted item in order, statuses as in spec 10.11, the failed item's own `error`, `meta.output` the batch output | 10.11 | `commands` |
 | L2.batch-ok | M | a batch of the fixture's `ok` invocations | exit 0, batch report, every status `written` or `unchanged` | 10.11 | `commands` |
-| L2.idempotency | M | each `ok` write run twice in one sequence | `replay-safe`: second run `unchanged` or same result, no new effect; `once`: second run exit 2 and nothing changed; `content-keyed`: same | 11.3 | `commands` |
+| L2.idempotency | M | each `ok` write run twice in one sequence | `replay-safe`: second run `unchanged` or same result, no new effect; `once`: second run exit 2 and nothing changed; `content-keyed`: same. Paths matching the command's `allowedEffects` (an audit line its `effectNote` names) are left out of "no new effect": `appends` describes the command's records (spec 11.3), never an audit line | 11.3 | `commands` |
 | L2.destructive-safety | M | command documents | every destructive command has `commit` and `plan-digest`, `flagOnly`, and no batch | 11.4, 11.8 | — |
-| L2.destructive-preview | M | every destructive command, fixture `preview` | exit 0; `planDigest`, `effects`, `committed: false`; `meta.next[0].argv` contains `--commit`, `--plan-digest <that digest>` and `--json`; nothing written | 11.2, 11.4, 11.5 | `commands` |
+| L2.destructive-preview | M | every destructive command, fixture `preview` | exit 0; `planDigest`, `effects`, `committed: false`; `meta.next[0].argv` contains `--commit`, `--plan-digest <that digest>` (two words, or one word `--plan-digest=<that digest>`) and `--json`; nothing written | 11.2, 11.4, 11.5 | `commands` |
 | L2.destructive-preview-stdin | M | the preview with its arguments given via `--input -` | `meta.next[0].argv` does not contain `--input -` and replays to the same plan | 11.5 | `commands` |
-| L2.destructive-stale | M | the commit argv with a digest that differs in one character | exit 2 `PLAN_STALE`, `meta.next[0]` the preview | 11.7 | `commands` |
+| L2.destructive-stale | M | the commit argv with a digest that differs in one character, in the form `next[0]` writes it (one word or two) | exit 2 `PLAN_STALE`, `meta.next[0]` the preview | 11.7 | `commands` |
 | L2.destructive-half | M | `--commit` alone; `--plan-digest x` alone | exit 2 `USAGE`, its registered finer replacement (spec 7.3.2), or the `code` of the `requires` rule that states the relation (spec 9.8.1) | 11.7 | `commands` |
 | L2.destructive-commit | M | the preview's `next[0]` | exit 0, `committed: true`, the effects happened | 11.7 | `commands` |
-| L2.async | M (when offered) | the fixture's async start, then `next[0]`, with the worker set to `done`, `failed`, `timeout` | start exits 0 with `async: true` in the document and an identifier; `next[0]` waits; `done` → 0; `failed` → 1 with a registered code; `timeout` → 1, retryable, `next[0]` the same wait | 12.2, 12.3 | `commands` |
+| L2.async | M (when offered) | the fixture's async start, then `next[0]`, with the worker set to `done`, `failed`, `timeout` | start exits 0 with `async: true` in the document and an identifier; `next[0]` waits (carries `--wait`; when no command in the schema has `--wait`, the row is `unsupported`); `done` → 0; `failed` → 1 with a registered code; `timeout` → 1, retryable, `next[0]` the same wait | 12.2, 12.3 | `commands` |
 | L2.operation-key | M (when offered) | the async start twice with the same `--operation`, then twice concurrently with a fresh key, then once with another payload | the repeats return the same identifier and start nothing (the worker sees one start per key, also under the concurrent pair); the other payload is `OPERATION_REUSED` | 12.4 | `commands` |
 | L2.stream | M (when offered) | each stream command with `--json`, every declared stream output (`when`) | start line first, naming its output when the command has several, and that output's `meta.output` again in the end result; events, end line last; every event's `data` validates against the output's `eventRef`; the end `result` passes every envelope check (L0.ok-exit, L1.output-data, `meta.output` naming the stream output); start and end agree on tool, command and version; exit equals the end result's; a usage error prints one plain failure envelope that is a refusal | 13 | `commands` |
 | L2.skills | M | `skills show --json`, then each listed guide, then `skills show nosuch-xyz --json` | data validates against `guide.schema.json`; works in an empty directory; nothing written; the unknown name exits 2 with `expected` | 14 | — |
 | L2.guide-commands | M | every fenced line of every guide that starts with the tool name | parses as in L1.examples after substituting placeholders (§7.1) | 14.3 | — |
 | L2.search | S (when offered) | the fixture's `search` queries | a `tree` with `query`; the expected command among the first five entries. Ranking quality is not part of the contract (spec 9.10.1), so this is an advisory; the shape of the answer is checked by L1.tree | 9.10.1 | `commands` |
 | L2.help-guide | M | `--help` | first line also names `skills show` | 4.4.3 | — |
-| L2.effects | M (S at L0 and L1) | every `--dry-run`, `--help`, `--version` invocation and every successful `read` command of the fixture | no change in the snapshots, except paths matching `allowedEffects` for a `read` command that has an `effectNote` | 11.2 | `commands` |
+| L2.effects | M (S at L0 and L1) | every `--dry-run`, `--help`, `--version` invocation and every successful `read` command of the fixture other than `schema` (L1.no-state) and `skills show` (L2.skills) | no change in the snapshots, except paths matching `allowedEffects` for a `read` command that has an `effectNote` | 11.2 | `commands` |
 
 ## 7. Details
 
@@ -447,6 +456,11 @@ exactly that rule, and the test asserts that this check fails and every other MU
 | `--input '{"commit":true}'` accepted | L2.input-refusals |
 | document `{"round":"1"}` refused | L2.input-normalise |
 | document value `-x` read as an option | L2.input-dash-values |
+| document value `-x` refused with `field` naming its option and `received: "-x"` | (none: L2.input-dash-values passes; the value was read as a value) |
+| a tree that declares L2 checked with `--level L1` | (none: L1.tree passes; levels are cumulative) |
+| a `replay-safe` write whose second run appends only to a file its `allowedEffects` lists | (none: L2.idempotency passes) |
+| a preview whose `next[0]` writes `--plan-digest=<digest>` as one word | (none: L2.destructive-preview passes) |
+| a `data` member holding the current time, different in the argv and the document forms | (none: L2.input-fragment leaves volatile paths out) |
 | first batch item failure returns the item's code and no data | L2.batch-incomplete |
 | preview writes a file, with a non-empty `effectNote` | L2.destructive-preview |
 | refusal appends a telemetry line, or writes a file | L0.refusal-effects |

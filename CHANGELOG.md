@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.3.1 (unreleased)
+
+A patch (15.1) from the reference checker's L2 questions (D37). No member, option, rule strength or document kind is
+added; `meta.contractVersion` stays `"1.3"`, and a tool or caller that conformed to 1.3.0 still conforms.
+
+- **Spec 7.2.2.** The `INVALID` row's caller action: with no `field` (a configuration file), the `hint` names the file
+  to change.
+- **`approaches/checker.md` follows canon's `atip-check`** (non-normative, spec 3.7):
+  - `--level` and L1.tree: a tree at or above the claimed level meets it (levels are cumulative).
+  - §4: snapshots count files only; a directory made to hold an allowed file is not an effect; the `allowedEffects`
+    glob is defined (`*` one segment, `**` many, `?` one character, `~/` for `HOME`); one owner per invocation kind
+    (`schema` L1.no-state, `skills show` L2.skills, the rest L2.effects).
+  - §5: an unlisted write never makes a check `unsupported`; a `notRun` command refused at its start with a registered
+    precondition code is `unprovided` (any other refusal is a fixture error); the async `worker` is the environment
+    variable set to the outcome word, an outcome `outcomes` leaves out makes L2.async `unprovided`, and a `timeout` wait
+    gets `--timeout 1s`.
+  - §2: a finer replacement of `USAGE` is a registered exit-2 code whose `field` names an argument.
+  - L2.input-refusals: a size refusal's `field` is `--input`. L2.input-fragment, -normalise and -env: `data` is
+    compared without the paths that differ between two runs of the argv form. L2.input-env probes only an option that
+    alone declares its variable (none: `unsupported`). L2.input-dash-values: up to four candidates; a precondition
+    refusal leaves one undecided and the next is tried; a refusal naming the argument with `received` the value
+    passes. L2.input-pointer and L2.batch-preflight: a constraint on a flag-only argument is given on argv, and one no
+    item can break is skipped.
+  - L2.idempotency leaves `allowedEffects` paths out of the repeat comparison. L2.async: "`next[0]` waits" means it
+    carries `--wait`; no `--wait` in the schema makes the row `unsupported`. L2.destructive-preview and -stale read
+    `--plan-digest=<digest>` as one word.
+  - §7.2: five seeded rows for these verdicts.
+
 ## 1.3.0 (2026-11-03)
 
 A minor (15.1) that restates the contract as a protocol (D36). It adds no member, option, document kind or enum
