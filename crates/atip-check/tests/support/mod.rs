@@ -90,8 +90,18 @@ impl Output {
     }
 }
 
-/// Runs `atip` with `args` in `cwd`, its scratch space in `tmp`.
+/// Runs `atip` with `args` in `cwd`, its scratch space in `tmp`. An `atip check` runs with `--deep` added: the checker's own tests mean the full
+/// run (every check of the level, each call in a fresh copy of the state) unless they run the default mode through [`atip_as_given`].
 pub fn atip_in(cwd: &Path, tmp: &Path, args: &[&str]) -> Output {
+    let mut words = args.to_vec();
+    if words.first() == Some(&"check") && !words.contains(&"--deep") {
+        words.insert(1, "--deep");
+    }
+    atip_as_given(cwd, tmp, &words)
+}
+
+/// Runs `atip` with exactly `args` in `cwd`, its scratch space in `tmp`.
+pub fn atip_as_given(cwd: &Path, tmp: &Path, args: &[&str]) -> Output {
     let output = Command::new(ATIP)
         .args(args)
         .current_dir(cwd)
@@ -160,8 +170,17 @@ impl Harness {
         fixture
     }
 
-    /// `atip check --bin <fake tool> --level L0 --fixture <fixture> [--json]`, with `extra` arguments after.
+    /// `atip check --bin <fake tool> --level L0 --fixture <fixture> [--json]`, with `extra` arguments after: the full run (`--deep` is added).
     pub fn check_with(&self, fixture: &Value, json: bool, extra: &[&str]) -> Output {
+        self.run_check(fixture, json, extra, true)
+    }
+
+    /// The same in the default mode: `atip check` without `--deep`.
+    pub fn check_default(&self, fixture: &Value, json: bool) -> Output {
+        self.run_check(fixture, json, &[], false)
+    }
+
+    fn run_check(&self, fixture: &Value, json: bool, extra: &[&str], deep: bool) -> Output {
         let fixture_path = self.write("fixture.json", fixture);
         let mut args = vec![
             "check",
@@ -180,7 +199,11 @@ impl Harness {
         std::fs::create_dir_all(&work).expect("cwd");
         let tmp = self.path("tmp");
         std::fs::create_dir_all(&tmp).expect("tmp");
-        atip_in(&work, &tmp, &args)
+        if deep {
+            atip_in(&work, &tmp, &args)
+        } else {
+            atip_as_given(&work, &tmp, &args)
+        }
     }
 
     /// `atip check --bin <fake tool> --level L0 --fixture <fixture> [--json]`.

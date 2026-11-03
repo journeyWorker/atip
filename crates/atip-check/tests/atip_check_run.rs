@@ -269,6 +269,7 @@ fn atip_check_04_a_binary_that_does_not_exist_or_cannot_run_exits_2_with_binary_
     let found = std::process::Command::new(ATIP)
         .args([
             "check",
+            "--deep",
             "--bin",
             "atip-fake-tool",
             "--level",
@@ -1422,6 +1423,7 @@ fn atip_check_53_a_completed_run_leaves_the_working_directory_home_and_the_scrat
     let output = std::process::Command::new(ATIP)
         .args([
             "check",
+            "--deep",
             "--bin",
             FAKE_TOOL,
             "--level",
@@ -1456,6 +1458,7 @@ fn atip_check_53_a_completed_run_leaves_the_working_directory_home_and_the_scrat
     let failing = std::process::Command::new(ATIP)
         .args([
             "check",
+            "--deep",
             "--bin",
             FAKE_TOOL,
             "--level",
