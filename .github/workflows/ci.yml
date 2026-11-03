@@ -6,6 +6,7 @@ name: CI
 #   scripts/check_visibility.sh              no pub(super) / pub(in ..) in crate sources
 #   cargo fmt --check                        formatting
 #   cargo clippy --workspace -D warnings     lints (the lint set is [workspace.lints] in Cargo.toml)
+#   scripts/check_no_jsonschema.sh           cargo tree: `atip`'s default features and `atip-probe` pull no jsonschema
 #   cargo test --workspace                   the `atip` crate and the checker, with its fake tool
 #
 # The Rust toolchain is the one `rust-toolchain.toml` pins, installed with rustup (never a floating `stable`); the job fails
@@ -71,6 +72,9 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: scripts/check_no_jsonschema.sh
+        run: scripts/check_no_jsonschema.sh
 
       - name: cargo test --workspace
         run: cargo test --workspace --locked

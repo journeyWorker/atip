@@ -1,4 +1,4 @@
-# The atip/1 contract's Rust pieces: `atip` (the shared crate a tool links) and `atip-check` (the checker, `atip check`),
+# The atip/1 contract's Rust pieces: `atip` (the shared crate a tool links), `atip-check` (the checker, `atip check`) and `atip-probe` (unpublished: proves the default features link no JSON Schema validator),
 # next to the spec and its schemas. `scripts/regex-parity` is the cross-engine pattern check of the spec.
 #
 # Releases are tagged per crate and independently of the spec: `atip-crate-v0.x.y` and `atip-check-v0.x.y`.
@@ -8,6 +8,7 @@ resolver = "2"
 members = [
     "crates/atip",
     "crates/atip-check",
+    "crates/atip-probe",
     "scripts/regex-parity",
 ]
 
