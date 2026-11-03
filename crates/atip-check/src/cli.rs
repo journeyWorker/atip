@@ -8,6 +8,7 @@ use std::ffi::OsString;
 
 use crate::claim::MINORS;
 use crate::output::{Code, Failure};
+use crate::report::Mode;
 
 /// The levels the contract defines; each has checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,16 +34,18 @@ pub enum Command {
     Version,
     RootHelp,
     CheckHelp,
-    Check(CheckArgs),
+    /// A run of the checks: the arguments, and the mode (`--deep` makes it [`Mode::Deep`]).
+    Check(CheckArgs, Mode),
 }
 
 const COMMANDS: [&str; 1] = ["check"];
 const ROOT_OPTIONS: [&str; 3] = ["--json", "--version", "--help"];
-const CHECK_OPTIONS: [&str; 6] = [
+const CHECK_OPTIONS: [&str; 7] = [
     "--bin",
     "--level",
     "--fixture",
     "--contract",
+    "--deep",
     "--json",
     "--help",
 ];
@@ -50,7 +53,7 @@ const LEVELS: [&str; 3] = ["L0", "L1", "L2"];
 
 pub const ROOT_HELP: &str = "atip: run a built binary and check the atip/1 contract from outside
 
-Usage: atip check --bin <BINARY> --level <LEVEL> --fixture <FILE> [--contract <MAJOR.MINOR>] [--json]
+Usage: atip check --bin <BINARY> --level <LEVEL> --fixture <FILE> [--contract <MAJOR.MINOR>] [--deep] [--json]
 
 Commands:
   check    Run the checks of a level against a binary
@@ -63,14 +66,15 @@ Run atip check --help for the options of check.";
 
 pub const CHECK_HELP: &str = "atip check: run the checks of a level against a built binary
 
-Usage: atip check --bin <BINARY> --level <LEVEL> --fixture <FILE> [--contract <MAJOR.MINOR>] [--json]
+Usage: atip check --bin <BINARY> --level <LEVEL> --fixture <FILE> [--contract <MAJOR.MINOR>] [--deep] [--json]
 
 Options:
       --bin <BINARY>     The binary to check: a path, or a name found on PATH
-      --level <LEVEL>    The level the tool claims: L0, L1 or L2
+      --level <LEVEL>    The level the tool claims: L0, L1 or L2 (cumulative: L2 also runs the checks of L0 and L1)
       --fixture <FILE>   The tool's fixture file: JSON with contractVersion, prepare, setup, env, timeoutSeconds, probe, globalOptions, registry, warnings, commands (and, in commands, ok, refused, paged, missingValue, fields, domainRejects, batchFailsAt, batchFailsFirst, preview, async and allowedEffects), search and notRun (the ids of commands that do not end on their own, such as a server: each runs once, up to its first JSON document, and is then signalled)
       --contract <MAJOR.MINOR>
                          The contract minor the tool claims: 1.0, 1.1 or 1.2. Defaults to the fixture's contractVersion, and to 1.0
+      --deep             Run every check of the level, not only the interface checks (see Modes)
       --json             Print one JSON envelope on stdout instead of text
   -h, --help             Print help
 
@@ -82,7 +86,11 @@ Fixture keys of L2:
 
 allowedEffects glob: a path is relative to the working directory (a leading ./ is optional) or to HOME with a ~/ prefix; * matches any run of characters within one path segment (not /), ** matches across segments, ? one character but /, nothing else is special (no classes or braces); the whole path must match. Snapshots count files only: a directory, made to hold a changed file or left empty, is no effect (the file is judged).
 
-Every MUST check passing exits 0, a failed level exits 1 (LEVEL_NOT_MET), a refusal exits 2.";
+Modes:
+  default  The interface checks of the level: the envelope, the exit status, error codes and the registry, `next`, the shape of the `schema` document, one document in JSON mode, no prompt. About ten launches of the binary on one shared copy of the fixture state (the calls are read-only by construction). Its verdict reads `interface checks passed`, never that the level is met
+  --deep   Every check of the level, each call in a fresh copy of the state: the declarations against the behaviour (walk, constraints, domains, validators, check order, paging, input, batch, effects, destructive, notRun), the grammar probes and the run on a terminal. Hundreds of launches at L1, about a thousand at L2
+
+Every MUST check run passing exits 0, a failed check exits 1 (LEVEL_NOT_MET), a refusal exits 2.";
 
 /// Parses the arguments after the program name.
 pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
@@ -145,6 +153,7 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
     let mut fixture = None;
     let mut contract = None;
     let mut help = false;
+    let mut deep = false;
     let mut position = 0;
     while let Some(arg) = args.get(position) {
         let Some(word) = arg.to_str() else {
@@ -162,7 +171,13 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
         };
         match name {
             "--json" if inline.is_none() => {}
+            "--deep" if inline.is_none() => deep = true,
             "--help" | "-h" if inline.is_none() => help = true,
+            "--json" | "--deep" | "--help" => {
+                return Err(usage(format!("the option {name} takes no value"))
+                    .field(name)
+                    .received(inline.unwrap_or_default()))
+            }
             "--bin" | "--level" | "--fixture" | "--contract" => {
                 let value: OsString = match inline {
                     Some(value) => value.into(),
@@ -232,12 +247,16 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
             Some(given)
         }
     };
-    Ok(Command::Check(CheckArgs {
-        bin,
-        level,
-        fixture,
-        contract,
-    }))
+    let mode = if deep { Mode::Deep } else { Mode::Interface };
+    Ok(Command::Check(
+        CheckArgs {
+            bin,
+            level,
+            fixture,
+            contract,
+        },
+        mode,
+    ))
 }
 
 fn unexpected_operand(operand: &str) -> Failure {
@@ -305,6 +324,7 @@ mod tests {
 
     use super::{distance, parse, CheckArgs, Command, Level};
     use crate::output::Code;
+    use crate::report::Mode;
 
     fn args(words: &[&str]) -> Vec<OsString> {
         words.iter().map(OsString::from).collect()
@@ -317,12 +337,15 @@ mod tests {
 
     #[test]
     fn atip_check_06_a_complete_check_line_parses_with_either_option_spelling() {
-        let expected = Command::Check(CheckArgs {
-            bin: "target/x".into(),
-            level: Level::L0,
-            fixture: "f.json".into(),
-            contract: None,
-        });
+        let expected = Command::Check(
+            CheckArgs {
+                bin: "target/x".into(),
+                level: Level::L0,
+                fixture: "f.json".into(),
+                contract: None,
+            },
+            Mode::Interface,
+        );
         assert_eq!(
             parse(&args(&[
                 "check",
@@ -359,11 +382,39 @@ mod tests {
                 "f"
             ]))
             .ok(),
-            Some(Command::Check(CheckArgs {
-                level: Level::L2,
-                ..
-            }))
+            Some(Command::Check(
+                CheckArgs {
+                    level: Level::L2,
+                    ..
+                },
+                Mode::Interface
+            ))
         ));
+    }
+
+    #[test]
+    fn atip_check_deep_01_deep_is_a_flag_that_makes_the_run_deep_and_takes_no_value() {
+        fn line<'a>(extra: &[&'a str]) -> Vec<&'a str> {
+            let mut words = vec!["check", "--bin", "b", "--level", "L1", "--fixture", "f"];
+            words.extend(extra);
+            words
+        }
+        let mode = |extra: &[&str]| match parse(&args(&line(extra))) {
+            Ok(Command::Check(_, mode)) => mode,
+            other => panic!("not a check: {other:?}"),
+        };
+        assert_eq!(mode(&[]), Mode::Interface);
+        assert_eq!(mode(&["--deep"]), Mode::Deep);
+        assert_eq!(mode(&["--json", "--deep", "--deep"]), Mode::Deep);
+        assert_eq!(
+            code(&line(&["--deep=1"])),
+            (Code::Usage, Some("--deep".to_string()), Some("check"))
+        );
+        let failure = parse(&args(&line(&["--deeep"]))).expect_err("unknown");
+        assert_eq!(
+            (failure.field.as_deref(), failure.suggestions.as_slice()),
+            (Some("--deeep"), ["--deep".to_string()].as_slice())
+        );
     }
 
     #[test]

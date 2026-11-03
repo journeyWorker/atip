@@ -2,13 +2,14 @@
 //!
 //! The fixture's `setup` runs once into a template directory. Every
 //! invocation then gets its own copy of that template as its working
-//! directory, with `HOME` pointing into the copy, an environment of only
-//! `PATH`, `HOME`, `LANG=C.UTF-8` and the fixture's own variables (plus the
-//! call's, for the checks that vary the environment), stdin closed
-//! (`/dev/null`), and the fixture's time limit. A check that needs a terminal
-//! runs the binary with stdout on a pseudo-terminal. Telemetry opt-outs are
-//! never set: a write the tool does on its own is what the effects check must
-//! see.
+//! directory (the calls of the default mode, which are read-only by
+//! construction, share one copy: [`Runner::run_shared`]), with `HOME` pointing
+//! into the copy, an environment of only `PATH`, `HOME`, `LANG=C.UTF-8` and the
+//! fixture's own variables (plus the call's, for the checks that vary the
+//! environment), stdin closed (`/dev/null`), and the fixture's time limit. A
+//! check that needs a terminal runs the binary with stdout on a pseudo-terminal.
+//! Telemetry opt-outs are never set: a write the tool does on its own is what
+//! the effects check must see.
 
 use std::io::Read;
 use std::os::fd::AsFd;
@@ -210,6 +211,8 @@ pub struct Runner {
     fixture_env: Vec<(String, String)>,
     timeout: Duration,
     sequences: usize,
+    /// The number of the one sequence every [`Runner::run_shared`] call runs in, once the first has made it.
+    shared: Option<usize>,
     /// The probe command with `--json`: asked for the remote state after a refusal.
     probe: Option<Vec<String>>,
 }
@@ -239,6 +242,7 @@ impl Runner {
                 .collect(),
             timeout: fixture.timeout,
             sequences: 0,
+            shared: None,
             probe: fixture.probe.clone().map(|mut words| {
                 words.push("--json".to_string());
                 words
@@ -401,6 +405,32 @@ impl Runner {
             self.template_files.clone()
         };
         self.after_call(&mut outcome, &sequence, &before)?;
+        Ok(outcome)
+    }
+
+    /// Runs `call` in the one copy of the template that every `run_shared` call of this runner shares, made at the first one: the
+    /// calls of `atip check`'s default mode, which are read-only by construction (approaches/checker.md 3.1), so that they need one copy of the
+    /// fixture state and not one each. Nothing is measured: no changed paths, no probe after a refusal. `call` must be a plain call: not in
+    /// the empty state, without `setup`, served, or on a canonical-mode terminal (those need a copy of their own).
+    pub fn run_shared(&mut self, call: &Call) -> Result<Outcome, RunError> {
+        assert!(
+            !call.empty && !call.without_setup && !call.served && !call.terminal,
+            "a call that needs a copy of its own cannot run in the shared one: {:?}",
+            call.argv
+        );
+        let number = match self.shared {
+            Some(number) => number,
+            None => {
+                let (number, _) = self.sequence(false)?;
+                self.shared = Some(number);
+                number
+            }
+        };
+        let sequence = self.sequence_dir(number);
+        let mut outcome = self
+            .execute(call, &sequence)
+            .map_err(|error| RunError::Spawn(format!("{}: {error}", self.bin.display())))?;
+        outcome.sequence = number;
         Ok(outcome)
     }
 
@@ -1099,6 +1129,55 @@ mod tests {
             .expect("started");
         closer.join().expect("closer");
         assert_eq!(text(&outcome.stdout), "busy-then-free\n");
+    }
+
+    #[test]
+    fn atip_check_deep_02_shared_calls_run_in_one_copy_that_no_other_call_sees_and_nothing_is_measured(
+    ) {
+        let mut runner = Runner::new(
+            "/bin/sh".as_ref(),
+            &fixture(&[&["-c", "echo seed > seeded"]], Duration::from_secs(10)),
+        )
+        .expect("runner");
+        let first = runner
+            .run_shared(&sh(
+                "cat seeded; echo scribble >> seeded; echo x > \"$HOME/new\"; pwd",
+            ))
+            .expect("run");
+        let second = runner
+            .run_shared(&sh(
+                "cat seeded; test -e \"$HOME/new\" && echo has-new; pwd; exit 2",
+            ))
+            .expect("run");
+        let (first_text, second_text) = (text(&first.stdout), text(&second.stdout));
+        assert!(first_text.starts_with("seed\n"), "{first_text}");
+        assert!(
+            second_text.starts_with("seed\nscribble\nhas-new\n"),
+            "the second shared call did not see the first one's writes: {second_text}"
+        );
+        assert_eq!(first.sequence, second.sequence, "one copy");
+        assert_eq!(
+            first_text.lines().last(),
+            second_text.lines().nth(3),
+            "one working directory"
+        );
+        // A refusal is not measured and no probe follows it: the changed paths and the probe's answer are left empty.
+        assert_eq!(second.exit, Exit::Code(2));
+        assert!(second.changes.is_empty() && second.probe_after.is_none());
+        // A call of the other kind runs in a copy of its own, made from the template, and does not see the shared one.
+        let own = runner
+            .run(&sh("cat seeded; test ! -e \"$HOME/new\" && echo no-new"))
+            .expect("run");
+        assert_eq!(text(&own.stdout), "seed\nno-new\n");
+        assert_ne!(own.sequence, first.sequence);
+    }
+
+    #[test]
+    #[should_panic(expected = "needs a copy of its own")]
+    fn atip_check_deep_03_a_call_that_needs_a_copy_of_its_own_cannot_run_in_the_shared_one() {
+        let mut runner = Runner::new("/bin/sh".as_ref(), &fixture(&[], Duration::from_secs(10)))
+            .expect("runner");
+        let _outcome = runner.run_shared(&sh("true").on_terminal());
     }
 
     #[test]

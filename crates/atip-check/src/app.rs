@@ -10,7 +10,7 @@ use crate::cli::{self, CheckArgs, Command, CHECK_HELP, ROOT_HELP};
 use crate::exec::{RunError, Runner};
 use crate::fixture;
 use crate::output::{failure_line, failure_text, success_line, Code, Failure};
-use crate::report::Report;
+use crate::report::{Mode, Report};
 
 /// Runs `atip` with `args` (the words after the program name) and returns its exit status: 0, 1 or 2.
 pub fn main(args: &[OsString]) -> ExitCode {
@@ -69,8 +69,8 @@ fn execute(args: &[OsString]) -> Result<String, Failure> {
         Command::Version => Ok(format!("atip {}", env!("CARGO_PKG_VERSION"))),
         Command::RootHelp => Ok(ROOT_HELP.to_string()),
         Command::CheckHelp => Ok(CHECK_HELP.to_string()),
-        Command::Check(check) => {
-            let report = check_binary(&check)?;
+        Command::Check(check, mode) => {
+            let report = check_binary(&check, mode)?;
             if !report.passed {
                 return Err(level_not_met(&report).unwrap_or_else(|failure| failure));
             }
@@ -91,7 +91,8 @@ fn internal_error(error: impl std::fmt::Display) -> Failure {
         .hint("Report it at https://github.com/journeyWorker/atip/issues with the command line.")
 }
 
-/// The failed level: exit 1 with the check list in `data`; in text mode the same list follows the error line on stderr.
+/// The failed level (in interface mode, the failed interface checks): exit 1 with the check list in `data`; in text mode the same list follows the
+/// error line on stderr.
 fn level_not_met(report: &Report) -> Result<Failure, Failure> {
     let blocking: Vec<&str> = report
         .checks
@@ -100,22 +101,26 @@ fn level_not_met(report: &Report) -> Result<Failure, Failure> {
         .map(|check| check.id)
         .collect();
     let data = serde_json::to_value(report).map_err(internal_error)?;
-    Ok(Failure::new(Code::LevelNotMet, format!("{} is not met: {} MUST checks fail or are unprovided ({})", report.level, blocking.len(), blocking.join(", ")))
+    let verdict = match report.mode {
+        Mode::Deep => format!("{} is not met", report.level),
+        Mode::Interface => format!("the interface checks of {} failed", report.level),
+    };
+    Ok(Failure::new(Code::LevelNotMet, format!("{verdict}: {} MUST checks fail or are unprovided ({})", blocking.len(), blocking.join(", ")))
         .in_command("check")
         .hint("Fix every check whose result is fail or unprovided in data.checks, then run atip check again.")
         .with_data(data)
         .with_detail(report.text()))
 }
 
-/// Runs the checks of the claimed level against the binary.
-pub fn check_binary(args: &CheckArgs) -> Result<Report, Failure> {
-    check_binary_with(args, Mutation::none()).map(|judged| judged.report)
+/// Runs the checks of the claimed level against the binary: the interface checks, or with [`Mode::Deep`] every check of the level.
+pub fn check_binary(args: &CheckArgs, mode: Mode) -> Result<Report, Failure> {
+    check_binary_with(args, mode, Mutation::none()).map(|judged| judged.report)
 }
 
 /// What a test may do to a run: report checks as passed whatever they found, or treat single conditions as holding,
 /// to show that the test of each notices the missing check or condition (approaches/checker.md 7.2). Returns the
-/// report and the id of every condition the run judged. Not part of the checker's interface: only with the
-/// `test-support` feature.
+/// report and the id of every condition the run judged. The run is deep: every check of the level, each call in a
+/// fresh copy of the state. Not part of the checker's interface: only with the `test-support` feature.
 #[cfg(feature = "test-support")]
 pub fn check_binary_mutated(
     args: &CheckArgs,
@@ -124,6 +129,7 @@ pub fn check_binary_mutated(
 ) -> Result<(Report, std::collections::BTreeSet<String>), Failure> {
     check_binary_with(
         args,
+        Mode::Deep,
         Mutation {
             forced_pass,
             skipped_conditions,
@@ -132,7 +138,11 @@ pub fn check_binary_mutated(
     .map(|judged| (judged.report, judged.conditions))
 }
 
-fn check_binary_with(args: &CheckArgs, mutation: Mutation<'_>) -> Result<Judged, Failure> {
+fn check_binary_with(
+    args: &CheckArgs,
+    mode: Mode,
+    mutation: Mutation<'_>,
+) -> Result<Judged, Failure> {
     let refuse = |code: Code, message: String, field: &str| {
         Failure::new(code, message).in_command("check").field(field)
     };
@@ -193,7 +203,7 @@ fn check_binary_with(args: &CheckArgs, mutation: Mutation<'_>) -> Result<Judged,
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    run_checks(runner, &fixture, claim, &name, mutation, args.level).map_err(from_run)
+    run_checks(runner, &fixture, claim, &name, mutation, args.level, mode).map_err(from_run)
 }
 
 /// The binary as an absolute path: a path as given, a bare name found on `PATH`; it must be an executable file.

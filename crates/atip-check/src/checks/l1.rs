@@ -273,49 +273,43 @@ impl<'a> Judge<'a> {
         documents::schema_doc_problems(document, self.claim)
     }
 
-    /// The findings of the 30 checks, in table order.
-    pub(crate) fn l1_findings(&'a self) -> Vec<Finding> {
-        let mut findings = vec![
-            self.l1_tree(),
-            self.l1_no_state(),
-            self.l1_walk(),
-            self.l1_quoted_path(),
-            self.l1_schema_errors(),
-            self.l1_registry(),
-            self.l1_reasons(),
-            self.l1_reasons_reserved(),
-            self.l1_warnings(),
-            self.l1_reserved_applicable(),
-            self.l1_codes_known(),
-            self.l1_groups_not_runnable(),
-            self.l1_grammar(),
-            self.l1_depth(),
-            self.l1_one_meaning(),
-            self.l1_one_meaning_values(),
-            self.l1_examples(),
-            self.l1_example_runs(),
-            self.l1_constraints(),
-            self.l1_domains(),
-            self.l1_patterns(),
-            self.l1_numbers(),
-            self.l1_validators(),
-            self.l1_output_data(),
-            self.l1_next(),
-            self.l1_hint_command(),
-            self.l1_help_line(),
-            self.l1_defaults(),
-            self.l1_deterministic(),
-            self.l1_paging(),
-            self.l1_fields(),
-        ];
-        if self.claim.at_least(Claim::V1_2) {
-            let at = ids()
-                .iter()
-                .position(|id| *id == "L1.validators")
-                .map_or(findings.len(), |at| at + 1);
-            findings.insert(at, self.l1_check_order());
+    /// The finding of the L1 check `id` of the table.
+    pub(crate) fn l1_finding(&'a self, id: &str) -> Finding {
+        match id {
+            "L1.tree" => self.l1_tree(),
+            "L1.no-state" => self.l1_no_state(),
+            "L1.walk" => self.l1_walk(),
+            "L1.quoted-path" => self.l1_quoted_path(),
+            "L1.schema-errors" => self.l1_schema_errors(),
+            "L1.registry" => self.l1_registry(),
+            "L1.reasons" => self.l1_reasons(),
+            "L1.reasons-reserved" => self.l1_reasons_reserved(),
+            "L1.warnings" => self.l1_warnings(),
+            "L1.reserved-applicable" => self.l1_reserved_applicable(),
+            "L1.codes-known" => self.l1_codes_known(),
+            "L1.groups-not-runnable" => self.l1_groups_not_runnable(),
+            "L1.grammar" => self.l1_grammar(),
+            "L1.depth" => self.l1_depth(),
+            "L1.one-meaning" => self.l1_one_meaning(),
+            "L1.one-meaning-values" => self.l1_one_meaning_values(),
+            "L1.examples" => self.l1_examples(),
+            "L1.example-runs" => self.l1_example_runs(),
+            "L1.constraints" => self.l1_constraints(),
+            "L1.domains" => self.l1_domains(),
+            "L1.patterns" => self.l1_patterns(),
+            "L1.numbers" => self.l1_numbers(),
+            "L1.validators" => self.l1_validators(),
+            "L1.check-order" => self.l1_check_order(),
+            "L1.output-data" => self.l1_output_data(),
+            "L1.next" => self.l1_next(),
+            "L1.hint-command" => self.l1_hint_command(),
+            "L1.help-line" => self.l1_help_line(),
+            "L1.defaults" => self.l1_defaults(),
+            "L1.deterministic" => self.l1_deterministic(),
+            "L1.paging" => self.l1_paging(),
+            "L1.fields" => self.l1_fields(),
+            _ => panic!("{id} is not in the L1 table"),
         }
-        findings
     }
 
     /// `L1.check-order` (spec 11.7 step 6, a claim of 1.2): a passing invocation changed to break two stages at once is answered by the earlier
