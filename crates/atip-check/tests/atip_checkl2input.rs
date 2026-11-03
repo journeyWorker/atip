@@ -713,6 +713,23 @@ fn atip_checkl2input_07_a_finer_replacement_of_usage_names_an_argument_and_a_fie
 }
 
 #[test]
+fn atip_checkl2input_07b_a_code_a_constraint_or_a_validator_declares_replaces_usage_when_its_field_names_an_argument(
+) {
+    // The replacement of `USAGE` is any registered exit-2 code with an argument `field`: the codes a command document declares on a constraint
+    // (`SORT_CONFLICT`) or a validator (`DATE_INVALID`) are not excluded.
+    for code in ["SORT_CONFLICT", "DATE_INVALID"] {
+        let output = run_with(&l2_config(&json!({"inputUsageCode": code})), &ENV_WRITES);
+        let document = output.envelope();
+        assert_eq!(
+            check_of(&document["data"], "L2.input-usage")["result"],
+            "pass",
+            "{code}: {}",
+            not_passing(&document["data"])
+        );
+    }
+}
+
+#[test]
 fn atip_checkl2input_09_a_value_that_varies_between_two_runs_of_the_reference_is_not_compared_and_the_rest_of_data_still_is(
 ) {
     // `record put` prints a label with the nanoseconds of the run: the reference run twice on fresh state differs there, so /data/label is varying.

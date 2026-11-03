@@ -1229,3 +1229,35 @@ fn atip_checkl1_03_a_tree_above_the_claim_meets_it_and_says_the_higher_claim_was
         "{tree}"
     );
 }
+
+#[test]
+fn atip_checkl1_domains_a_refusal_of_an_in_domain_value_counts_only_with_the_domains_refusal_code()
+{
+    // `--min-score 0` is inside the domain; the seeded tool refuses it on the bound (`strictBounds`) with the code `domainCode`.
+    // `USAGE` and a registered replacement that names the option are the domain's refusal: `L1.domains` fails. The code of a declared validator
+    // (`DATE_INVALID`) with that field says the value passed the domain and was refused for another reason: undecided, a note and no failure.
+    let strict = |code: &str| {
+        run_config(&l1_config(&json!({
+            "strictBounds": {"member search": ["min-score"]},
+            "domainCode": code,
+        })))
+    };
+    for code in ["USAGE", "SORT_CONFLICT"] {
+        let output = strict(code);
+        let document = output.envelope();
+        let check = check_of(&document["data"], "L1.domains");
+        assert_eq!(check["result"], "fail", "{code}: {check}");
+        assert!(
+            check["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("inside the domain"),
+            "{code}: {check}"
+        );
+    }
+    let output = strict("DATE_INVALID");
+    let document = output.envelope();
+    let check = check_of(&document["data"], "L1.domains");
+    assert_eq!(check["result"], "pass", "{check}");
+    assert!(check["notes"].to_string().contains("undecided"), "{check}");
+}
