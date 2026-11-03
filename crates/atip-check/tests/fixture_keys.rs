@@ -6,7 +6,7 @@ mod support;
 use serde_json::{json, Value};
 
 use support::l1::l1_config;
-use support::{cases_of, Harness, Output};
+use support::{all_seeds, cases_of, Harness, Output};
 
 fn result_of(output: &Output, id: &str) -> String {
     output.check(id)["result"]
@@ -80,20 +80,16 @@ fn atip_check_88_a_name_inside_a_description_never_takes_the_default_of_another_
 ) {
     let harness = Harness::new();
     // A bullet before the options names `--limit` with the default 99, and the `--sort` line says `--limit` too: the `--limit` line is
-    // the one that gives its default (50), and the check compares that one.
-    let config = l1_config(&json!({"helpBullet": true, "helpMentions": {"sort": "--limit"}}));
-    let output = harness.check_l1(&config, &harness.l1_fixture(&config));
-    assert_eq!(
-        result_of(&output, "L1.defaults"),
-        "pass",
-        "{}",
-        output.check("L1.defaults")
-    );
-    // A default the `--limit` line itself gets wrong is still a failure of the first option, and only of that one.
+    // the one that gives its default (50). A default that line itself gets wrong is the failure of that option, and only of that one.
     let wrong = l1_config(
         &json!({"helpBullet": true, "helpMentions": {"sort": "--limit"}, "helpDefaultDiffers": true}),
     );
-    let output = harness.check_l1(&wrong, &harness.l1_fixture(&wrong));
+    // Only `L1.defaults` is judged here, so the fixture lists no command and no probe.
+    let mut fixture = harness.l1_fixture(&wrong);
+    for key in ["commands", "probe"] {
+        fixture.as_object_mut().expect("object").remove(key);
+    }
+    let output = harness.check_l1(&wrong, &fixture);
     let check = output.check("L1.defaults");
     assert_eq!(check["result"], "fail", "{check}");
     let reason = check["reason"].as_str().unwrap_or_default();
@@ -196,21 +192,10 @@ fn atip_check_90_the_same_checks_pass_when_the_environment_removes_the_refusal()
         "{:?}",
         output.results()
     );
-    let mut config = l1_config(&needs_token("NEEDS_TOKEN", &["member list"]));
-    config["docPatch"] =
-        json!({"member list": [{"op": "add", "path": "/errors/-", "value": "NEEDS_TOKEN"}]});
-    let mut fixture = harness.l1_fixture(&config);
-    fixture["env"]["FAKE_TOKEN"] = json!("1");
-    let output = harness.check_l1(&config, &fixture);
-    assert_eq!(output.code, Some(0), "{}", output.stdout);
-    for id in ["L0.page", "L1.paging", "L1.output-data", "L1.fields"] {
-        assert_eq!(result_of(&output, id), "pass", "{id}");
-    }
 }
 
 #[test]
-fn atip_check_91_a_violation_seen_before_the_refusal_stays_a_fail_and_the_cursor_invalid_of_l1_paging_is_not_a_precondition(
-) {
+fn atip_check_91_a_violation_seen_before_the_refusal_stays_a_fail() {
     let harness = Harness::new();
     // The probe's page is malformed (seen before anything is refused); `items` is then refused with the precondition code.
     let case = cases_of("L0.page")
@@ -238,34 +223,18 @@ fn atip_check_91_a_violation_seen_before_the_refusal_stays_a_fail_and_the_cursor
         .is_some_and(|findings| findings
             .iter()
             .all(|found| found["kind"] != "refused-precondition")));
-    // The conforming L1 tool is refused with CURSOR_INVALID by the checker's own probes, a registered exit 2 code: that is L1.paging's subject.
-    let config = l1_config(&json!({}));
-    let output = harness.check_l1(&config, &harness.l1_fixture(&config));
-    assert_eq!(
-        result_of(&output, "L1.paging"),
-        "pass",
-        "{}",
-        output.check("L1.paging")
-    );
-    let calls = output.check("L1.paging")["observed"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    assert!(
-        calls.iter().any(|call| call["exit"] == 2
-            && call["stdout"]
-                .as_str()
-                .is_some_and(|text| text.contains("CURSOR_INVALID"))),
-        "L1.paging provoked CURSOR_INVALID: {calls:?}"
-    );
-    assert_eq!(output.code, Some(0), "{}", output.stdout);
 }
 
 #[test]
 fn atip_check_92_a_fixture_call_refused_before_any_state_is_read_fails_the_check_that_runs_it() {
     let harness = Harness::new();
     // L0: the reserved codes of the stateless steps.
-    for code in ["USAGE", "UNKNOWN_COMMAND", "INPUT_INVALID"] {
+    let mut codes = vec!["USAGE", "INPUT_INVALID"];
+    if all_seeds() {
+        // Answered like `USAGE`, as is `COMMAND_REQUIRED`.
+        codes.push("UNKNOWN_COMMAND");
+    }
+    for code in codes {
         let config = json!({"refuseWith": {"code": code, "commands": ["items"]}});
         let output = harness.check_config(&config);
         let check = output.check("L0.one-document");

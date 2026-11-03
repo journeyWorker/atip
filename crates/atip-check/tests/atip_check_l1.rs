@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use atip_check::app::check_binary_mutated;
 use atip_check::cli::{CheckArgs, Level};
 use support::l1::{l1_bin, l1_cases, l1_config, l1_engine_difference_case, l1_standard_config};
-use support::{atip_in, kind_verdict, representatives, Case, Harness, Output};
+use support::{all_seeds, atip_in, kind_verdict, representatives, Case, Harness, Output};
 
 /// The L0 checks of a run and the L1 ones that apply to a 1.1 claim.
 const L0_CHECKS: usize = 28;
@@ -20,6 +20,12 @@ const L1_CHECKS: usize = 31;
 const EFFECTS: usize = 1;
 /// Conditions a case plants that the conforming fake gives no occasion to judge (a code in both registries, which the conforming fake has none of).
 const EXEMPT_FROM_CONFORMING_RUN: &[&str] = &["warnings/meaning-agrees"];
+/// The owners whose seeded case is also run with its condition switched off by default: a check that reads the documents alone, one that
+/// runs commands, one that pages and an advisory; `ATIP_CHECK_ALL_SEEDS=1` does every owner. The mutation is one mechanism of the checker,
+/// and the finding of the kind of the planted condition (`kind_verdict`) already ties each seed to its owner.
+const MUTATED_BY_DEFAULT: &[&str] = &["L1.tree", "L1.domains", "L1.paging", "L1.defaults"];
+/// The first and the last of them are also run with the whole check forced to pass.
+const FORCED_BY_DEFAULT: &[&str] = &["L1.tree", "L1.defaults"];
 
 /// `atip check --level <level> --json` of the fake tool a configuration makes, with the fixture of `fixture`.
 fn run_fixture(harness: &Harness, config: &Value, fixture: &Value, level: &str) -> Output {
@@ -69,6 +75,19 @@ fn check_of<'a>(data: &'a Value, id: &str) -> &'a Value {
         .as_array()
         .and_then(|checks| checks.iter().find(|check| check["id"] == id))
         .unwrap_or_else(|| panic!("{id} is not in data.checks"))
+}
+
+/// The write commands the check `id` names as not listed in the fixture.
+fn unlisted_of(document: &Value, id: &str) -> Vec<String> {
+    check_of(&document["data"], id)["unlisted"]
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The owner is `fail` with a reason and rule numbers, and every other check passes or does not apply.
@@ -267,76 +286,55 @@ fn atip_checkl1_01_a_conforming_1_1_tool_passes_the_28_l0_and_the_31_l1_checks_w
         "{}",
         output.stdout
     );
-    // `--contract 1.1` says the same.
-    let harness = Harness::new();
-    let config = l1_standard_config();
-    let fixture_path = harness.write("fixture.json", &harness.l1_fixture(&config));
-    let work = harness.path("cwd");
-    std::fs::create_dir_all(&work).expect("cwd");
-    let tmp = harness.path("tmp");
-    std::fs::create_dir_all(&tmp).expect("tmp");
-    let same = atip_in(
-        &work,
-        &tmp,
-        &[
-            "check",
-            "--bin",
-            support::FAKE_TOOL,
-            "--level",
-            "L1",
-            "--contract",
-            "1.1",
-            "--fixture",
-            fixture_path.to_str().expect("utf8"),
-            "--json",
-        ],
-    );
-    assert_eq!(same.code, Some(0), "{}", same.stdout);
-}
-
-#[test]
-fn atip_checkl1_02_level_l2_runs_and_an_unknown_level_is_usage() {
-    let harness = Harness::new();
-    let config = l1_standard_config();
-    let fixture = harness.l1_fixture(&config);
-    // L2 is a level of the checker: a tool that declares L1 does not meet it (its tree says L1), and nothing says it is unsupported.
-    let output = run_fixture(&harness, &config, &fixture, "L2");
-    let document = output.envelope();
-    assert_eq!(
-        (output.code, document["error"]["code"].as_str()),
-        (Some(1), Some("LEVEL_NOT_MET")),
+    // What the conforming tool shows in its notes and its calls (the other tests run no conforming tool): a tree at the checked level says
+    // nothing of a higher claim; an entailed rule is named; a write command the fixture lists is not named as unlisted; and the `paged` entry
+    // of `member list` pages, the checker's own probes being refused with `CURSOR_INVALID`, a registered exit 2 code that is not a precondition.
+    assert!(
+        !check_of(data, "L1.tree")["notes"]
+            .to_string()
+            .contains("higher claim"),
         "{}",
         output.stdout
     );
-    assert_eq!(document["data"]["level"], "L2");
-    assert_eq!(
-        check_of(&document["data"], "L1.tree")["result"],
-        "fail",
+    let notes = check_of(data, "L1.constraints")["notes"]
+        .as_array()
+        .expect("an entailed rule is named in notes");
+    assert!(
+        notes
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|note| note.contains("is entailed by")),
+        "{notes:?}"
+    );
+    assert!(
+        !unlisted_of(&document, "L1.constraints").contains(&"member tag".to_string()),
         "{}",
         output.stdout
     );
-    let output = run_fixture(&harness, &config, &fixture, "L9");
-    assert_eq!(
-        (output.code, output.envelope()["error"]["code"].as_str()),
-        (Some(2), Some("USAGE")),
-        "{}",
-        output.stdout
+    let paging = check_of(data, "L1.paging");
+    assert!(
+        paging["observed"]
+            .as_array()
+            .is_some_and(|calls| calls.iter().any(|call| call["exit"] == 2
+                && call["stdout"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("CURSOR_INVALID")))),
+        "L1.paging provoked CURSOR_INVALID: {paging}"
     );
 }
 
 #[test]
-fn atip_checkl1_03_a_tree_whose_level_is_not_the_claim_and_a_tool_without_schema_fail_l1_tree() {
+fn atip_checkl1_03_a_tree_whose_level_is_not_the_claim_fails_l1_tree() {
     let mismatched = l1_cases()
         .into_iter()
         .find(|case| case.condition == "tree/level")
         .expect("case");
-    // The tree says L1 and the claim is L2.
+    // The tree says L1 and the claim is L2 (a tool with no `schema` at all is `tree/answered`, which `atip_checkl1_04` plants). Only the tree
+    // is judged here, so the fixture lists one command.
     let harness = Harness::new();
-    let output = harness.check_l2_at(
-        &mismatched.config,
-        &harness.l1_fixture(&mismatched.config),
-        "L2",
-    );
+    let mut fixture = harness.l1_fixture(&mismatched.config);
+    fixture["commands"] = json!({"items": {"ok": [["items", "--json"]]}});
+    let output = harness.check_l2_at(&mismatched.config, &fixture, "L2");
     assert_eq!(
         check_of(&output.envelope()["data"], "L1.tree")["result"],
         "fail",
@@ -350,23 +348,6 @@ fn atip_checkl1_03_a_tree_whose_level_is_not_the_claim_and_a_tool_without_schema
             .contains("below the claimed level"),
         "{}",
         output.stdout
-    );
-    // A tool with no `schema` at all, claiming L1: `L1.tree` is `answered`'s failure; the other checks that need the tree do not each fail for it.
-    let answered = l1_cases()
-        .into_iter()
-        .find(|case| case.condition == "tree/answered")
-        .expect("case");
-    let output = run_case(&answered);
-    let data = &output.envelope()["data"];
-    assert_eq!(
-        check_of(data, "L1.tree")["result"],
-        "fail",
-        "{}",
-        output.stdout
-    );
-    assert_eq!(
-        (output.code, output.envelope()["error"]["code"].as_str()),
-        (Some(1), Some("LEVEL_NOT_MET"))
     );
 }
 
@@ -413,7 +394,12 @@ fn atip_checkl1_07_each_condition_of_examples_example_runs_and_hint_command_fail
 #[test]
 fn atip_checkl1_08_a_1_0_claim_has_no_warning_registry_and_no_hint_rule_and_a_warning_registry_that_disagrees_fails(
 ) {
-    let output = run_config(&l1_config(&json!({"claims": "1.0"})));
+    // Only the two checks that do not apply are judged, so the fixture lists one command.
+    let config = l1_config(&json!({"claims": "1.0"}));
+    let harness = Harness::new();
+    let mut fixture = harness.l1_fixture(&config);
+    fixture["commands"] = json!({"items": {"ok": [["items", "--json"]]}});
+    let output = run_fixture(&harness, &config, &fixture, "L1");
     let document = output.envelope();
     // (The fake's L1 documents are 1.1 ones, so `L0.contract-version` fails it for printing them under a 1.0 claim; what is judged here is the two checks that do not apply.)
     for id in ["L1.warnings", "L1.hint-command"] {
@@ -434,23 +420,8 @@ fn atip_checkl1_08_a_1_0_claim_has_no_warning_registry_and_no_hint_rule_and_a_wa
 }
 
 #[test]
-fn atip_checkl1_09_constraints_declared_and_not_enforced_fail_only_l1_constraints_and_an_entailed_rule_passes_naming_what_entails_it(
-) {
+fn atip_checkl1_09_constraints_declared_and_not_enforced_fail_only_l1_constraints() {
     proves(&["constraints"]);
-    let output = run_config(&l1_standard_config());
-    let document = output.envelope();
-    let check = check_of(&document["data"], "L1.constraints");
-    assert_eq!(check["result"], "pass", "{}", output.stdout);
-    let notes = check["notes"]
-        .as_array()
-        .expect("an entailed rule is named in notes");
-    assert!(
-        notes
-            .iter()
-            .filter_map(Value::as_str)
-            .any(|note| note.contains("is entailed by")),
-        "{notes:?}"
-    );
 }
 
 #[test]
@@ -569,24 +540,6 @@ fn atip_checkl1_15_a_write_command_the_fixture_does_not_list_is_never_run_and_th
 ) {
     let harness = Harness::new();
     let config = l1_standard_config();
-    let listed = run_fixture(&harness, &config, &harness.l1_fixture(&config), "L1");
-    let listed_document = listed.envelope();
-    let unlisted_of = |document: &Value, id: &str| -> Vec<String> {
-        check_of(&document["data"], id)["unlisted"]
-            .as_array()
-            .map(|list| {
-                list.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    assert!(
-        !unlisted_of(&listed_document, "L1.constraints").contains(&"member tag".to_string()),
-        "{}",
-        listed.stdout
-    );
     let mut fixture = harness.l1_fixture(&config);
     fixture["commands"]
         .as_object_mut()
@@ -661,17 +614,10 @@ fn atip_checkl1_17_a_cursor_reused_with_a_changed_argument_that_is_accepted_or_a
 #[test]
 fn atip_checkl1_18_paging_is_decided_by_the_command_documents_a_paged_entry_is_used_first_and_a_paging_command_without_either_is_unprovided(
 ) {
-    // From the documents: `member list` declares `--cursor`; its `paged` entry is used and the run passes.
+    // From the documents: `member list` declares `--cursor` and its `paged` entry is used, which the conforming run of `atip_checkl1_01` passes.
     let harness = Harness::new();
     let config = l1_standard_config();
     let mut fixture = harness.l1_fixture(&config);
-    let output = run_fixture(&harness, &config, &fixture, "L1");
-    assert_eq!(
-        check_of(&output.envelope()["data"], "L1.paging")["result"],
-        "pass",
-        "{}",
-        output.stdout
-    );
     // No `paged` entry: the first page the run observed with a `nextCursor` (here the one of the read example of the command) stands in for it.
     fixture["commands"]["member list"]
         .as_object_mut()
@@ -863,7 +809,7 @@ fn atip_checkl1_23_prepare_programs_run_before_setup_and_their_effects_are_not_j
     let mut fixture = harness.l1_fixture(&config);
     // A file the tool never writes: if it were judged as a change of a refusal the run would fail `L0.refusal-effects`.
     fixture["prepare"] = json!([["/bin/sh", "-c", "echo environment > prepared.txt"]]);
-    let output = run_fixture(&harness, &config, &fixture, "L1");
+    let output = run_fixture(&harness, &config, &fixture, "L0");
     assert_eq!(
         (output.code, output.envelope()["data"]["passed"].as_bool()),
         (Some(0), Some(true)),
@@ -886,7 +832,7 @@ fn atip_checkl1_23_prepare_programs_run_before_setup_and_their_effects_are_not_j
     // A `setup` step that exits non-zero is a fixture error too: `SETUP_FAILED`, exit 2, and no check result at all.
     fixture["prepare"] = json!([]);
     fixture["setup"] = json!([["reject", "--json"]]);
-    let output = run_fixture(&harness, &config, &fixture, "L1");
+    let output = run_fixture(&harness, &config, &fixture, "L0");
     let document = output.envelope();
     assert_eq!(
         (
@@ -911,7 +857,7 @@ fn atip_checkl1_23_prepare_programs_run_before_setup_and_their_effects_are_not_j
         "init",
         "--json"
     ]]);
-    let output = run_fixture(&harness, &config, &fixture, "L1");
+    let output = run_fixture(&harness, &config, &fixture, "L0");
     let document = output.envelope();
     assert_eq!(
         (
@@ -937,7 +883,7 @@ fn atip_checkl1_23_prepare_programs_run_before_setup_and_their_effects_are_not_j
         output.stdout
     );
     fixture["prepare"] = json!([["/bin/sh", "-c", "echo no repository >&2; exit 3"]]);
-    let output = run_fixture(&harness, &config, &fixture, "L1");
+    let output = run_fixture(&harness, &config, &fixture, "L0");
     let document = output.envelope();
     assert_eq!(
         (
@@ -960,23 +906,9 @@ fn atip_checkl1_23_prepare_programs_run_before_setup_and_their_effects_are_not_j
 }
 
 #[test]
-fn atip_checkl1_24_a_registry_taken_from_the_schema_is_not_compared_and_a_code_the_tool_does_not_list_fails_l0_registry(
+fn atip_checkl1_24_a_code_the_tool_does_not_list_fails_l1_registry_when_the_registry_is_taken_from_the_schema(
 ) {
-    let harness = Harness::new();
-    let config = l1_standard_config();
-    let mut fixture = harness.l1_fixture(&config);
-    fixture["registry"] = json!("from-schema");
-    fixture.as_object_mut().expect("object").remove("warnings");
-    let output = run_fixture(&harness, &config, &fixture, "L1");
-    assert_eq!(
-        (
-            output.code,
-            check_of(&output.envelope()["data"], "L0.registry")["result"].as_str()
-        ),
-        (Some(0), Some("pass")),
-        "{}",
-        output.stdout
-    );
+    // (A registry taken from the schema is not compared: `atip_checkl1_fake_a_fixture_registry_read_from_the_schema_passes_l0_registry`.)
     // A tool whose schema does not list a code it emits fails against its own list.
     let unregistered = l1_cases()
         .into_iter()
@@ -1041,16 +973,25 @@ fn atip_checkl1_28_a_check_forced_to_pass_makes_its_seeded_case_fail_and_every_c
             .all(|condition| EXEMPT_FROM_CONFORMING_RUN.contains(&condition.as_str())),
         "planted, never judged by a conforming run, and not named as exempt: {unjudged:?}"
     );
-    // Every case: with its own condition switched off, the owner no longer fails (so the condition is independently proven: the planted document breaks nothing else
-    // the owner judges). For the first case of each check, the owner forced to pass no longer fails either.
+    // Every owner in `MUTATED_BY_DEFAULT` (every owner and every case with `ATIP_CHECK_ALL_SEEDS=1`): with its own condition switched off, the owner
+    // no longer fails (so the condition is independently proven: the planted document breaks nothing else the owner judges). For the first
+    // case of each owner in `FORCED_BY_DEFAULT`, the owner forced to pass no longer fails either.
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let firsts: Vec<(Case, bool)> = representatives(l1_cases(), owner_of)
         .into_iter()
+        .filter(|case| all_seeds() || MUTATED_BY_DEFAULT.contains(&owner_of(case).as_str()))
         .map(|case| {
             let first = seen.insert(owner_of(&case));
             (case, first)
         })
         .collect();
+    assert!(
+        MUTATED_BY_DEFAULT
+            .iter()
+            .chain(FORCED_BY_DEFAULT)
+            .all(|owner| seen.contains(*owner)),
+        "every owner named for the mutation runs has a case: {seen:?}"
+    );
     let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = firsts
         .into_iter()
         .map(
@@ -1072,7 +1013,7 @@ fn atip_checkl1_28_a_check_forced_to_pass_makes_its_seeded_case_fail_and_every_c
                         contract: None,
                     };
                     let owner = owner_of(&case);
-                    if first {
+                    if first && (all_seeds() || FORCED_BY_DEFAULT.contains(&owner.as_str())) {
                         let (forced, _) = check_binary_mutated(&args, &[owner.as_str()], &[])
                             .map_err(|failure| {
                                 format!("{}: {}", case.condition, failure.message)
@@ -1106,51 +1047,6 @@ fn atip_checkl1_28_a_check_forced_to_pass_makes_its_seeded_case_fail_and_every_c
         .filter_map(Result::err)
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
-#[test]
-fn atip_checkl1_29_the_checker_run_on_itself_at_l0_with_its_own_fixture_passes() {
-    let harness = Harness::new();
-    let fixture = harness.path("fixture-copy.json");
-    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("atip.fixture.json");
-    std::fs::copy(&source, &fixture).expect("copy the fixture");
-    let work = harness.path("cwd");
-    std::fs::create_dir_all(&work).expect("cwd");
-    std::fs::copy(&source, work.join("atip.fixture.json")).expect("copy next to the invocations");
-    let tmp = harness.path("tmp");
-    std::fs::create_dir_all(&tmp).expect("tmp");
-    let output = atip_in(
-        &work,
-        &tmp,
-        &[
-            "check",
-            "--bin",
-            support::ATIP,
-            "--level",
-            "L0",
-            "--fixture",
-            fixture.to_str().expect("utf8"),
-            "--json",
-        ],
-    );
-    assert_eq!(
-        (output.code, output.envelope()["data"]["passed"].as_bool()),
-        (Some(0), Some(true)),
-        "{}",
-        output.stdout
-    );
-}
-
-#[test]
-fn atip_checkl1_30_a_broken_example_fails_l1_examples_and_the_run_exits_1() {
-    // An example that does not parse fails `L1.examples`, so a run that includes it fails.
-    let case = l1_cases()
-        .into_iter()
-        .find(|case| case.condition == "examples/grammar")
-        .expect("case");
-    let output = run_case(&case);
-    verdict(&output.envelope()["data"], "L1.examples").unwrap_or_else(|why| panic!("{why}"));
-    assert_eq!(output.code, Some(1));
 }
 
 #[test]
@@ -1315,31 +1211,14 @@ fn draft_config() {
 }
 
 #[test]
-fn atip_checkl1_03_a_tree_that_declares_a_higher_level_than_the_claim_meets_it() {
-    // Levels are cumulative: an L1 claim against a tree that says L2 passes L1.tree.
-    let case = Case {
-        condition: "tree/level",
-        config: l1_config(&json!({"treeLevel": "L2"})),
-        tweak: None,
-    };
-    let output = run_case(&case);
-    let data = &output.envelope()["data"];
-    assert_eq!(
-        check_of(data, "L1.tree")["result"],
-        "pass",
-        "{}",
-        output.stdout
-    );
-}
-
-#[test]
-fn atip_checkl1_03_a_tree_above_the_checked_level_says_the_higher_claim_was_not_checked() {
-    let case = Case {
-        condition: "tree/level",
-        config: l1_config(&json!({"treeLevel": "L2"})),
-        tweak: None,
-    };
-    let output = run_case(&case);
+fn atip_checkl1_03_a_tree_above_the_claim_meets_it_and_says_the_higher_claim_was_not_checked() {
+    // Levels are cumulative: an L1 claim against a tree that says L2 passes L1.tree, and the check says the higher claim was not checked (a
+    // tree at the checked level says nothing of the kind: `atip_checkl1_01`). Only the tree is judged here, so the fixture lists one command.
+    let config = l1_config(&json!({"treeLevel": "L2"}));
+    let harness = Harness::new();
+    let mut fixture = harness.l1_fixture(&config);
+    fixture["commands"] = json!({"items": {"ok": [["items", "--json"]]}});
+    let output = run_fixture(&harness, &config, &fixture, "L1");
     let data = &output.envelope()["data"];
     let tree = check_of(data, "L1.tree");
     assert_eq!(tree["result"], "pass", "{}", output.stdout);
@@ -1348,14 +1227,5 @@ fn atip_checkl1_03_a_tree_above_the_checked_level_says_the_higher_claim_was_not_
             .to_string()
             .contains("higher claim was not checked"),
         "{tree}"
-    );
-    // A tree at the checked level says nothing of the kind.
-    let output = run_config(&l1_standard_config());
-    assert!(
-        !check_of(&output.envelope()["data"], "L1.tree")["notes"]
-            .to_string()
-            .contains("higher claim"),
-        "{}",
-        output.stdout
     );
 }

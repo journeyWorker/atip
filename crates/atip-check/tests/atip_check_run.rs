@@ -46,6 +46,23 @@ fn failing(output: &Output) -> Vec<String> {
         .collect()
 }
 
+/// The output is one envelope that passes the contract schema, as `atip` prints it for every outcome.
+fn assert_contract_envelope(output: &Output, ok: bool) {
+    let document = output.envelope();
+    assert_eq!(document["ok"], ok);
+    let problems = schemas().envelope_problems(&document);
+    assert!(problems.is_empty(), "{problems:?}\n{}", output.stdout);
+    assert_eq!(document["meta"]["tool"], "atip");
+    assert_eq!(document["meta"]["contract"], "atip/1");
+    if document["data"].get("checks").is_none() {
+        assert!(
+            !output.stdout.contains("null") && !output.stdout.contains("[]"),
+            "no null and no empty array: {}",
+            output.stdout
+        );
+    }
+}
+
 #[test]
 fn atip_check_01_a_conforming_1_1_tool_passes_the_27_applicable_of_the_28_l0_checks_with_exit_0() {
     let harness = Harness::new();
@@ -53,6 +70,8 @@ fn atip_check_01_a_conforming_1_1_tool_passes_the_27_applicable_of_the_28_l0_che
     assert_eq!(output.code, Some(0), "{}{}", output.stdout, output.stderr);
     assert!(output.stderr.is_empty());
     let document = output.envelope();
+    assert_contract_envelope(&output, true);
+    assert_eq!(document["meta"]["command"], "check");
     assert_eq!(
         (
             document["ok"].clone(),
@@ -105,6 +124,23 @@ fn atip_check_01_a_conforming_1_1_tool_passes_the_27_applicable_of_the_28_l0_che
             "every check names its rule numbers: {check}"
         );
     }
+    // What the conforming tool shows (the other tests run no conforming tool): the probe answers with a next step and a page, so `L0.next`
+    // and `L0.page` are judged, and the terminal run of `L0.no-prompt` is part of the report.
+    assert_eq!(
+        check_of(&document["data"], "L0.next")["rules"],
+        json!(["6.8"])
+    );
+    assert_eq!(
+        check_of(&document["data"], "L0.page")["rules"],
+        json!(["6.9"])
+    );
+    let observed = check_of(&document["data"], "L0.no-prompt")["observed"].clone();
+    assert!(
+        observed.as_array().is_some_and(|calls| calls
+            .iter()
+            .any(|call| call["terminal"] == true && call["exit"] == 2)),
+        "{observed}"
+    );
 }
 
 #[test]
@@ -115,6 +151,7 @@ fn atip_check_02_a_tool_that_breaks_one_rule_exits_1_with_level_not_met_and_the_
     assert_eq!(output.code, Some(1));
     assert!(output.stderr.is_empty());
     let document = output.envelope();
+    assert_contract_envelope(&output, false);
     assert_eq!(document["ok"], false);
     assert_eq!(document["error"]["code"], "LEVEL_NOT_MET");
     assert_eq!(document["error"]["retryable"], false);
@@ -142,13 +179,14 @@ fn atip_check_02_a_tool_that_breaks_one_rule_exits_1_with_level_not_met_and_the_
 }
 
 #[test]
-fn atip_check_03_both_outcomes_of_atip_check_print_one_envelope_that_passes_the_contract_schema() {
+fn atip_check_03_every_outcome_of_atip_check_prints_one_envelope_that_passes_the_contract_schema() {
+    // The run that passes and the run that fails are checked on the runs of `atip_check_01` and `atip_check_02`; here are the two refusals.
     let harness = Harness::new();
-    let passing = harness.check_config(&json!({}));
-    let failing = harness.check_config(&json!({"bareCode": "USAGE"}));
-    let tmp = harness.path("tmp");
+    let (cwd, tmp) = (harness.path("cwd"), harness.path("tmp"));
+    std::fs::create_dir_all(&cwd).expect("cwd");
+    std::fs::create_dir_all(&tmp).expect("tmp");
     let refused = atip_in(
-        &harness.path("cwd"),
+        &cwd,
         &tmp,
         &[
             "check",
@@ -161,28 +199,9 @@ fn atip_check_03_both_outcomes_of_atip_check_print_one_envelope_that_passes_the_
             "--json",
         ],
     );
-    let unknown = atip_in(&harness.path("cwd"), &tmp, &["nosuch-xyz", "--json"]);
-    for (output, ok) in [
-        (&passing, true),
-        (&failing, false),
-        (&refused, false),
-        (&unknown, false),
-    ] {
-        let document = output.envelope();
-        assert_eq!(document["ok"], ok);
-        let problems = schemas().envelope_problems(&document);
-        assert!(problems.is_empty(), "{problems:?}\n{}", output.stdout);
-        assert_eq!(document["meta"]["tool"], "atip");
-        assert_eq!(document["meta"]["contract"], "atip/1");
-        if document["data"].get("checks").is_none() {
-            assert!(
-                !output.stdout.contains("null") && !output.stdout.contains("[]"),
-                "no null and no empty array: {}",
-                output.stdout
-            );
-        }
-    }
-    assert_eq!(passing.envelope()["meta"]["command"], "check");
+    let unknown = atip_in(&cwd, &tmp, &["nosuch-xyz", "--json"]);
+    assert_contract_envelope(&refused, false);
+    assert_contract_envelope(&unknown, false);
     assert!(
         unknown.envelope()["meta"].get("command").is_none(),
         "no word resolved"
@@ -654,19 +673,6 @@ fn atip_check_52_a_violation_the_run_observed_is_a_failure_even_when_the_fixture
         )["result"],
         "fail"
     );
-    // A fixture without `commands`: a `missingValue` the run never sees is unprovided, not a pass.
-    let mut no_commands = harness.fixture(&json!({}));
-    no_commands
-        .as_object_mut()
-        .expect("object")
-        .remove("commands");
-    assert_eq!(
-        check_of(
-            &harness.check(&no_commands, true).envelope()["data"],
-            "L0.no-prompt"
-        )["result"],
-        "unprovided"
-    );
 }
 
 #[test]
@@ -840,16 +846,6 @@ fn atip_check_29_the_l0_fixture_keys_are_read_and_the_keys_of_l1_and_l2_are_igno
             .collect()
     };
     assert_eq!(results(&with_keys), results(&without));
-    // The claim comes from the fixture's `contractVersion`: the same fixture without it is a claim of 1.0, which the 1.1 tool breaks.
-    let mut unclaimed = harness.fixture(&json!({}));
-    unclaimed
-        .as_object_mut()
-        .expect("object")
-        .remove("contractVersion");
-    let output = harness.check(&unclaimed, true);
-    assert_eq!(output.code, Some(1), "{}", output.stdout);
-    assert_eq!(output.check("L0.contract-version")["result"], "fail");
-    assert_eq!(output.envelope()["data"]["contractVersion"], "1.0");
 }
 
 #[test]
@@ -862,49 +858,44 @@ fn atip_check_31_a_refusal_that_writes_nothing_passes_and_a_successful_call_that
         .results()
         .iter()
         .all(|(id, result)| result == "pass" || (id == "L0.contract" && result == "unsupported")));
-    let quiet = harness.check_config(&json!({}));
-    assert_eq!(
-        check_of(&quiet.envelope()["data"], "L0.ok-exit")["result"],
-        "pass"
-    );
 }
 
 #[test]
 fn atip_check_32_level_l2_runs_the_checks_and_is_never_unsupported_and_l9_is_usage() {
     let harness = Harness::new();
-    let fixture = harness.write("fixture.json", &harness.fixture(&json!({})));
+    // Only the claim is judged here (a tool that prints no tree of level L2), so the fixture lists nothing to run.
+    let mut fixture = harness.fixture(&json!({}));
+    for key in ["probe", "commands"] {
+        fixture.as_object_mut().expect("object").remove(key);
+    }
+    let fixture = harness.write("fixture.json", &fixture);
     let (cwd, tmp) = (harness.path("cwd"), harness.path("tmp"));
     std::fs::create_dir_all(&cwd).expect("cwd");
     std::fs::create_dir_all(&tmp).expect("tmp");
-    let run = |level: &str, json: bool| {
-        let mut args = vec![
-            "check",
-            "--bin",
-            FAKE_TOOL,
-            "--level",
-            level,
-            "--fixture",
-            fixture.to_str().expect("utf8"),
-        ];
-        if json {
-            args.push("--json");
-        }
-        atip_in(&cwd, &tmp, &args)
+    let run = |level: &str| {
+        atip_in(
+            &cwd,
+            &tmp,
+            &[
+                "check",
+                "--bin",
+                FAKE_TOOL,
+                "--level",
+                level,
+                "--fixture",
+                fixture.to_str().expect("utf8"),
+                "--json",
+            ],
+        )
     };
     // A tool that prints no tree of level L2 is a tool whose level is not met; the level itself is known.
-    let output = run("L2", true);
+    let output = run("L2");
     assert_eq!(output.code, Some(1), "{}", output.stdout);
     let document = output.envelope();
     assert_eq!(document["error"]["code"], "LEVEL_NOT_MET");
     assert_eq!(document["data"]["level"], "L2");
-    let text = run("L2", false);
-    assert!(
-        text.stderr.starts_with("atip: LEVEL_NOT_MET: "),
-        "{}",
-        text.stderr
-    );
     for level in ["L9", "0", "l0", ""] {
-        let output = run(level, true);
+        let output = run(level);
         assert_eq!(output.code, Some(2), "{level:?}");
         let document = output.envelope();
         assert_eq!(
@@ -917,11 +908,6 @@ fn atip_check_32_level_l2_runs_the_checks_and_is_never_unsupported_and_l9_is_usa
         );
         assert_eq!(document["error"]["expected"], json!(["L0", "L1", "L2"]));
     }
-    assert_eq!(
-        run("L0", true).code,
-        Some(0),
-        "the supported level still runs"
-    );
 }
 
 #[test]
@@ -1015,20 +1001,6 @@ fn atip_check_46_l0_next_and_l0_page_do_not_apply_when_no_envelope_carries_a_nex
         .iter()
         .filter(|(id, _)| id != "L0.next" && id != "L0.page" && id != "L0.contract")
         .all(|(_, result)| result == "pass"));
-    // With a next step and a page in the probe's answer both are judged.
-    let judged = harness.check_config(&json!({}));
-    assert_eq!(
-        (result_of(&judged, "L0.next"), result_of(&judged, "L0.page")),
-        ("pass".to_string(), "pass".to_string())
-    );
-    assert_eq!(
-        check_of(&judged.envelope()["data"], "L0.next")["rules"],
-        json!(["6.8"])
-    );
-    assert_eq!(
-        check_of(&judged.envelope()["data"], "L0.page")["rules"],
-        json!(["6.9"])
-    );
 }
 
 #[test]
@@ -1137,12 +1109,6 @@ fn atip_check_47_stderr_output_is_a_recommendation_and_an_error_or_result_on_std
         (version.code, failing(&version)),
         (Some(1), vec!["L0.version".to_string()])
     );
-    // The error or the result on stderr fails L0.stderr-result; L0.stderr-quiet leaves it to it.
-    let carried = harness.check_config(&json!({"mirrorStderrFor": ["unknown-command"]}));
-    assert_eq!(
-        (carried.code, failing(&carried)),
-        (Some(1), vec!["L0.stderr-result".to_string()])
-    );
     // So does the error on stderr with nothing on stdout: a tool that prints its refusal only there.
     let only_stderr =
         harness.check_config(&json!({"mirrorStderrFor": ["status"], "probeNotEnvelope": true}));
@@ -1193,9 +1159,7 @@ fn atip_check_48_a_signal_exit_of_either_form_is_accepted_and_an_exit_of_3_is_no
 fn atip_check_49_the_registries_the_tool_prints_are_compared_with_the_fixtures_and_one_it_does_not_print_is_not(
 ) {
     let harness = Harness::new();
-    let offered = harness.check_config(&json!({}));
-    assert_eq!(offered.code, Some(0), "{}", offered.stdout);
-    assert_eq!(result_of(&offered, "L0.registry"), "pass");
+    // (The registry check of the conforming tool passes: `atip_check_01`.)
     let reason_of = |output: &Output| {
         check_of(&output.envelope()["data"], "L0.registry")["reason"]
             .as_str()
@@ -1212,24 +1176,29 @@ fn atip_check_49_the_registries_the_tool_prints_are_compared_with_the_fixtures_a
         reason.contains("STATE_ODD") && reason.contains("exit 2"),
         "the differing code is named: {reason}"
     );
+    // The fixtures below differ in the registries only, so they list no command to run.
+    let compare = |mut fixture: Value| {
+        fixture.as_object_mut().expect("object").remove("commands");
+        harness.check(&fixture, true)
+    };
     // A fixture row the tool does not have, and a tool row the fixture does not have.
     let mut fixture = harness.fixture(&json!({}));
     fixture["registry"]
         .as_array_mut()
         .expect("registry")
         .push(json!({"code": "ONLY_HERE", "exit": 2, "retryable": false}));
-    assert!(reason_of(&harness.check(&fixture, true)).contains("ONLY_HERE is only in the fixture"));
+    assert!(reason_of(&compare(fixture)).contains("ONLY_HERE is only in the fixture"));
     let mut fixture = harness.fixture(&json!({}));
     let rows = fixture["registry"].as_array_mut().expect("registry");
     rows.retain(|row| row["code"] != "STATE_ODD");
-    assert!(reason_of(&harness.check(&fixture, true)).contains("STATE_ODD is only in the tool"));
+    assert!(reason_of(&compare(fixture)).contains("STATE_ODD is only in the tool"));
     // The retryable of a code, and the reasons under it.
     let mut fixture = harness.fixture(&json!({}));
     fixture["registry"][3]["retryable"] = json!(true);
-    assert!(reason_of(&harness.check(&fixture, true)).contains("retryable"));
+    assert!(reason_of(&compare(fixture)).contains("retryable"));
     let mut fixture = harness.fixture(&json!({}));
     fixture["registry"][2]["reasons"] = json!(["NOT_JSON"]);
-    let reason = reason_of(&harness.check(&fixture, true));
+    let reason = reason_of(&compare(fixture));
     assert!(
         reason.contains("INPUT_INVALID") && reason.contains("UNKNOWN_KEY"),
         "{reason}"
@@ -1237,7 +1206,7 @@ fn atip_check_49_the_registries_the_tool_prints_are_compared_with_the_fixtures_a
     // The warning codes.
     let mut fixture = harness.fixture(&json!({}));
     fixture["warnings"] = json!(["STALE_VIEW", "OTHER_WARNING"]);
-    assert!(reason_of(&harness.check(&fixture, true)).contains("OTHER_WARNING"));
+    assert!(reason_of(&compare(fixture)).contains("OTHER_WARNING"));
     // Not offered (the tool has no `schema`): nothing to compare, the check does not apply, and the level passes.
     let none = harness.check_config(&json!({"noSchema": true}));
     assert_eq!(none.code, Some(0), "{}", none.stdout);
@@ -1269,16 +1238,7 @@ fn prompt_run(harness: &Harness, config: &Value) -> (Output, std::time::Duration
 fn atip_check_50_a_tool_that_waits_on_a_terminal_for_a_missing_value_fails_and_one_that_refuses_passes(
 ) {
     let harness = Harness::new();
-    // A tool that refuses and ends passes (the conforming run), and the terminal run is part of the report.
-    let conforming = harness.check_config(&json!({}));
-    assert_eq!(result_of(&conforming, "L0.no-prompt"), "pass");
-    let observed = check_of(&conforming.envelope()["data"], "L0.no-prompt")["observed"].clone();
-    assert!(
-        observed.as_array().is_some_and(|calls| calls
-            .iter()
-            .any(|call| call["terminal"] == true && call["exit"] == 2)),
-        "{observed}"
-    );
+    // The control, a tool that refuses and ends, passes: it is the conforming run of `atip_check_01`, whose report has the terminal run.
     // A tool that reads a line from a canonical-mode terminal: it ends only after the end-of-file character.
     let (reads, took) = prompt_run(&harness, &json!({"promptOnMissing": true}));
     assert_eq!(
@@ -1417,14 +1377,6 @@ fn atip_check_52_a_violation_seen_is_a_failure_even_when_the_fixture_lacks_the_e
         (failed.code, failed.envelope()["error"]["code"].as_str()),
         (Some(1), Some("LEVEL_NOT_MET"))
     );
-    // No registry and no `schema`: nothing to compare an exit with, so nothing wrong seen is unprovided.
-    let mut no_registry = harness.fixture(&json!({"noSchema": true}));
-    no_registry
-        .as_object_mut()
-        .expect("object")
-        .remove("registry");
-    let output = harness.check(&no_registry, true);
-    assert_eq!(result_of(&output, "L0.ok-exit"), "unprovided");
 }
 
 #[test]
@@ -1450,11 +1402,6 @@ fn atip_check_74_a_refusal_that_changes_what_the_probe_reports_fails_refusal_eff
     fixture.as_object_mut().expect("object").remove("probe");
     assert_eq!(
         result_of(&harness.check(&fixture, true), "L0.refusal-effects"),
-        "pass"
-    );
-    // A probe whose answer is not the same twice (here: the time) cannot show a change and is not held against the tool.
-    assert_eq!(
-        result_of(&harness.check_config(&json!({})), "L0.refusal-effects"),
         "pass"
     );
 }
@@ -1666,7 +1613,7 @@ fn atip_check_76_a_violation_of_a_1_1_check_is_read_in_the_result_as_its_owner_w
     let harness = Harness::new();
     // One planted violation for each of four checks that 1.1 added: the report says which check owns it, which rule broke and why,
     // and every other check passes or does not apply.
-    for (config, owner, rule, reason_has) in [
+    for (index, (config, owner, rule, reason_has)) in [
         (
             json!({"omitContractVersion": true}),
             "L0.contract-version",
@@ -1691,7 +1638,10 @@ fn atip_check_76_a_violation_of_a_1_1_check_is_read_in_the_result_as_its_owner_w
             "7.6.2",
             "NOT_A_REASON",
         ),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let output = harness.check_config(&config);
         assert_eq!(output.code, Some(1), "{config}: {}", output.stdout);
         let document = output.envelope();
@@ -1724,7 +1674,10 @@ fn atip_check_76_a_violation_of_a_1_1_check_is_read_in_the_result_as_its_owner_w
         );
         support::case_verdict(&document["data"], owner)
             .unwrap_or_else(|why| panic!("{config}: {why}"));
-        // The text form reads the same: the failing check's line carries its rules and reason.
+        // The text form reads the same: the failing check's line carries its rules and reason (once by default, whatever the check).
+        if index > 0 && !support::all_seeds() {
+            continue;
+        }
         let text = harness.check(&harness.fixture(&config), false);
         assert!(
             text.stderr

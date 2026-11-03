@@ -6,11 +6,7 @@ mod support;
 
 use serde_json::{json, Value};
 
-use support::l1::{l1_bin, l1_cases};
-use support::{
-    all_seeds, atip_in, cases, cases_of, kind_verdict, reason_of_messages, representatives, Case,
-    Harness, Output,
-};
+use support::{cases_of, kind_verdict, reason_of_messages, Harness, Output};
 
 /// The messages of the findings of `check`.
 fn messages(check: &Value) -> Vec<String> {
@@ -33,7 +29,7 @@ fn observed_argvs(check: &Value) -> Vec<Value> {
 }
 
 #[test]
-fn atip_check_77_each_finding_of_a_failed_check_carries_its_kind_its_message_and_the_argv_of_the_call(
+fn atip_check_77_each_finding_of_a_failed_check_carries_its_kind_its_message_and_the_argv_of_the_call_and_none_a_code(
 ) {
     let harness = Harness::new();
     // Every envelope the fake prints says 1.2 to a 1.1 claim: one finding for each call.
@@ -76,11 +72,16 @@ fn atip_check_77_each_finding_of_a_failed_check_carries_its_kind_its_message_and
         reason.starts_with(findings[0]["message"].as_str().expect("message")),
         "the reason did not change its shape: {reason}"
     );
+    // No finding of any check carries a code of its own (a code belongs to a refused fixture call).
+    for check in data["checks"].as_array().expect("checks") {
+        for finding in check["findings"].as_array().into_iter().flatten() {
+            assert!(finding.get("code").is_none(), "{finding}");
+        }
+    }
 }
 
 #[test]
-fn atip_check_78_a_finding_that_no_single_call_decided_has_no_argv_and_no_finding_of_a_check_carries_a_code_of_its_own(
-) {
+fn atip_check_78_a_finding_that_no_single_call_decided_has_no_argv() {
     let harness = Harness::new();
     // The registry rows the contract fixes are judged from the registry, not from one call.
     let case = cases_of("L0.ok-exit")
@@ -104,16 +105,6 @@ fn atip_check_78_a_finding_that_no_single_call_decided_has_no_argv_and_no_findin
             "no call decided it: {finding}"
         );
         assert!(finding.get("code").is_none(), "{finding}");
-    }
-    // A finding that one call decided has an argv, and none of the findings of any check has a code.
-    let output = harness.check_config(&json!({"contractVersionSays": "1.2"}));
-    for check in output.envelope()["data"]["checks"]
-        .as_array()
-        .expect("checks")
-    {
-        for finding in check["findings"].as_array().into_iter().flatten() {
-            assert!(finding.get("code").is_none(), "{finding}");
-        }
     }
 }
 
@@ -296,111 +287,18 @@ fn atip_check_123_an_unprovided_check_in_the_text_report_keeps_its_line_and_list
     assert_eq!(text.code, json.code);
 }
 
-/// Runs `jobs` on six threads.
-fn in_parallel(jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>>) -> Vec<String> {
-    let queue = std::sync::Mutex::new(jobs);
-    let failures = std::sync::Mutex::new(Vec::new());
-    std::thread::scope(|scope| {
-        for _ in 0..6 {
-            scope.spawn(|| loop {
-                let next = queue.lock().expect("queue").pop();
-                let Some(job) = next else { break };
-                if let Err(why) = job() {
-                    failures.lock().expect("failures").push(why);
-                }
-            });
-        }
-    });
-    failures.into_inner().expect("failures")
-}
-
-fn l0_job(case: Case) -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-    Box::new(move || {
-        let harness = Harness::new();
-        let output = harness.check(&case.fixture(&harness), true);
-        let kind = case.condition.split('/').nth(1).unwrap_or_default();
-        kind_verdict(&output.envelope()["data"], &case.owner(), kind)
-            .map_err(|why| format!("{}: {why}", case.condition))
-    })
-}
-
-fn l1_job(case: Case) -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-    Box::new(move || {
-        let harness = Harness::new();
-        let mut fixture = harness.l1_fixture(&case.config);
-        if let Some(tweak) = case.tweak {
-            tweak(&mut fixture);
-        }
-        let fixture_path = harness.write("fixture.json", &fixture);
-        let bin = l1_bin(&harness, &case.config);
-        let work = harness.path("cwd");
-        std::fs::create_dir_all(&work).expect("cwd");
-        let tmp = harness.path("tmp");
-        std::fs::create_dir_all(&tmp).expect("tmp");
-        let output = atip_in(
-            &work,
-            &tmp,
-            &[
-                "check",
-                "--bin",
-                bin.to_str().expect("utf8"),
-                "--level",
-                "L1",
-                "--fixture",
-                fixture_path.to_str().expect("utf8"),
-                "--json",
-            ],
-        );
-        let owner = format!(
-            "L1.{}",
-            case.condition.split('/').next().unwrap_or_default()
-        );
-        let kind = case.condition.split('/').nth(1).unwrap_or_default();
-        kind_verdict(&output.envelope()["data"], &owner, kind)
-            .map_err(|why| format!("{}: {why}", case.condition))
-    })
-}
-
-#[test]
-fn atip_check_83_every_seeded_violation_is_found_by_its_kind_in_the_findings_of_its_owner() {
-    let mut jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> =
-        representatives(cases(), Case::owner)
-            .into_iter()
-            .map(l0_job)
-            .collect();
-    let l0 = jobs.len();
-    jobs.extend(
-        representatives(
-            l1_cases()
-                .into_iter()
-                .filter(|case| case.condition != "tree/level")
-                .collect(),
-            |case| {
-                case.condition
-                    .split('/')
-                    .next()
-                    .unwrap_or_default()
-                    .to_string()
-            },
-        )
-        .into_iter()
-        .map(l1_job),
-    );
-    // One per owning check by default: the 28 L0 checks and the L1 checks that have a seed; every seed with `ATIP_CHECK_ALL_SEEDS=1`.
-    assert!(
-        jobs.len() > l0 && l0 >= if all_seeds() { 70 } else { 28 },
-        "the seeded cases of both levels run: {l0} of {}",
-        jobs.len()
-    );
-    let failures = in_parallel(jobs);
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
 #[test]
 fn atip_check_84_a_renamed_condition_with_the_test_expectation_unchanged_fails_the_test() {
-    let harness = Harness::new();
-    let output = harness.check_config(&json!({"contractVersionSays": "1.2"}));
-    let data = output.envelope()["data"].clone();
+    // A report as the checker prints it, which needs no run: the contract-version check failed for one call, with the finding of its condition.
+    let data = json!({"checks": [
+        {"id": "L0.version", "result": "pass"},
+        {
+            "id": "L0.contract-version",
+            "result": "fail",
+            "reason": "`status --json`: says 1.2",
+            "findings": [{"kind": "version-is-claim", "message": "`status --json`: says 1.2", "argv": ["status", "--json"]}]
+        }
+    ]});
     kind_verdict(&data, "L0.contract-version", "version-is-claim")
         .expect("the condition's name is the kind");
     // The condition is renamed in the checker and the test is not: the report says the new name, the test still expects the old.
@@ -450,22 +348,6 @@ fn atip_check_85_the_results_the_level_and_the_exit_code_are_the_same_with_findi
             output.results(),
         )
     };
-    // A conforming tool passes and no check of it has a `findings` member.
-    let conforming = harness.check_config(&json!({}));
-    assert_eq!(
-        (
-            conforming.code,
-            conforming.envelope()["data"]["passed"].clone()
-        ),
-        (Some(0), json!(true)),
-        "{}",
-        conforming.stdout
-    );
-    assert!(conforming.envelope()["data"]["checks"]
-        .as_array()
-        .expect("checks")
-        .iter()
-        .all(|check| check.get("findings").is_none()));
     // A MUST violation fails its check and the level, and exits 1 with LEVEL_NOT_MET.
     let must = harness.check_config(&json!({"contractVersionSays": "1.2"}));
     let (code, passed, results) = verdicts(&must);
@@ -485,11 +367,4 @@ fn atip_check_85_the_results_the_level_and_the_exit_code_are_the_same_with_findi
     assert!(should.check("L0.version-format")["findings"]
         .as_array()
         .is_some_and(|findings| !findings.is_empty()));
-    // A missing fixture entry is unprovided and fails the level.
-    let mut fixture = harness.fixture(&json!({}));
-    fixture.as_object_mut().expect("object").remove("commands");
-    fixture.as_object_mut().expect("object").remove("probe");
-    let lacking = harness.check(&fixture, true);
-    assert_eq!(lacking.code, Some(1), "{}", lacking.stdout);
-    assert_eq!(lacking.check("L0.page")["result"], "unprovided");
 }

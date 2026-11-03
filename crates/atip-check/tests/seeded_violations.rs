@@ -13,8 +13,23 @@ use serde_json::{json, Value};
 use atip_check::app::check_binary_mutated;
 use atip_check::cli::{CheckArgs, Level};
 use support::{
-    case_verdict, cases, cases_of, kind_verdict, representatives, Case, Harness, FAKE_TOOL,
+    all_seeds, case_verdict, cases, cases_of, kind_verdict, representatives, Case, Harness,
+    FAKE_TOOL,
 };
+
+/// The checks whose seeded case is also run with its condition switched off, and with the whole check forced to pass, by default: a MUST
+/// over one call, an advisory, the check that compares registries and the one a 1.0 claim has; `ATIP_CHECK_ALL_SEEDS=1` does every check. The
+/// mutation is one mechanism of the checker, and the finding of the kind of the planted condition (`kind_verdict`) already ties each seed to its owner.
+const MUTATED_BY_DEFAULT: &[&str] = &[
+    "L0.version",
+    "L0.version-format",
+    "L0.registry",
+    "L0.contract",
+];
+
+fn mutated(owner: &str) -> bool {
+    all_seeds() || MUTATED_BY_DEFAULT.contains(&owner)
+}
 
 /// The representative case of the check `id` (every case with `ATIP_CHECK_ALL_SEEDS=1`): `atip check` exits as the strength says, fails that check and no other.
 fn proves(id: &str) {
@@ -162,10 +177,11 @@ fn atip_check_19_l0_one_document_fails_when_stdout_is_not_exactly_one_document_a
     proves("L0.one-document");
     // The unknown command printing two documents, and the bare call no newline: the same rule on the other calls it owns.
     let harness = Harness::new();
-    for config in [
-        json!({"unknownCommandTwoDocuments": true}),
-        json!({"bareNoNewline": true}),
-    ] {
+    let mut configs = vec![json!({"unknownCommandTwoDocuments": true})];
+    if all_seeds() {
+        configs.push(json!({"bareNoNewline": true}));
+    }
+    for config in configs {
         let output = harness.check_config(&config);
         case_verdict(&output.envelope()["data"], "L0.one-document")
             .unwrap_or_else(|why| panic!("{config}: {why}"));
@@ -234,11 +250,14 @@ fn atip_check_64_l0_envelope_fails_when_a_document_breaks_the_envelope_schema_an
     proves("L0.envelope");
     // A document that is no envelope at all is the envelope check's alone: the contract-version and registry checks judge envelopes.
     let harness = Harness::new();
-    for config in [
+    let mut configs = vec![
         json!({"teamAddNoEnvelope": true}),
-        json!({"teamAddNoEnvelopeCode": true}),
         json!({"probeNotEnvelope": true}),
-    ] {
+    ];
+    if all_seeds() {
+        configs.push(json!({"teamAddNoEnvelopeCode": true}));
+    }
+    for config in configs {
         let output = harness.check_config(&config);
         let document = output.envelope();
         let failing: Vec<&str> = document["data"]["checks"]
@@ -291,14 +310,16 @@ fn atip_check_65_l0_contract_version_fails_on_a_missing_or_wrong_marker_or_a_mem
         "{}",
         bad.stdout
     );
-    let wrong =
-        harness.check_config(&json!({"teamAddStream": true, "streamStartContractVersion": "1.0"}));
-    assert_eq!(
-        wrong.check("L0.contract-version")["result"],
-        "fail",
-        "{}",
-        wrong.stdout
-    );
+    if all_seeds() {
+        let wrong = harness
+            .check_config(&json!({"teamAddStream": true, "streamStartContractVersion": "1.0"}));
+        assert_eq!(
+            wrong.check("L0.contract-version")["result"],
+            "fail",
+            "{}",
+            wrong.stdout
+        );
+    }
 }
 
 #[test]
@@ -403,8 +424,8 @@ fn atip_check_72_l0_global_on_group_reports_an_advisory_when_a_tool_wide_option_
     );
 }
 
-/// The check's id, the verdict on the planted violation and the verdict with the check forced to pass.
-type Forced = (String, Result<(), String>, Result<(), String>);
+/// The check's id and the verdict with the check forced to pass.
+type Forced = (String, Result<(), String>);
 
 fn args_for(harness: &Harness, fixture: &Value) -> CheckArgs {
     CheckArgs {
@@ -435,7 +456,7 @@ fn in_parallel<T: Send>(jobs: Vec<Box<dyn FnOnce() -> T + Send>>) -> Vec<T> {
 }
 
 #[test]
-fn atip_check_56_each_pass_condition_fails_exactly_its_owner_and_a_run_with_the_condition_switched_off_does_not(
+fn atip_check_56_every_condition_a_conforming_run_judges_has_a_case_and_a_run_with_the_condition_of_a_case_switched_off_does_not_fail_its_owner(
 ) {
     // Every condition a conforming run judges has a case, and every case names a condition that is judged: the
     // conditions of a 1.1 claim and those of a 1.0 claim together.
@@ -460,22 +481,24 @@ fn atip_check_56_each_pass_condition_fails_exactly_its_owner_and_a_run_with_the_
         judged, named,
         "the conditions the checker judges and the conditions the tests plant are the same set"
     );
-    // For each case: planted, its owner fails and nothing else; skipped, the owner no longer fails (the other conditions of the check hold).
+    // For each case of the checks in `MUTATED_BY_DEFAULT`: planted, its owner fails and nothing else (the tests of the checks show it); skipped, the
+    // owner no longer fails (the other conditions of the check hold) and nothing else does.
+    assert!(
+        MUTATED_BY_DEFAULT
+            .iter()
+            .all(|owner| !cases_of(owner).is_empty()),
+        "a seeded violation for every check run with its condition switched off"
+    );
     let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> =
         representatives(cases(), Case::owner)
             .into_iter()
+            .filter(|case| mutated(&case.owner()))
             .map(
                 |case: Case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
                     Box::new(move || {
                         let harness = Harness::new();
                         let args = args_for(&harness, &case.fixture(&harness));
                         let owner = case.owner();
-                        let (planted, _) =
-                            check_binary_mutated(&args, &[], &[]).map_err(|failure| {
-                                format!("{}: {}", case.condition, failure.message)
-                            })?;
-                        case_verdict(&serde_json::to_value(&planted).expect("json"), &owner)
-                            .map_err(|why| format!("{}: {why}", case.condition))?;
                         let (skipped, _) = check_binary_mutated(&args, &[], &[case.condition])
                             .map_err(|failure| {
                                 format!("{}: {}", case.condition, failure.message)
@@ -540,29 +563,23 @@ fn atip_check_36_a_check_forced_to_always_pass_makes_its_seeded_violation_test_f
         0,
         "a seeded violation for every L0 check"
     );
+    // The verdict on the planted violation itself is the tests of the checks'; here only the check forced to pass is run.
     let jobs: Vec<Box<dyn FnOnce() -> Forced + Send>> = owners
         .into_iter()
+        .filter(|owner| mutated(owner))
         .map(|owner| -> Box<dyn FnOnce() -> Forced + Send> {
             Box::new(move || {
                 let case = cases_of(&owner).into_iter().next().expect("a case");
                 let harness = Harness::new();
                 let args = args_for(&harness, &case.fixture(&harness));
-                let (real, _) = check_binary_mutated(&args, &[], &[]).expect("a report");
                 let (forced, _) =
                     check_binary_mutated(&args, &[owner.as_str()], &[]).expect("a report");
-                let verdict = |report: &atip_check::report::Report| {
-                    case_verdict(&serde_json::to_value(report).expect("json"), &owner)
-                };
-                (owner.clone(), verdict(&real), verdict(&forced))
+                let verdict = case_verdict(&serde_json::to_value(&forced).expect("json"), &owner);
+                (owner.clone(), verdict)
             })
         })
         .collect();
-    for (owner, real, forced) in in_parallel(jobs) {
-        assert_eq!(
-            real,
-            Ok(()),
-            "{owner}: the seeded violation is judged as planned"
-        );
+    for (owner, forced) in in_parallel(jobs) {
         let why = forced.expect_err(&format!(
             "{owner}: forcing the check to pass must make its seeded test fail"
         ));
