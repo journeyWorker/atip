@@ -13,8 +13,9 @@
 #
 # Needs bun. ajv 8 is installed into a scratch directory under $TMPDIR, never into the repository; point
 # TMPDIR at a scratch volume if the default temporary directory is not where it belongs.
-# With cargo on PATH it also builds scripts/regex-parity (build output under $TMPDIR, crates from the lock file)
-# and checks the Rust column of scripts/regex-cases.json; without cargo that half is reported as skipped.
+# With cargo on PATH it also builds scripts/regex-parity through the Cargo workspace (build output where CARGO_TARGET_DIR
+# points, default ./target; crates from the lock file) and checks the Rust column of scripts/regex-cases.json; without cargo
+# that half is reported as skipped.
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,8 +33,7 @@ bun run "$repo/scripts/plan-digest.ts" "$repo"
 
 echo
 if command -v cargo >/dev/null 2>&1; then
-  CARGO_TARGET_DIR="$work/regex-parity-target" cargo run --quiet --locked \
-    --manifest-path "$repo/scripts/regex-parity/Cargo.toml" -- "$repo/scripts/regex-cases.json" | grep -v '^ok  '
+  cargo run --quiet --locked --manifest-path "$repo/Cargo.toml" -p regex-parity -- "$repo/scripts/regex-cases.json" | grep -v '^ok  '
 else
   echo "skipped: no cargo, so the rust column of scripts/regex-cases.json was not checked"
 fi
