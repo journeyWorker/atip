@@ -28,10 +28,11 @@
 //!   with `--commit`, `OPERATION_REUSED` with `--operation`, `CURSOR_INVALID` with `--cursor`, and the finer replacements of
 //!   `USAGE` the tool registers ([`Described::usage_replacements`]). `--commit` and `--plan-digest` are not implied: they stay
 //!   listed.
-//! - *Reserved names*: an option that is the reserved option unchanged (spec 4.5, Annex S2 rule 8: its fixed shape, whatever its
-//!   `help`) is listed by its bare name (`"commit"`, `"plan-digest"`, `"dry-run"`, `"operation"`, and `limit`, `cursor`, `all`
-//!   when they carry no default, domain or value name of their own). An option with another shape (`--limit` with a default
-//!   and a bound) is the command's own object.
+//! - *Reserved names*: an option that is the reserved option unchanged (spec 4.5, Annex S2 rule 8: its fixed shape) and that has
+//!   no `help` of its own is listed by its bare name (`"commit"`, `"plan-digest"`, `"dry-run"`, `"operation"`, and `limit`,
+//!   `cursor`, `all` when they carry no default, domain or value name of their own). A reserved option the command gives its
+//!   own `help` is an object: the fixed shape plus that `help`, as is an option with another shape (`--limit` with a default
+//!   and a bound).
 //! - *Shared options*: an option whose serialization is the same on two or more commands is defined once in the tree's
 //!   `options`, in the order of its first appearance, and each of those commands names it where it stood. An option that differs
 //!   (`required`, default, enum subset, help) is another definition and stays in full on its command. Two definitions of one
@@ -74,6 +75,9 @@ pub enum Error {
     /// A command lists `--json`, `--input` (with `input`) or `--fields` (with an output's `fields`), which its document implies,
     /// in a shape other than the reserved one: a 1.4 document cannot say it (Annex S2 rule 17).
     ImpliedOptionChanged { command: String, option: String },
+    /// A command lists an option as an object, in full, that has no `help`: only a reserved option unchanged may be listed by its
+    /// bare name, which carries none (spec 9.5).
+    OptionWithoutHelp { command: String, option: String },
     /// A command lists `--input` without `input`, or `--fields` without an output that declares `fields` (spec 9.5).
     OptionWithoutFeature { command: String, option: String },
     /// A ref of a command is not of the form `#/schemas/<Name>`.
@@ -94,6 +98,7 @@ impl fmt::Display for Error {
             Error::NoCommandDocument(command) => write!(f, "the tree lists the command `{command}` and the model has no document for it"),
             Error::DuplicateOption { command, option } => write!(f, "`{command}` lists --{option} twice (Annex S2 rule 9)"),
             Error::ImpliedOptionChanged { command, option } => write!(f, "`{command}` lists --{option}, which its document implies, in a shape other than the reserved one: a 1.4 document cannot say it (spec 9.5, Annex S2 rule 17)"),
+            Error::OptionWithoutHelp { command, option } => write!(f, "`{command}` lists --{option} in full and gives it no help (spec 9.5)"),
             Error::OptionWithoutFeature { command, option } => write!(f, "`{command}` lists --{option} but declares no {} (spec 9.5)", if option == "input" { "input" } else { "output with fields" }),
             Error::BadRef { command, reference } => write!(f, "`{command}` has the ref `{reference}`, which is not `#/schemas/<Name>` (spec 9.9.1)"),
             Error::MissingSchema { command, name } => write!(f, "`{command}` refers to the schema `{name}`, which its model does not hold (Annex S2 rule 2)"),
@@ -157,10 +162,12 @@ fn has_reserved_kind(option: &OptionDoc) -> bool {
         })
 }
 
-/// Whether `option` is the reserved option of its name, unchanged, whatever its `help`: it can be listed by its bare name,
-/// which resolves to the fixed shape, so nothing else of it may differ (a `valueName` is the default one).
+/// Whether `option` is the reserved option of its name, unchanged, and has no `help` of its own: it can be listed by its bare
+/// name, which resolves to the fixed shape and carries no help, so nothing else of it may differ (a `valueName` is the default
+/// one). With a `help` of the command's own it is listed as an object, which can say it.
 fn is_reserved_shape(option: &OptionDoc) -> bool {
     has_reserved_kind(option)
+        && option.help.trim().is_empty()
         && option.short.is_none()
         && option.default_note.is_none()
         && option.env.is_none()
@@ -825,6 +832,17 @@ fn slot_of(command: &CommandDoc, option: &OptionDoc) -> Result<Slot, Error> {
     })
 }
 
+/// An option listed in full has a `help`, which an object must carry.
+fn own_has_help(command: &CommandDoc, option: &OptionDoc) -> Result<(), Error> {
+    if option.help.trim().is_empty() {
+        return Err(Error::OptionWithoutHelp {
+            command: command.command.clone(),
+            option: option.name.clone(),
+        });
+    }
+    Ok(())
+}
+
 impl Layout {
     fn of(commands: &[CommandDoc]) -> Result<Layout, Error> {
         let mut reached = Vec::with_capacity(commands.len());
@@ -848,6 +866,9 @@ impl Layout {
                     });
                 }
                 let slot = slot_of(command, option)?;
+                if slot == Slot::Own {
+                    own_has_help(command, option)?;
+                }
                 row.push(slot);
                 known.push((slot == Slot::Own).then(|| {
                     let key =
@@ -894,6 +915,7 @@ impl Layout {
                     Some(known) if chosen.contains(&known) => *slot = Slot::Name,
                     // A name that resolves to a tree option is that option: the reserved one, in full, is the command's own.
                     None if *slot == Slot::Name && tree_names.contains(option.name.as_str()) => {
+                        own_has_help(command, option)?;
                         *slot = Slot::Own;
                     }
                     _ => {}
@@ -1028,6 +1050,13 @@ mod tests {
         option
     }
 
+    /// A reserved option with no `help` of its own: listed by its bare name.
+    fn bare(name: &str) -> OptionDoc {
+        let mut option = reserved(name);
+        option.help = String::new();
+        option
+    }
+
     fn report() -> OutputDoc {
         OutputDoc {
             kind: OutputKind::Report,
@@ -1158,10 +1187,10 @@ mod tests {
         feature.options.extend([
             reserved("input"),
             reserved("fields"),
-            reserved("commit"),
-            reserved("plan-digest"),
-            reserved("operation"),
-            reserved("cursor"),
+            bare("commit"),
+            bare("plan-digest"),
+            bare("operation"),
+            bare("cursor"),
         ]);
         feature.outputs[0].fields = Some(FieldsDoc {
             records: String::new(),
@@ -1239,7 +1268,7 @@ mod tests {
     }
 
     #[test]
-    fn atip_crate14_21_a_reserved_option_unchanged_is_its_name_and_one_with_another_shape_is_the_commands_own(
+    fn atip_crate14_21_a_reserved_option_without_help_is_its_name_and_one_with_help_or_another_shape_is_an_object(
     ) {
         let mut paged = command("paged");
         let mut limit = reserved("limit");
@@ -1248,32 +1277,62 @@ mod tests {
         limit.domain = Some(json!({ "minimum": 1 }));
         let mut key = reserved("operation");
         key.value_name = Some("KEY".to_string());
+        // `--cursor` and `--all` with the command's own help: the fixed shape plus that help.
+        let mut cursor = reserved("cursor");
+        cursor.help = "Resume after the last member of the previous page.".to_string();
+        let mut all = reserved("all");
+        all.help = "Return every member from the cursor on.".to_string();
         paged
             .options
-            .extend([limit, reserved("cursor"), reserved("all"), key]);
-        paged.options.push(reserved("dry-run"));
-        let mut custom = reserved("limit");
-        custom.help = "Another help for the same shape.".to_string();
-        let mut other = command("other");
-        other.options.push(custom);
-        let described = described(vec![paged, other]).expect("a model");
+            .extend([limit, cursor, all, key, bare("dry-run"), bare("commit")]);
+        let described = described(vec![paged]).expect("a model");
         let document = written(&described, "paged");
         assert_eq!(
             listed(&document),
             [
                 json!({ "name": "limit", "valueName": "N", "valueType": "integer", "default": 50, "flagOnly": true, "domain": { "minimum": 1 }, "help": "The limit." }),
-                json!("cursor"),
-                json!("all"),
+                json!({ "name": "cursor", "flagOnly": true, "help": "Resume after the last member of the previous page." }),
+                json!({ "name": "all", "valueType": "switch", "flagOnly": true, "help": "Return every member from the cursor on." }),
                 json!({ "name": "operation", "valueName": "KEY", "help": "The operation." }),
                 json!("dry-run"),
-            ]
-        );
-        assert_eq!(
-            listed(&written(&described, "other")),
-            [json!("limit")],
-            "the reserved shape is the name, whatever the help says"
+                json!("commit"),
+            ],
+            "the bare name only where the command gives the reserved option no help"
         );
         assert!(described.tree().to_value().get("options").is_none());
+    }
+
+    #[test]
+    fn atip_crate14_21b_a_reserved_option_with_help_on_two_commands_is_shared_in_the_tree_and_one_in_full_has_help(
+    ) {
+        let mut cursor = reserved("cursor");
+        cursor.help = "Resume after the last item.".to_string();
+        let described = described(vec![
+            with_option("a", cursor.clone()),
+            with_option("b", cursor),
+        ])
+        .expect("a model");
+        assert_eq!(
+            described.tree().to_value()["options"],
+            json!([{ "name": "cursor", "flagOnly": true, "help": "Resume after the last item." }])
+        );
+        assert_eq!(listed(&written(&described, "a")), [json!("cursor")]);
+        // A name that resolves to a tree option is written in full, which needs a help.
+        let mut key = reserved("operation");
+        key.value_name = Some("KEY".to_string());
+        let refused = super::tests::described(vec![
+            with_option("a", key.clone()),
+            with_option("b", key),
+            with_option("c", bare("operation")),
+        ])
+        .expect_err("a refusal");
+        assert_eq!(
+            refused,
+            Error::OptionWithoutHelp {
+                command: "c".to_string(),
+                option: "operation".to_string()
+            }
+        );
     }
 
     fn with_option(name: &str, option: OptionDoc) -> CommandDoc {
