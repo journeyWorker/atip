@@ -63,7 +63,11 @@ impl Model {
             .groups
             .iter()
             .map(|group| (group.id.to_string(), true))
-            .chain(self.commands.iter().map(|command| (command.id.to_string(), false)))
+            .chain(
+                self.commands
+                    .iter()
+                    .map(|command| (command.id.to_string(), false)),
+            )
             .filter(|(id, _)| {
                 let words: Vec<&str> = id.split(' ').collect();
                 let prefix = words[..words.len() - 1].join(" ");
@@ -100,7 +104,11 @@ impl Model {
             .groups
             .iter()
             .map(|group| (group.id.to_string(), true))
-            .chain(self.commands.iter().map(|command| (command.id.to_string(), false)))
+            .chain(
+                self.commands
+                    .iter()
+                    .map(|command| (command.id.to_string(), false)),
+            )
             .collect();
         nodes.sort();
         nodes
@@ -110,7 +118,10 @@ impl Model {
 fn operand_doc(arg: &Arg) -> Value {
     let mut doc = Map::new();
     doc.insert("name".into(), json!(arg.name));
-    doc.insert("valueName".into(), json!(arg.value_name.unwrap_or(arg.name)));
+    doc.insert(
+        "valueName".into(),
+        json!(arg.value_name.unwrap_or(arg.name)),
+    );
     doc.insert("valueType".into(), json!(arg.value_type));
     doc.insert("required".into(), json!(arg.required));
     doc.insert("variadic".into(), json!(arg.repeatable));
@@ -129,7 +140,10 @@ fn option_doc(arg: &Arg) -> Value {
     doc.insert("default".into(), arg.default.clone());
     doc.insert("help".into(), json!(arg.help));
     if arg.takes_value() {
-        doc.insert("valueName".into(), json!(arg.value_name.unwrap_or(arg.name)));
+        doc.insert(
+            "valueName".into(),
+            json!(arg.value_name.unwrap_or(arg.name)),
+        );
     }
     if let Some(short) = arg.short {
         doc.insert("short".into(), json!(short.to_string()));
@@ -351,7 +365,10 @@ fn rename_usage(document: &mut Value, replacement: &str) {
             for (key, value) in members.iter_mut() {
                 if key == "errors" {
                     if let Value::Array(items) = value {
-                        for item in items.iter_mut().filter(|item| item.as_str() == Some("USAGE")) {
+                        for item in items
+                            .iter_mut()
+                            .filter(|item| item.as_str() == Some("USAGE"))
+                        {
                             *item = json!(replacement);
                         }
                         items.sort_by_key(|item| item.as_str().map(str::to_string));

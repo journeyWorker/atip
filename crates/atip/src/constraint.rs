@@ -14,7 +14,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use clap::{Arg, Command};
 use serde_json::{json, Value};
 
-use crate::doc::{ConditionDoc, ConstraintDoc, OperandDoc, OptionDoc, RuleKind, ValidatorDoc, ValueType};
+use crate::doc::{
+    ConditionDoc, ConstraintDoc, OperandDoc, OptionDoc, RuleKind, ValidatorDoc, ValueType,
+};
 use crate::project;
 
 /// When a `requires` or `forbids` applies: `name` is given, and, when `values` is not empty, one of its values is in `values`.
@@ -43,7 +45,17 @@ pub struct Rule {
 
 impl Rule {
     const fn names(kind: RuleKind, names: &'static [&'static str]) -> Rule {
-        Rule { kind, names, when: None, then: &[], code: None, help: None, says: None, hint: None, reason: None }
+        Rule {
+            kind,
+            names,
+            when: None,
+            then: &[],
+            code: None,
+            help: None,
+            says: None,
+            hint: None,
+            reason: None,
+        }
     }
 
     /// At least one of `names` is given.
@@ -63,22 +75,70 @@ impl Rule {
 
     /// When `name` is given, every name in `then` is given.
     pub const fn requires(name: &'static str, then: &'static [&'static str]) -> Rule {
-        Rule { kind: RuleKind::Requires, names: &[], when: Some(When { name, values: &[] }), then, code: None, help: None, says: None, hint: None, reason: None }
+        Rule {
+            kind: RuleKind::Requires,
+            names: &[],
+            when: Some(When { name, values: &[] }),
+            then,
+            code: None,
+            help: None,
+            says: None,
+            hint: None,
+            reason: None,
+        }
     }
 
     /// When `name` is given with one of `values`, every name in `then` is given.
-    pub const fn requires_in(name: &'static str, values: &'static [&'static str], then: &'static [&'static str]) -> Rule {
-        Rule { kind: RuleKind::Requires, names: &[], when: Some(When { name, values }), then, code: None, help: None, says: None, hint: None, reason: None }
+    pub const fn requires_in(
+        name: &'static str,
+        values: &'static [&'static str],
+        then: &'static [&'static str],
+    ) -> Rule {
+        Rule {
+            kind: RuleKind::Requires,
+            names: &[],
+            when: Some(When { name, values }),
+            then,
+            code: None,
+            help: None,
+            says: None,
+            hint: None,
+            reason: None,
+        }
     }
 
     /// When `name` is given, no name in `then` is given.
     pub const fn forbids(name: &'static str, then: &'static [&'static str]) -> Rule {
-        Rule { kind: RuleKind::Forbids, names: &[], when: Some(When { name, values: &[] }), then, code: None, help: None, says: None, hint: None, reason: None }
+        Rule {
+            kind: RuleKind::Forbids,
+            names: &[],
+            when: Some(When { name, values: &[] }),
+            then,
+            code: None,
+            help: None,
+            says: None,
+            hint: None,
+            reason: None,
+        }
     }
 
     /// When `name` is given with one of `values`, no name in `then` is given.
-    pub const fn forbids_in(name: &'static str, values: &'static [&'static str], then: &'static [&'static str]) -> Rule {
-        Rule { kind: RuleKind::Forbids, names: &[], when: Some(When { name, values }), then, code: None, help: None, says: None, hint: None, reason: None }
+    pub const fn forbids_in(
+        name: &'static str,
+        values: &'static [&'static str],
+        then: &'static [&'static str],
+    ) -> Rule {
+        Rule {
+            kind: RuleKind::Forbids,
+            names: &[],
+            when: Some(When { name, values }),
+            then,
+            code: None,
+            help: None,
+            says: None,
+            hint: None,
+            reason: None,
+        }
     }
 
     /// The registered code a violation produces (default `USAGE`).
@@ -113,12 +173,21 @@ impl Rule {
 
     /// The rule as the document member.
     pub fn doc(&self) -> ConstraintDoc {
-        let strings = |names: &[&str]| names.iter().map(|name| (*name).to_string()).collect::<Vec<_>>();
+        let strings = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect::<Vec<_>>()
+        };
         let named = !self.names.is_empty();
         ConstraintDoc {
             rule: self.kind,
             names: named.then(|| strings(self.names)),
-            when: self.when.map(|when| ConditionDoc { name: when.name.to_string(), values: (!when.values.is_empty()).then(|| when.values.iter().map(|value| json!(value)).collect()) }),
+            when: self.when.map(|when| ConditionDoc {
+                name: when.name.to_string(),
+                values: (!when.values.is_empty())
+                    .then(|| when.values.iter().map(|value| json!(value)).collect()),
+            }),
             then: (!self.then.is_empty()).then(|| strings(self.then)),
             code: self.code.map(str::to_string),
             help: self.help.map(str::to_string),
@@ -139,10 +208,18 @@ pub struct Validator {
 impl Validator {
     pub fn doc(&self) -> ValidatorDoc {
         ValidatorDoc {
-            arguments: self.arguments.iter().map(|name| (*name).to_string()).collect(),
+            arguments: self
+                .arguments
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
             code: self.code.to_string(),
             description: self.description.to_string(),
-            rejects: self.rejects.iter().map(|call| (*call).to_string()).collect(),
+            rejects: self
+                .rejects
+                .iter()
+                .map(|call| (*call).to_string())
+                .collect(),
             extensions: BTreeMap::new(),
         }
     }
@@ -152,7 +229,8 @@ impl Validator {
 
 /// The name a document gives `arg`: its long name, or an operand's name.
 pub fn name_of(arg: &Arg) -> String {
-    arg.get_long().map_or_else(|| project::operand_name(arg), str::to_string)
+    arg.get_long()
+        .map_or_else(|| project::operand_name(arg), str::to_string)
 }
 
 /// The relations clap states through public getters, as rules: a pair of arguments that conflict is an `atMostOne` of two,
@@ -160,12 +238,18 @@ pub fn name_of(arg: &Arg) -> String {
 /// one that takes one member an `atMostOne` (approaches/rust.md 4.2). Members come in the command's declaration order.
 /// `requires` and `required_unless_present` have no getter: the tool's table says them.
 pub fn clap_rules(cmd: &Command) -> Vec<ConstraintDoc> {
-    let args: Vec<&Arg> = cmd.get_arguments().filter(|arg| !project::is_builtin_arg(arg)).collect();
+    let args: Vec<&Arg> = cmd
+        .get_arguments()
+        .filter(|arg| !project::is_builtin_arg(arg))
+        .collect();
     let position = |id: &str| args.iter().position(|arg| arg.get_id() == id);
     let mut rules: Vec<ConstraintDoc> = Vec::new();
     let mut grouped: BTreeSet<(usize, usize)> = BTreeSet::new();
     for group in cmd.get_groups() {
-        let mut members: Vec<usize> = group.get_args().filter_map(|id| position(id.as_str())).collect();
+        let mut members: Vec<usize> = group
+            .get_args()
+            .filter_map(|id| position(id.as_str()))
+            .collect();
         members.sort_unstable();
         let names: Vec<String> = members.iter().map(|at| name_of(args[*at])).collect();
         let multiple = (*group).clone().is_multiple();
@@ -184,7 +268,15 @@ pub fn clap_rules(cmd: &Command) -> Vec<ConstraintDoc> {
             }
         }
         if names.len() >= 2 {
-            rules.push(ConstraintDoc { rule: kind, names: Some(names), when: None, then: None, code: None, help: None, extensions: BTreeMap::new() });
+            rules.push(ConstraintDoc {
+                rule: kind,
+                names: Some(names),
+                when: None,
+                then: None,
+                code: None,
+                help: None,
+                extensions: BTreeMap::new(),
+            });
         }
     }
     let mut pairs: BTreeSet<(usize, usize)> = BTreeSet::new();
@@ -202,7 +294,15 @@ pub fn clap_rules(cmd: &Command) -> Vec<ConstraintDoc> {
     // --warning` and the path); a pair that does not extend is an `atMostOne` of two (10.8.1).
     for clique in maximal_cliques(args.len(), &pairs) {
         let names: Vec<String> = clique.iter().map(|at| name_of(args[*at])).collect();
-        rules.push(ConstraintDoc { rule: RuleKind::AtMostOne, names: Some(names), when: None, then: None, code: None, help: None, extensions: BTreeMap::new() });
+        rules.push(ConstraintDoc {
+            rule: RuleKind::AtMostOne,
+            names: Some(names),
+            when: None,
+            then: None,
+            code: None,
+            help: None,
+            extensions: BTreeMap::new(),
+        });
     }
     rules
 }
@@ -211,7 +311,13 @@ pub fn clap_rules(cmd: &Command) -> Vec<ConstraintDoc> {
 /// sets in ascending order of their first members (Bron-Kerbosch over a graph of a few dozen vertices at most).
 fn maximal_cliques(count: usize, edges: &BTreeSet<(usize, usize)>) -> Vec<Vec<usize>> {
     let joined = |a: usize, b: usize| edges.contains(&(a.min(b), a.max(b)));
-    fn grow(joined: &dyn Fn(usize, usize) -> bool, current: &mut Vec<usize>, mut candidates: Vec<usize>, mut excluded: Vec<usize>, out: &mut Vec<Vec<usize>>) {
+    fn grow(
+        joined: &dyn Fn(usize, usize) -> bool,
+        current: &mut Vec<usize>,
+        mut candidates: Vec<usize>,
+        mut excluded: Vec<usize>,
+        out: &mut Vec<Vec<usize>>,
+    ) {
         if candidates.is_empty() && excluded.is_empty() {
             if current.len() >= 2 {
                 out.push(current.clone());
@@ -219,8 +325,16 @@ fn maximal_cliques(count: usize, edges: &BTreeSet<(usize, usize)>) -> Vec<Vec<us
             return;
         }
         while let Some(vertex) = candidates.first().copied() {
-            let next_candidates: Vec<usize> = candidates.iter().copied().filter(|other| joined(vertex, *other)).collect();
-            let next_excluded: Vec<usize> = excluded.iter().copied().filter(|other| joined(vertex, *other)).collect();
+            let next_candidates: Vec<usize> = candidates
+                .iter()
+                .copied()
+                .filter(|other| joined(vertex, *other))
+                .collect();
+            let next_excluded: Vec<usize> = excluded
+                .iter()
+                .copied()
+                .filter(|other| joined(vertex, *other))
+                .collect();
             current.push(vertex);
             grow(joined, current, next_candidates, next_excluded, out);
             current.pop();
@@ -229,7 +343,13 @@ fn maximal_cliques(count: usize, edges: &BTreeSet<(usize, usize)>) -> Vec<Vec<us
         }
     }
     let mut out = Vec::new();
-    grow(&joined, &mut Vec::new(), (0..count).collect(), Vec::new(), &mut out);
+    grow(
+        &joined,
+        &mut Vec::new(),
+        (0..count).collect(),
+        Vec::new(),
+        &mut out,
+    );
     for clique in &mut out {
         clique.sort_unstable();
     }
@@ -252,7 +372,9 @@ fn holds(given: &Given, when: &ConditionDoc) -> bool {
     match (given.get(&when.name), &when.values) {
         (None, _) => false,
         (Some(_), None) => true,
-        (Some(values), Some(wanted)) => values.iter().any(|value| wanted.iter().any(|candidate| same_value(candidate, value))),
+        (Some(values), Some(wanted)) => values
+            .iter()
+            .any(|value| wanted.iter().any(|candidate| same_value(candidate, value))),
     }
 }
 
@@ -273,7 +395,9 @@ pub fn violation(rule: &ConstraintDoc, given: &Given) -> Option<String> {
     let then = rule.then.as_deref().unwrap_or_default();
     let given_names: Vec<&String> = names.iter().filter(|name| is_given(given, name)).collect();
     match rule.rule {
-        RuleKind::AtLeastOne => given_names.is_empty().then(|| names.first().cloned().unwrap_or_default()),
+        RuleKind::AtLeastOne => given_names
+            .is_empty()
+            .then(|| names.first().cloned().unwrap_or_default()),
         RuleKind::ExactlyOne => match given_names.len() {
             1 => None,
             0 => Some(names.first().cloned().unwrap_or_default()),
@@ -299,7 +423,11 @@ pub fn violation(rule: &ConstraintDoc, given: &Given) -> Option<String> {
 
 /// The indices of the rules `given` breaks, with the argument each names.
 pub fn violations(rules: &[ConstraintDoc], given: &Given) -> Vec<(usize, String)> {
-    rules.iter().enumerate().filter_map(|(at, rule)| violation(rule, given).map(|field| (at, field))).collect()
+    rules
+        .iter()
+        .enumerate()
+        .filter_map(|(at, rule)| violation(rule, given).map(|field| (at, field)))
+        .collect()
 }
 
 /// The names a rule is about, in the order the document lists them.
@@ -325,7 +453,13 @@ fn relation_key(rule: &ConstraintDoc) -> String {
         values.sort();
         (when.name.clone(), values)
     });
-    json!([rule.rule.as_str(), sorted(&rule.names), when, sorted(&rule.then)]).to_string()
+    json!([
+        rule.rule.as_str(),
+        sorted(&rule.names),
+        when,
+        sorted(&rule.then)
+    ])
+    .to_string()
 }
 
 // ----------------------------------------------------------------- document
@@ -334,7 +468,14 @@ fn relation_key(rule: &ConstraintDoc) -> String {
 /// every name names an operand or option; no relation is stated twice; `in` is absent on a switch and a count and holds valid
 /// values of the argument, inside its domain; every `code` is in `errors`; a validator reads named arguments, has a code
 /// in `errors`, a description and at least one `rejects`, none of which is one of the `examples`.
-pub fn document_problems(options: &[OptionDoc], operands: &[OperandDoc], constraints: &[ConstraintDoc], validators: &[ValidatorDoc], errors: &[String], examples: &[String]) -> Vec<String> {
+pub fn document_problems(
+    options: &[OptionDoc],
+    operands: &[OperandDoc],
+    constraints: &[ConstraintDoc],
+    validators: &[ValidatorDoc],
+    errors: &[String],
+    examples: &[String],
+) -> Vec<String> {
     struct Known<'a> {
         value_type: ValueType,
         members: Option<&'a [String]>,
@@ -342,13 +483,44 @@ pub fn document_problems(options: &[OptionDoc], operands: &[OperandDoc], constra
     }
     let mut known: BTreeMap<&str, Known<'_>> = BTreeMap::new();
     for option in options {
-        known.insert(&option.name, Known { value_type: option.value_type, members: option.possible_values.as_deref(), domain: option.domain.as_ref() });
+        known.insert(
+            &option.name,
+            Known {
+                value_type: option.value_type,
+                members: option.possible_values.as_deref(),
+                domain: option.domain.as_ref(),
+            },
+        );
     }
     for operand in operands {
-        known.insert(&operand.name, Known { value_type: operand.value_type, members: operand.possible_values.as_deref(), domain: operand.domain.as_ref() });
+        known.insert(
+            &operand.name,
+            Known {
+                value_type: operand.value_type,
+                members: operand.possible_values.as_deref(),
+                domain: operand.domain.as_ref(),
+            },
+        );
     }
     let mut problems = Vec::new();
-    let domained = options.iter().map(|option| (&option.name, option.value_type, &option.domain, &option.default)).chain(operands.iter().map(|operand| (&operand.name, operand.value_type, &operand.domain, &operand.default)));
+    let domained = options
+        .iter()
+        .map(|option| {
+            (
+                &option.name,
+                option.value_type,
+                &option.domain,
+                &option.default,
+            )
+        })
+        .chain(operands.iter().map(|operand| {
+            (
+                &operand.name,
+                operand.value_type,
+                &operand.domain,
+                &operand.default,
+            )
+        }));
     for (name, value_type, domain, default) in domained {
         let Some(domain) = domain else { continue };
         for problem in crate::domain::profile_problems(value_type, domain) {
@@ -361,7 +533,9 @@ pub fn document_problems(options: &[OptionDoc], operands: &[OperandDoc], constra
         };
         for value in defaults {
             if !crate::domain::admits(domain, value).unwrap_or(false) {
-                problems.push(format!("`{name}`: the default {value} is outside its domain {domain}"));
+                problems.push(format!(
+                    "`{name}`: the default {value} is outside its domain {domain}"
+                ));
             }
         }
     }
@@ -370,18 +544,32 @@ pub fn document_problems(options: &[OptionDoc], operands: &[OperandDoc], constra
         let label = format!("the {} rule on {:?}", rule.rule.as_str(), members(rule));
         for name in members(rule) {
             if !known.contains_key(name.as_str()) {
-                problems.push(format!("{label}: `{name}` is neither an operand nor an option"));
+                problems.push(format!(
+                    "{label}: `{name}` is neither an operand nor an option"
+                ));
             }
         }
         match rule.rule {
             RuleKind::AtLeastOne | RuleKind::ExactlyOne | RuleKind::AtMostOne => {
-                if rule.names.as_ref().is_none_or(|names| names.len() < 2) || rule.when.is_some() || rule.then.is_some() {
-                    problems.push(format!("{label}: a {} has `names` (two or more) and no `if` or `then`", rule.rule.as_str()));
+                if rule.names.as_ref().is_none_or(|names| names.len() < 2)
+                    || rule.when.is_some()
+                    || rule.then.is_some()
+                {
+                    problems.push(format!(
+                        "{label}: a {} has `names` (two or more) and no `if` or `then`",
+                        rule.rule.as_str()
+                    ));
                 }
             }
             RuleKind::Requires | RuleKind::Forbids => {
-                if rule.when.is_none() || rule.then.as_ref().is_none_or(Vec::is_empty) || rule.names.is_some() {
-                    problems.push(format!("{label}: a {} has `if` and `then` and no `names`", rule.rule.as_str()));
+                if rule.when.is_none()
+                    || rule.then.as_ref().is_none_or(Vec::is_empty)
+                    || rule.names.is_some()
+                {
+                    problems.push(format!(
+                        "{label}: a {} has `if` and `then` and no `names`",
+                        rule.rule.as_str()
+                    ));
                 }
             }
         }
@@ -389,21 +577,39 @@ pub fn document_problems(options: &[OptionDoc], operands: &[OperandDoc], constra
             if let Some(argument) = known.get(when.name.as_str()) {
                 if let Some(values) = &when.values {
                     if matches!(argument.value_type, ValueType::Switch | ValueType::Count) {
-                        problems.push(format!("{label}: `in` is not allowed on the {} `{}`", argument.value_type.as_str(), when.name));
+                        problems.push(format!(
+                            "{label}: `in` is not allowed on the {} `{}`",
+                            argument.value_type.as_str(),
+                            when.name
+                        ));
                     }
                     for value in values {
                         let valid = match argument.value_type {
-                            ValueType::Enum => value.as_str().is_some_and(|text| argument.members.is_some_and(|members| members.iter().any(|member| member == text))),
-                            ValueType::Integer | ValueType::Count => value.is_i64() || value.is_u64(),
+                            ValueType::Enum => value.as_str().is_some_and(|text| {
+                                argument.members.is_some_and(|members| {
+                                    members.iter().any(|member| member == text)
+                                })
+                            }),
+                            ValueType::Integer | ValueType::Count => {
+                                value.is_i64() || value.is_u64()
+                            }
                             ValueType::Number => value.is_number(),
                             ValueType::Switch => false,
-                            ValueType::String | ValueType::Path | ValueType::Json => value.is_string(),
+                            ValueType::String | ValueType::Path | ValueType::Json => {
+                                value.is_string()
+                            }
                         };
                         if !valid {
-                            problems.push(format!("{label}: {value} is not a valid value of `{}`", when.name));
+                            problems.push(format!(
+                                "{label}: {value} is not a valid value of `{}`",
+                                when.name
+                            ));
                         } else if let Some(domain) = argument.domain {
                             if !crate::domain::admits(domain, value).unwrap_or(false) {
-                                problems.push(format!("{label}: {value} is outside the domain of `{}`", when.name));
+                                problems.push(format!(
+                                    "{label}: {value} is outside the domain of `{}`",
+                                    when.name
+                                ));
                             }
                         }
                     }
@@ -416,7 +622,9 @@ pub fn document_problems(options: &[OptionDoc], operands: &[OperandDoc], constra
             }
         }
         if !seen.insert(relation_key(rule)) {
-            problems.push(format!("{label}: the same relation is stated twice (spec 10.8.2)"));
+            problems.push(format!(
+                "{label}: the same relation is stated twice (spec 10.8.2)"
+            ));
         }
     }
     for validator in validators {
@@ -426,11 +634,16 @@ pub fn document_problems(options: &[OptionDoc], operands: &[OperandDoc], constra
         }
         for name in &validator.arguments {
             if !known.contains_key(name.as_str()) {
-                problems.push(format!("{label}: `{name}` is neither an operand nor an option"));
+                problems.push(format!(
+                    "{label}: `{name}` is neither an operand nor an option"
+                ));
             }
         }
         if !errors.contains(&validator.code) {
-            problems.push(format!("{label}: the code {} is not in errors", validator.code));
+            problems.push(format!(
+                "{label}: the code {} is not in errors",
+                validator.code
+            ));
         }
         if validator.description.trim().is_empty() {
             problems.push(format!("{label}: has no description"));
@@ -457,16 +670,47 @@ mod tests {
         let mut cmd = Command::new("tool").subcommand(
             Command::new("run")
                 .about("Runs")
-                .arg(Arg::new("check").long("check").action(ArgAction::SetTrue).help("c").conflicts_with_all(["policy", "quiet"]))
-                .arg(Arg::new("policy").long("policy").help("p").conflicts_with("no_policy"))
-                .arg(Arg::new("no_policy").long("no-policy").action(ArgAction::SetTrue).help("n"))
-                .arg(Arg::new("quiet").long("quiet").action(ArgAction::SetTrue).help("q"))
+                .arg(
+                    Arg::new("check")
+                        .long("check")
+                        .action(ArgAction::SetTrue)
+                        .help("c")
+                        .conflicts_with_all(["policy", "quiet"]),
+                )
+                .arg(
+                    Arg::new("policy")
+                        .long("policy")
+                        .help("p")
+                        .conflicts_with("no_policy"),
+                )
+                .arg(
+                    Arg::new("no_policy")
+                        .long("no-policy")
+                        .action(ArgAction::SetTrue)
+                        .help("n"),
+                )
+                .arg(
+                    Arg::new("quiet")
+                        .long("quiet")
+                        .action(ArgAction::SetTrue)
+                        .help("q"),
+                )
                 .arg(Arg::new("upstream").long("upstream").help("u"))
                 .arg(Arg::new("original").long("original").help("o"))
                 .arg(Arg::new("a").long("a").help("a"))
                 .arg(Arg::new("b").long("b").help("b"))
-                .group(ArgGroup::new("provenance").args(["upstream", "original"]).required(true).multiple(false))
-                .group(ArgGroup::new("some").args(["a", "b"]).required(true).multiple(true)),
+                .group(
+                    ArgGroup::new("provenance")
+                        .args(["upstream", "original"])
+                        .required(true)
+                        .multiple(false),
+                )
+                .group(
+                    ArgGroup::new("some")
+                        .args(["a", "b"])
+                        .required(true)
+                        .multiple(true),
+                ),
         );
         cmd.build();
         cmd
@@ -476,33 +720,92 @@ mod tests {
     fn clap_conflicts_and_groups_are_rules_stated_once() {
         let cmd = command();
         let rules = clap_rules(cmd.find_subcommand("run").expect("run"));
-        let shown: Vec<(RuleKind, Vec<String>)> = rules.iter().map(|rule| (rule.rule, rule.names.clone().unwrap_or_default())).collect();
-        let names = |words: &[&str]| words.iter().map(|word| (*word).to_string()).collect::<Vec<_>>();
-        assert!(shown.contains(&(RuleKind::ExactlyOne, names(&["upstream", "original"]))), "{shown:?}");
-        assert!(shown.contains(&(RuleKind::AtLeastOne, names(&["a", "b"]))), "{shown:?}");
-        assert!(shown.contains(&(RuleKind::AtMostOne, names(&["check", "policy"]))), "{shown:?}");
-        assert!(shown.contains(&(RuleKind::AtMostOne, names(&["check", "quiet"]))), "{shown:?}");
-        assert!(shown.contains(&(RuleKind::AtMostOne, names(&["policy", "no-policy"]))), "{shown:?}");
-        assert!(!shown.contains(&(RuleKind::AtMostOne, names(&["upstream", "original"]))), "the group's pair is stated by its exactlyOne: {shown:?}");
+        let shown: Vec<(RuleKind, Vec<String>)> = rules
+            .iter()
+            .map(|rule| (rule.rule, rule.names.clone().unwrap_or_default()))
+            .collect();
+        let names = |words: &[&str]| {
+            words
+                .iter()
+                .map(|word| (*word).to_string())
+                .collect::<Vec<_>>()
+        };
+        assert!(
+            shown.contains(&(RuleKind::ExactlyOne, names(&["upstream", "original"]))),
+            "{shown:?}"
+        );
+        assert!(
+            shown.contains(&(RuleKind::AtLeastOne, names(&["a", "b"]))),
+            "{shown:?}"
+        );
+        assert!(
+            shown.contains(&(RuleKind::AtMostOne, names(&["check", "policy"]))),
+            "{shown:?}"
+        );
+        assert!(
+            shown.contains(&(RuleKind::AtMostOne, names(&["check", "quiet"]))),
+            "{shown:?}"
+        );
+        assert!(
+            shown.contains(&(RuleKind::AtMostOne, names(&["policy", "no-policy"]))),
+            "{shown:?}"
+        );
+        assert!(
+            !shown.contains(&(RuleKind::AtMostOne, names(&["upstream", "original"]))),
+            "the group's pair is stated by its exactlyOne: {shown:?}"
+        );
         assert_eq!(shown.len(), 5, "{shown:?}");
     }
 
     #[test]
     fn a_rule_is_violated_by_the_arguments_it_names_and_says_which() {
-        let given = |names: &[(&str, Value)]| -> Given { names.iter().map(|(name, value)| ((*name).to_string(), vec![value.clone()])).collect() };
+        let given = |names: &[(&str, Value)]| -> Given {
+            names
+                .iter()
+                .map(|(name, value)| ((*name).to_string(), vec![value.clone()]))
+                .collect()
+        };
         let requires = Rule::requires("commit", &["plan-digest"]).doc();
-        assert_eq!(violation(&requires, &given(&[("commit", json!(true))])), Some("plan-digest".to_string()));
-        assert_eq!(violation(&requires, &given(&[("commit", json!(true)), ("plan-digest", json!("x"))])), None);
+        assert_eq!(
+            violation(&requires, &given(&[("commit", json!(true))])),
+            Some("plan-digest".to_string())
+        );
+        assert_eq!(
+            violation(
+                &requires,
+                &given(&[("commit", json!(true)), ("plan-digest", json!("x"))])
+            ),
+            None
+        );
         assert_eq!(violation(&requires, &given(&[])), None);
-        let conditional = Rule::requires_in("disposition", &["rejected", "deferred"], &["reason"]).doc();
-        assert_eq!(violation(&conditional, &given(&[("disposition", json!("rejected"))])), Some("reason".to_string()));
-        assert_eq!(violation(&conditional, &given(&[("disposition", json!("fixed"))])), None);
+        let conditional =
+            Rule::requires_in("disposition", &["rejected", "deferred"], &["reason"]).doc();
+        assert_eq!(
+            violation(&conditional, &given(&[("disposition", json!("rejected"))])),
+            Some("reason".to_string())
+        );
+        assert_eq!(
+            violation(&conditional, &given(&[("disposition", json!("fixed"))])),
+            None
+        );
         let one = Rule::exactly_one(&["regime", "domain"]).doc();
         assert_eq!(violation(&one, &given(&[])), Some("regime".to_string()));
-        assert_eq!(violation(&one, &given(&[("regime", json!("k")), ("domain", json!("d"))])), Some("regime".to_string()));
+        assert_eq!(
+            violation(
+                &one,
+                &given(&[("regime", json!("k")), ("domain", json!("d"))])
+            ),
+            Some("regime".to_string())
+        );
         assert_eq!(violation(&one, &given(&[("domain", json!("d"))])), None);
         let forbids = Rule::forbids("all-scenarios", &["task", "scenario"]).doc();
-        assert_eq!(violation(&forbids, &given(&[("all-scenarios", json!(true)), ("scenario", json!("x"))])), Some("scenario".to_string()));
+        assert_eq!(
+            violation(
+                &forbids,
+                &given(&[("all-scenarios", json!(true)), ("scenario", json!("x"))])
+            ),
+            Some("scenario".to_string())
+        );
     }
 
     #[test]
@@ -523,14 +826,36 @@ mod tests {
             help: "h".to_string(),
         };
         let options = [option("a"), option("b")];
-        let twice = [Rule::at_most_one(&["a", "b"]).doc(), Rule::at_most_one(&["b", "a"]).code("OTHER").doc()];
+        let twice = [
+            Rule::at_most_one(&["a", "b"]).doc(),
+            Rule::at_most_one(&["b", "a"]).code("OTHER").doc(),
+        ];
         let errors = vec!["USAGE".to_string(), "OTHER".to_string()];
         let problems = document_problems(&options, &[], &twice, &[], &errors, &[]);
-        assert!(problems.iter().any(|p| p.contains("stated twice")), "{problems:?}");
+        assert!(
+            problems.iter().any(|p| p.contains("stated twice")),
+            "{problems:?}"
+        );
         let unknown = [Rule::requires("a", &["zzz"]).doc()];
-        assert!(document_problems(&options, &[], &unknown, &[], &errors, &[]).iter().any(|p| p.contains("zzz")));
+        assert!(
+            document_problems(&options, &[], &unknown, &[], &errors, &[])
+                .iter()
+                .any(|p| p.contains("zzz"))
+        );
         let uncoded = [Rule::requires("a", &["b"]).code("MISSING").doc()];
-        assert!(document_problems(&options, &[], &uncoded, &[], &errors, &[]).iter().any(|p| p.contains("MISSING")));
-        assert!(document_problems(&options, &[], &[Rule::requires("a", &["b"]).doc()], &[], &errors, &[]).is_empty());
+        assert!(
+            document_problems(&options, &[], &uncoded, &[], &errors, &[])
+                .iter()
+                .any(|p| p.contains("MISSING"))
+        );
+        assert!(document_problems(
+            &options,
+            &[],
+            &[Rule::requires("a", &["b"]).doc()],
+            &[],
+            &errors,
+            &[]
+        )
+        .is_empty());
     }
 }

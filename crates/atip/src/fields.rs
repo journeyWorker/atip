@@ -25,7 +25,10 @@ use crate::minor::{Minor, UnknownMinor};
 /// Whether `name` is an identifier (`[A-Za-z_][A-Za-z0-9_]*`), which a path writes with a dot and never in brackets.
 pub fn is_identifier(name: &str) -> bool {
     let mut chars = name.chars();
-    chars.next().is_some_and(|first| first.is_ascii_alphabetic() || first == '_') && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// One step of a path: a member name, and whether the path goes into each element of the array there (`name[]`).
@@ -67,7 +70,10 @@ impl FieldPath {
 
     /// The path of one member of the record: `name`, or the bracketed key when the name is not an identifier.
     pub fn member(name: &str) -> FieldPath {
-        FieldPath(vec![Step { name: name.to_string(), each: false }])
+        FieldPath(vec![Step {
+            name: name.to_string(),
+            each: false,
+        }])
     }
 
     /// Whether `other` goes through the same members as `self` and then possibly further (`self` equals or is an ancestor of `other`).
@@ -81,16 +87,27 @@ impl FieldPath {
     /// When the text is not a path, or spells a member some other way than the one spelling: an identifier in brackets,
     /// a leading dot, `[]` first, a doubled `[]`, a bracketed key with an unknown escape or a NUL.
     pub fn parse(text: &str) -> Result<FieldPath, PathError> {
-        let fail = |why: &str| PathError { path: text.to_string(), why: why.to_string() };
+        let fail = |why: &str| PathError {
+            path: text.to_string(),
+            why: why.to_string(),
+        };
         let chars: Vec<char> = text.chars().collect();
         let mut steps = Vec::new();
         let mut i = 0;
         let mut after_dot = false;
         loop {
-            let Some(&c) = chars.get(i) else { return Err(fail(if steps.is_empty() { "it is empty" } else { "a member name must follow the dot" })) };
+            let Some(&c) = chars.get(i) else {
+                return Err(fail(if steps.is_empty() {
+                    "it is empty"
+                } else {
+                    "a member name must follow the dot"
+                }));
+            };
             let name = if c == '[' {
                 if after_dot {
-                    return Err(fail("a dot is followed by an identifier, never by a bracketed key"));
+                    return Err(fail(
+                        "a dot is followed by an identifier, never by a bracketed key",
+                    ));
                 }
                 if chars.get(i + 1) == Some(&']') {
                     return Err(fail("`[]` follows the name of an array and cannot start a path or follow another `[]`"));
@@ -113,9 +130,17 @@ impl FieldPath {
                                 key.push(escaped);
                                 i += 2;
                             }
-                            _ => return Err(fail("inside a quoted key only \\\" and \\\\ are escapes")),
+                            _ => {
+                                return Err(fail(
+                                    "inside a quoted key only \\\" and \\\\ are escapes",
+                                ))
+                            }
                         },
-                        Some('\0') => return Err(fail("a key with U+0000 cannot be selected: argv cannot carry it")),
+                        Some('\0') => {
+                            return Err(fail(
+                                "a key with U+0000 cannot be selected: argv cannot carry it",
+                            ))
+                        }
                         Some(&other) => {
                             key.push(other);
                             i += 1;
@@ -127,12 +152,17 @@ impl FieldPath {
                 }
                 i += 1;
                 if is_identifier(&key) {
-                    return Err(fail(&format!("`{key}` is an identifier: write it without brackets")));
+                    return Err(fail(&format!(
+                        "`{key}` is an identifier: write it without brackets"
+                    )));
                 }
                 key
             } else if c.is_ascii_alphabetic() || c == '_' {
                 let start = i;
-                while chars.get(i).is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_') {
+                while chars
+                    .get(i)
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_')
+                {
                     i += 1;
                 }
                 chars[start..i].iter().collect()
@@ -152,7 +182,11 @@ impl FieldPath {
                     i += 1;
                 }
                 Some('[') => {}
-                Some(other) => return Err(fail(&format!("`{other}` cannot follow a member: expected `.`, `[` or the end"))),
+                Some(other) => {
+                    return Err(fail(&format!(
+                        "`{other}` cannot follow a member: expected `.`, `[` or the end"
+                    )))
+                }
             }
         }
     }
@@ -231,16 +265,28 @@ pub fn project(record: &Value, kept: &[FieldPath]) -> Value {
 }
 
 fn project_at(value: &Value, prefix: &mut Vec<String>, kept: &[Vec<&str>]) -> Value {
-    let on = |path: &[&str], prefix: &[String]| path.iter().zip(prefix).all(|(a, b)| *a == b.as_str());
+    let on =
+        |path: &[&str], prefix: &[String]| path.iter().zip(prefix).all(|(a, b)| *a == b.as_str());
     match value {
-        Value::Array(items) => Value::Array(items.iter().map(|item| project_at(item, prefix, kept)).collect()),
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| project_at(item, prefix, kept))
+                .collect(),
+        ),
         Value::Object(map) => {
             let mut out = Map::new();
             for (key, member) in map {
                 prefix.push(key.clone());
-                if kept.iter().any(|path| path.len() <= prefix.len() && on(path, prefix)) {
+                if kept
+                    .iter()
+                    .any(|path| path.len() <= prefix.len() && on(path, prefix))
+                {
                     out.insert(key.clone(), member.clone());
-                } else if kept.iter().any(|path| path.len() > prefix.len() && on(path, prefix)) {
+                } else if kept
+                    .iter()
+                    .any(|path| path.len() > prefix.len() && on(path, prefix))
+                {
                     out.insert(key.clone(), project_at(member, prefix, kept));
                 }
                 prefix.pop();
@@ -267,7 +313,9 @@ impl Projection {
 
     /// Projects every record of `data`. A pointer that leads nowhere changes nothing.
     pub fn apply(&self, data: &mut Value) {
-        let Some(target) = pointer_mut(data, &self.records) else { return };
+        let Some(target) = pointer_mut(data, &self.records) else {
+            return;
+        };
         match target {
             Value::Array(records) => {
                 for record in records {
@@ -284,7 +332,11 @@ pub fn pointer_tokens(pointer: &str) -> Option<Vec<String>> {
     if pointer.is_empty() {
         return Some(Vec::new());
     }
-    pointer.strip_prefix('/').map(|rest| rest.split('/').map(|token| token.replace("~1", "/").replace("~0", "~")).collect())
+    pointer.strip_prefix('/').map(|rest| {
+        rest.split('/')
+            .map(|token| token.replace("~1", "/").replace("~0", "~"))
+            .collect()
+    })
 }
 
 /// The value at `pointer`, going through object members only (spec 6.10).
@@ -341,7 +393,12 @@ impl Declared {
     }
 
     fn is_selectable(&self, path: &FieldPath) -> bool {
-        self.paths.contains(path) || self.maps.iter().any(|map| path.0.len() == map.0.len() + 1 && path.0[..map.0.len()] == map.0[..] && !path.0[map.0.len()].each)
+        self.paths.contains(path)
+            || self.maps.iter().any(|map| {
+                path.0.len() == map.0.len() + 1
+                    && path.0[..map.0.len()] == map.0[..]
+                    && !path.0[map.0.len()].each
+            })
     }
 
     /// The paths a `--fields` value names (spec 6.10 rule 6).
@@ -353,7 +410,11 @@ impl Declared {
     /// An empty value, an item that is not a path, a path that is not declared (nor a key of a declared map), a path that is one of the
     /// always-kept paths.
     pub fn select(&self, value: Option<&str>) -> Result<Option<Selection>, SelectError> {
-        let refuse = |message: String, received: &str| SelectError { message, expected: self.expected(), received: received.to_string() };
+        let refuse = |message: String, received: &str| SelectError {
+            message,
+            expected: self.expected(),
+            received: received.to_string(),
+        };
         let Some(value) = value else {
             return Ok((!self.default.is_empty()).then(|| self.selection_of(&self.default)));
         };
@@ -361,10 +422,17 @@ impl Declared {
         for item in split_list(value) {
             let path = FieldPath::parse(&item).map_err(|error| refuse(error.to_string(), &item))?;
             if self.keep.contains(&path) {
-                return Err(refuse(format!("`{item}` is always kept: it cannot be selected"), &item));
+                return Err(refuse(
+                    format!("`{item}` is always kept: it cannot be selected"),
+                    &item,
+                ));
             }
             if !self.is_selectable(&path) {
-                let why = if self.paths.iter().any(|declared| declared.0.len() > path.0.len() && path.covers(declared)) {
+                let why = if self
+                    .paths
+                    .iter()
+                    .any(|declared| declared.0.len() > path.0.len() && path.covers(declared))
+                {
                     format!("`{item}` is not a path of its own: select one of the paths below it")
                 } else {
                     format!("there is no field `{item}` to select")
@@ -390,17 +458,45 @@ impl Declared {
 
     /// The projection of `selection` for an output's `data`.
     pub fn projection(&self, selection: &Selection) -> Projection {
-        Projection { records: self.records.clone(), kept: selection.kept.clone() }
+        Projection {
+            records: self.records.clone(),
+            kept: selection.kept.clone(),
+        }
     }
 }
 
 // -------------------------------------------------------------------------------------------------- schemas
 
-const ANNOTATIONS: [&str; 8] = ["title", "description", "default", "examples", "deprecated", "readOnly", "writeOnly", "$comment"];
+const ANNOTATIONS: [&str; 8] = [
+    "title",
+    "description",
+    "default",
+    "examples",
+    "deprecated",
+    "readOnly",
+    "writeOnly",
+    "$comment",
+];
 
 /// The keywords that can reject a projection of a valid value (spec 6.10): a cut node has none of them.
 const FORBIDDEN: [&str; 17] = [
-    "const", "enum", "minProperties", "maxProperties", "dependentRequired", "dependentSchemas", "patternProperties", "propertyNames", "unevaluatedProperties", "if", "then", "else", "oneOf", "allOf", "not", "contains", "uniqueItems",
+    "const",
+    "enum",
+    "minProperties",
+    "maxProperties",
+    "dependentRequired",
+    "dependentSchemas",
+    "patternProperties",
+    "propertyNames",
+    "unevaluatedProperties",
+    "if",
+    "then",
+    "else",
+    "oneOf",
+    "allOf",
+    "not",
+    "contains",
+    "uniqueItems",
 ];
 
 fn resolve<'a>(doc: &'a Value, reference: &str) -> Option<&'a Value> {
@@ -408,7 +504,12 @@ fn resolve<'a>(doc: &'a Value, reference: &str) -> Option<&'a Value> {
 }
 
 fn is_null_schema(node: &Value) -> bool {
-    node.as_object().is_some_and(|object| object.get("type").and_then(Value::as_str) == Some("null") && object.keys().all(|key| key == "type" || ANNOTATIONS.contains(&key.as_str())))
+    node.as_object().is_some_and(|object| {
+        object.get("type").and_then(Value::as_str) == Some("null")
+            && object
+                .keys()
+                .all(|key| key == "type" || ANNOTATIONS.contains(&key.as_str()))
+    })
 }
 
 /// The `type`s a schema declares.
@@ -421,30 +522,49 @@ fn types_of(node: &Value) -> Vec<&str> {
 }
 
 fn is_array_node(node: &Value) -> bool {
-    types_of(node).contains(&"array") || (node.get("items").is_some() && !types_of(node).contains(&"object"))
+    types_of(node).contains(&"array")
+        || (node.get("items").is_some() && !types_of(node).contains(&"object"))
 }
 
 /// Strips `$ref` and a null-admitting union from `node` and checks each wrapper as a cut node's wrapper must be
 /// (`$ref` alone, or `anyOf` of exactly two with one `{"type": "null"}`, each with annotations at most). Returns the
 /// schema underneath; `None` when the wrappers lead nowhere.
-fn unwrap<'a>(doc: &'a Value, node: &'a Value, label: &str, problems: &mut Vec<String>) -> Option<&'a Value> {
+fn unwrap<'a>(
+    doc: &'a Value,
+    node: &'a Value,
+    label: &str,
+    problems: &mut Vec<String>,
+) -> Option<&'a Value> {
     let mut node = node;
     for _ in 0..32 {
         let Some(object) = node.as_object() else {
-            problems.push(format!("{label} is a boolean schema: a cut node is an object schema with a type"));
+            problems.push(format!(
+                "{label} is a boolean schema: a cut node is an object schema with a type"
+            ));
             return None;
         };
         if let Some(reference) = object.get("$ref") {
-            if let Some(extra) = object.keys().find(|key| *key != "$ref" && !ANNOTATIONS.contains(&key.as_str())) {
+            if let Some(extra) = object
+                .keys()
+                .find(|key| *key != "$ref" && !ANNOTATIONS.contains(&key.as_str()))
+            {
                 problems.push(format!("{label} has `{extra}` beside its `$ref`: a cut node that is a reference has annotations only"));
             }
-            let Some(target) = reference.as_str().and_then(|reference| resolve(doc, reference)) else {
-                problems.push(format!("{label} refers to {reference}, which is not in the document"));
+            let Some(target) = reference
+                .as_str()
+                .and_then(|reference| resolve(doc, reference))
+            else {
+                problems.push(format!(
+                    "{label} refers to {reference}, which is not in the document"
+                ));
                 return None;
             };
             node = target;
         } else if let Some(branches) = object.get("anyOf") {
-            if let Some(extra) = object.keys().find(|key| *key != "anyOf" && !ANNOTATIONS.contains(&key.as_str())) {
+            if let Some(extra) = object
+                .keys()
+                .find(|key| *key != "anyOf" && !ANNOTATIONS.contains(&key.as_str()))
+            {
                 problems.push(format!("{label} has `{extra}` beside its `anyOf`: a null-admitting union has annotations only"));
             }
             let Some([first, second]) = branches.as_array().map(Vec::as_slice) else {
@@ -469,9 +589,12 @@ fn unwrap<'a>(doc: &'a Value, node: &'a Value, label: &str, problems: &mut Vec<S
 
 /// Checks the object or array schema a cut node is, once its wrappers are off.
 fn check_cut(node: &Value, label: &str, problems: &mut Vec<String>) {
-    let Some(object) = node.as_object() else { return };
+    let Some(object) = node.as_object() else {
+        return;
+    };
     let types = types_of(node);
-    let nullable = |main: &str| types.iter().all(|t| *t == main || *t == "null") && types.contains(&main);
+    let nullable =
+        |main: &str| types.iter().all(|t| *t == main || *t == "null") && types.contains(&main);
     let allowed: &[&str] = if nullable("object") {
         &["type", "properties", "required", "additionalProperties"]
     } else if nullable("array") {
@@ -487,14 +610,28 @@ fn check_cut(node: &Value, label: &str, problems: &mut Vec<String>) {
         if FORBIDDEN.contains(&key.as_str()) {
             problems.push(format!("{label} uses `{key}`, which can reject a projection of a valid value: a cut node is never projected through it"));
         } else {
-            problems.push(format!("{label} uses `{key}`: besides annotations a cut node uses only {}", allowed[1..].iter().map(|k| format!("`{k}`")).collect::<Vec<_>>().join(", ")));
+            problems.push(format!(
+                "{label} uses `{key}`: besides annotations a cut node uses only {}",
+                allowed[1..]
+                    .iter()
+                    .map(|k| format!("`{k}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
     }
 }
 
 /// An object schema whose `additionalProperties` is a schema and whose `properties` is absent or empty (spec 6.10).
 fn is_map(node: &Value) -> bool {
-    types_of(node).contains(&"object") && node.get("additionalProperties").is_some_and(|extra| !extra.is_boolean() || extra.as_bool() == Some(true) || extra.is_object()) && node.get("properties").and_then(Value::as_object).is_none_or(Map::is_empty)
+    types_of(node).contains(&"object")
+        && node.get("additionalProperties").is_some_and(|extra| {
+            !extra.is_boolean() || extra.as_bool() == Some(true) || extra.is_object()
+        })
+        && node
+            .get("properties")
+            .and_then(Value::as_object)
+            .is_none_or(Map::is_empty)
 }
 
 /// How a declaration is held to the contract (spec 10.13 rules 11, 15, 16): by the minor the command document declares.
@@ -513,7 +650,9 @@ pub struct Rules {
 impl Rules {
     /// The rules of a document that declares `minor`: 1.1 and 1.2 keep the same rules, 1.0 has no bracketed path, no map key and no map cut node.
     pub const fn at(minor: Minor) -> Self {
-        Self { v11: minor.at_least(Minor::V1_1) }
+        Self {
+            v11: minor.at_least(Minor::V1_1),
+        }
     }
 
     /// The rules of a document that declares the minor written `minor` (`"1.2"`), or [`UnknownMinor`] for any other text.
@@ -526,7 +665,15 @@ impl Rules {
 ///
 /// `root` is the schema node of all of `data` (the one `schemaRef` names) and `doc` the document its `$ref`s are read in.
 /// A path is declared in `paths`, `keep` or `default`, each as a string, as the document writes it.
-pub fn check_declaration(doc: &Value, root: &Value, records: &str, paths: &[String], keep: &[String], default: &[String], rules: Rules) -> Vec<String> {
+pub fn check_declaration(
+    doc: &Value,
+    root: &Value,
+    records: &str,
+    paths: &[String],
+    keep: &[String],
+    default: &[String],
+    rules: Rules,
+) -> Vec<String> {
     let mut problems = Vec::new();
     let parse = |what: &str, list: &[String], problems: &mut Vec<String>| -> Vec<FieldPath> {
         let mut seen = BTreeSet::new();
@@ -553,7 +700,10 @@ pub fn check_declaration(doc: &Value, root: &Value, records: &str, paths: &[Stri
     let declared_keep = parse("keep", keep, &mut problems);
     let declared_default = parse("default", default, &mut problems);
     if paths.is_empty() {
-        problems.push("`paths` is empty: an output with `fields` has at least one selectable path".to_string());
+        problems.push(
+            "`paths` is empty: an output with `fields` has at least one selectable path"
+                .to_string(),
+        );
     }
     for path in &declared_default {
         if !declared_paths.contains(path) {
@@ -562,11 +712,15 @@ pub fn check_declaration(doc: &Value, root: &Value, records: &str, paths: &[Stri
     }
     for path in &declared_keep {
         if declared_paths.contains(path) {
-            problems.push(format!("`{path}` is in both `keep` and `paths`: a kept path is not selectable"));
+            problems.push(format!(
+                "`{path}` is in both `keep` and `paths`: a kept path is not selectable"
+            ));
         }
     }
     let Some(tokens) = pointer_tokens(records) else {
-        problems.push(format!("`records` is `{records}`, which is not an RFC 6901 pointer"));
+        problems.push(format!(
+            "`records` is `{records}`, which is not an RFC 6901 pointer"
+        ));
         return problems;
     };
 
@@ -576,21 +730,32 @@ pub fn check_declaration(doc: &Value, root: &Value, records: &str, paths: &[Stri
         check_cut(target, label, problems);
         Some(target.clone())
     };
-    let Some(mut at) = cut(root, "the root schema", &mut problems) else { return dedup(problems) };
+    let Some(mut at) = cut(root, "the root schema", &mut problems) else {
+        return dedup(problems);
+    };
     for (index, token) in tokens.iter().enumerate() {
         let label = format!("the schema of `{token}` on the way to the records");
-        let Some(member) = at.get("properties").and_then(|properties| properties.get(token)) else {
-            problems.push(format!("`records` goes through `{token}`, which the schema does not declare as a member"));
+        let Some(member) = at
+            .get("properties")
+            .and_then(|properties| properties.get(token))
+        else {
+            problems.push(format!(
+                "`records` goes through `{token}`, which the schema does not declare as a member"
+            ));
             return dedup(problems);
         };
-        let Some(next) = cut(member, &label, &mut problems) else { return dedup(problems) };
+        let Some(next) = cut(member, &label, &mut problems) else {
+            return dedup(problems);
+        };
         at = next;
         if index + 1 == tokens.len() && is_array_node(&at) {
             let Some(items) = at.get("items").cloned() else {
                 problems.push("the schema at `records` is an array without `items`".to_string());
                 return dedup(problems);
             };
-            let Some(record) = cut(&items, "the record schema", &mut problems) else { return dedup(problems) };
+            let Some(record) = cut(&items, "the record schema", &mut problems) else {
+                return dedup(problems);
+            };
             at = record;
         } else if index + 1 < tokens.len() && is_array_node(&at) {
             problems.push(format!("`records` goes through `{token}`, an array: the pointer goes through object members only"));
@@ -598,7 +763,9 @@ pub fn check_declaration(doc: &Value, root: &Value, records: &str, paths: &[Stri
         }
     }
     if tokens.is_empty() && is_array_node(&at) {
-        problems.push("`records` is \"\" but the root schema is an array: the root is the record".to_string());
+        problems.push(
+            "`records` is \"\" but the root schema is an array: the root is the record".to_string(),
+        );
         return dedup(problems);
     }
     if is_array_node(&at) {
@@ -616,16 +783,24 @@ pub fn check_declaration(doc: &Value, root: &Value, records: &str, paths: &[Stri
             let last = index + 1 == steps.len();
             let so_far = FieldPath(steps[..=index].to_vec());
             let label = format!("the schema of `{so_far}`");
-            let member = cur.get("properties").and_then(|properties| properties.get(&step.name)).cloned();
+            let member = cur
+                .get("properties")
+                .and_then(|properties| properties.get(&step.name))
+                .cloned();
             let Some(member) = member else {
                 // A key of a declared map.
                 let prefix = FieldPath(steps[..index].to_vec());
-                let is_key = rules.v11 && last && !step.each && declared_paths.contains(&prefix) && {
-                    let mut ignore = Vec::new();
-                    schema_at(doc, &record, &prefix, &mut ignore).is_some_and(|schema| is_map(&schema))
-                };
+                let is_key =
+                    rules.v11 && last && !step.each && declared_paths.contains(&prefix) && {
+                        let mut ignore = Vec::new();
+                        schema_at(doc, &record, &prefix, &mut ignore)
+                            .is_some_and(|schema| is_map(&schema))
+                    };
                 if !is_key {
-                    problems.push(format!("`{path}` names `{}`, which the record schema does not declare", step.name));
+                    problems.push(format!(
+                        "`{path}` names `{}`, which the record schema does not declare",
+                        step.name
+                    ));
                 }
                 break;
             };
@@ -636,11 +811,17 @@ pub fn check_declaration(doc: &Value, root: &Value, records: &str, paths: &[Stri
             };
             if step.each {
                 if !is_array_node(target) {
-                    problems.push(format!("`{path}` goes into `{}[]`, which is not an array", step.name));
+                    problems.push(format!(
+                        "`{path}` goes into `{}[]`, which is not an array",
+                        step.name
+                    ));
                     break;
                 }
             } else if !last && is_array_node(target) {
-                problems.push(format!("`{path}` goes through the array `{}` without `[]`", step.name));
+                problems.push(format!(
+                    "`{path}` goes through the array `{}` without `[]`",
+                    step.name
+                ));
                 break;
             }
             if last && !step.each && !is_array_node(target) && is_map(target) && rules.v11 {
@@ -659,7 +840,8 @@ pub fn check_declaration(doc: &Value, root: &Value, records: &str, paths: &[Stri
                     problems.push(format!("`{so_far}` is an array without `items`"));
                     break;
                 };
-                let Some(item) = cut(&items, &format!("the items of `{so_far}`"), &mut problems) else {
+                let Some(item) = cut(&items, &format!("the items of `{so_far}`"), &mut problems)
+                else {
                     break;
                 };
                 cur = item;
@@ -671,11 +853,19 @@ pub fn check_declaration(doc: &Value, root: &Value, records: &str, paths: &[Stri
 
 fn dedup(problems: Vec<String>) -> Vec<String> {
     let mut seen = BTreeSet::new();
-    problems.into_iter().filter(|problem| seen.insert(problem.clone())).collect()
+    problems
+        .into_iter()
+        .filter(|problem| seen.insert(problem.clone()))
+        .collect()
 }
 
 /// The schema `path` names below `record`, wrappers stripped (leniently).
-fn schema_at(doc: &Value, record: &Value, path: &FieldPath, problems: &mut Vec<String>) -> Option<Value> {
+fn schema_at(
+    doc: &Value,
+    record: &Value,
+    path: &FieldPath,
+    problems: &mut Vec<String>,
+) -> Option<Value> {
     let mut cur = record.clone();
     let mut found = None;
     for step in path.steps() {
@@ -709,14 +899,32 @@ pub fn record_schema(doc: &Value, root: &Value, records: &str) -> Option<Value> 
 
 /// The member names the record schema declares, in the order it lists them.
 pub fn member_names(doc: &Value, root: &Value, records: &str) -> Vec<String> {
-    record_schema(doc, root, records).and_then(|record| record.get("properties").and_then(Value::as_object).map(|properties| properties.keys().cloned().collect())).unwrap_or_default()
+    record_schema(doc, root, records)
+        .and_then(|record| {
+            record
+                .get("properties")
+                .and_then(Value::as_object)
+                .map(|properties| properties.keys().cloned().collect())
+        })
+        .unwrap_or_default()
 }
 
 /// The declared paths of `paths` (as strings) whose schema, below `record`, is a map (spec 6.10): the keys of each are selectable.
 pub fn declared_maps(doc: &Value, root: &Value, records: &str, paths: &[String]) -> Vec<FieldPath> {
     let mut ignore = Vec::new();
-    let Some(record) = record_schema(doc, root, records) else { return Vec::new() };
-    paths.iter().filter_map(|text| FieldPath::parse(text).ok()).filter(|path| schema_at(doc, &record, path, &mut ignore).is_some_and(|schema| !is_array_node(&schema) && is_map(&schema) || path.steps().last().is_some_and(|step| step.each) && is_map(&schema))).collect()
+    let Some(record) = record_schema(doc, root, records) else {
+        return Vec::new();
+    };
+    paths
+        .iter()
+        .filter_map(|text| FieldPath::parse(text).ok())
+        .filter(|path| {
+            schema_at(doc, &record, path, &mut ignore).is_some_and(|schema| {
+                !is_array_node(&schema) && is_map(&schema)
+                    || path.steps().last().is_some_and(|step| step.each) && is_map(&schema)
+            })
+        })
+        .collect()
 }
 
 // -------------------------------------------------------------------------------------------------- reduced schema
@@ -725,7 +933,10 @@ pub fn declared_maps(doc: &Value, root: &Value, records: &str, paths: &[String])
 /// "Projected schema"). The result is self-contained apart from the references it keeps to leaves and members kept
 /// whole; `projected_problems` (feature `validate`) puts the document back around it.
 pub fn reduced(doc: &Value, root: &Value, records: &str, kept: &[FieldPath]) -> Value {
-    let kept: Vec<Vec<String>> = kept.iter().map(|path| path.names().into_iter().map(str::to_string).collect()).collect();
+    let kept: Vec<Vec<String>> = kept
+        .iter()
+        .map(|path| path.names().into_iter().map(str::to_string).collect())
+        .collect();
     let tokens = pointer_tokens(records).unwrap_or_default();
     reduce_above(doc, root, &tokens, &kept)
 }
@@ -733,7 +944,11 @@ pub fn reduced(doc: &Value, root: &Value, records: &str, kept: &[FieldPath]) -> 
 fn deref<'a>(doc: &'a Value, node: &'a Value) -> &'a Value {
     let mut node = node;
     for _ in 0..32 {
-        match node.get("$ref").and_then(Value::as_str).and_then(|reference| resolve(doc, reference)) {
+        match node
+            .get("$ref")
+            .and_then(Value::as_str)
+            .and_then(|reference| resolve(doc, reference))
+        {
             Some(target) => node = target,
             None => break,
         }
@@ -789,11 +1004,15 @@ fn reduce_above(doc: &Value, node: &Value, tokens: &[String], kept: &[Vec<String
 }
 
 fn present(path: &[String], kept: &[Vec<String>]) -> bool {
-    kept.iter().any(|k| (k.len() <= path.len() && k.iter().zip(path).all(|(a, b)| a == b)) || (k.len() > path.len() && path.iter().zip(k).all(|(a, b)| a == b)))
+    kept.iter().any(|k| {
+        (k.len() <= path.len() && k.iter().zip(path).all(|(a, b)| a == b))
+            || (k.len() > path.len() && path.iter().zip(k).all(|(a, b)| a == b))
+    })
 }
 
 fn covered(path: &[String], kept: &[Vec<String>]) -> bool {
-    kept.iter().any(|k| k.len() <= path.len() && k.iter().zip(path).all(|(a, b)| a == b))
+    kept.iter()
+        .any(|k| k.len() <= path.len() && k.iter().zip(path).all(|(a, b)| a == b))
 }
 
 fn reduce_at(doc: &Value, node: &Value, rel: &mut Vec<String>, kept: &[Vec<String>]) -> Value {
@@ -842,7 +1061,13 @@ fn reduce_at(doc: &Value, node: &Value, rel: &mut Vec<String>, kept: &[Vec<Strin
 /// The problems of `data` against the output's schema with `required` reduced for `kept` (spec 6.10): empty when the
 /// projected value is one the contract allows. The schema is `root`, its `$ref`s read in `doc`.
 #[cfg(feature = "validate")]
-pub fn projected_problems(doc: &Value, root: &Value, records: &str, kept: &[FieldPath], data: &Value) -> Vec<String> {
+pub fn projected_problems(
+    doc: &Value,
+    root: &Value,
+    records: &str,
+    kept: &[FieldPath],
+    data: &Value,
+) -> Vec<String> {
     let mut schema = reduced(doc, root, records, kept);
     if !schema.is_object() {
         return vec!["the output schema is not an object schema".to_string()];
@@ -853,7 +1078,10 @@ pub fn projected_problems(doc: &Value, root: &Value, records: &str, kept: &[Fiel
         }
     }
     match jsonschema::validator_for(&schema) {
-        Ok(validator) => validator.iter_errors(data).map(|error| format!("{error} at {}", error.instance_path())).collect(),
+        Ok(validator) => validator
+            .iter_errors(data)
+            .map(|error| format!("{error} at {}", error.instance_path()))
+            .collect(),
         Err(error) => vec![format!("the reduced schema does not compile: {error}")],
     }
 }
@@ -873,15 +1101,55 @@ mod tests {
 
     #[test]
     fn a_path_is_written_in_the_one_spelling_it_was_read_in() {
-        for text in ["id", "profile.name", "tags[]", "owners[].email", "a.b[].c.d", "attributes[\"http.status-code\"]", "attributes[\"\"]", "[\"x.y\"].value", "[\"display-name\"]", "labels[].region", "a[\"q\\\"uote\"]", "a[\"back\\\\slash\"][]", "[\"a b\"][\"c d\"]", "a[\"\n\"]"] {
+        for text in [
+            "id",
+            "profile.name",
+            "tags[]",
+            "owners[].email",
+            "a.b[].c.d",
+            "attributes[\"http.status-code\"]",
+            "attributes[\"\"]",
+            "[\"x.y\"].value",
+            "[\"display-name\"]",
+            "labels[].region",
+            "a[\"q\\\"uote\"]",
+            "a[\"back\\\\slash\"][]",
+            "[\"a b\"][\"c d\"]",
+            "a[\"\n\"]",
+        ] {
             assert_eq!(path(text).to_string(), text, "{text}");
         }
     }
 
     #[test]
     fn what_is_not_the_one_spelling_is_refused() {
-        for text in ["", ".a", "a.", "a..b", "[]", "a[][]", "a[]b", "a[\"b\"", "[\"b\"", "a.[\"b\"]", "a[\"b\"c]", "[\"id\"]", "a[\"name\"]", "a[\"x\\ny\"]", "a[\"\\u0041.\"]", "a b", "1a", "a-b", "a[\"\0\"]", "a[0]", "a[ ]"] {
-            assert!(FieldPath::parse(text).is_err(), "`{text}` should be refused");
+        for text in [
+            "",
+            ".a",
+            "a.",
+            "a..b",
+            "[]",
+            "a[][]",
+            "a[]b",
+            "a[\"b\"",
+            "[\"b\"",
+            "a.[\"b\"]",
+            "a[\"b\"c]",
+            "[\"id\"]",
+            "a[\"name\"]",
+            "a[\"x\\ny\"]",
+            "a[\"\\u0041.\"]",
+            "a b",
+            "1a",
+            "a-b",
+            "a[\"\0\"]",
+            "a[0]",
+            "a[ ]",
+        ] {
+            assert!(
+                FieldPath::parse(text).is_err(),
+                "`{text}` should be refused"
+            );
         }
     }
 
@@ -916,15 +1184,36 @@ mod tests {
 
     #[test]
     fn a_covered_member_stays_whole_and_an_ancestor_keeps_only_what_leads_on() {
-        let out = project(&record(), &kept(&["id", "profile.name", "owners[].email", "tags"]));
-        assert_eq!(out, json!({ "id": 1, "profile": { "name": "Ada" }, "owners": [ { "email": "b@x" }, { "email": "c@x" } ], "tags": ["x", "y"] }));
+        let out = project(
+            &record(),
+            &kept(&["id", "profile.name", "owners[].email", "tags"]),
+        );
+        assert_eq!(
+            out,
+            json!({ "id": 1, "profile": { "name": "Ada" }, "owners": [ { "email": "b@x" }, { "email": "c@x" } ], "tags": ["x", "y"] })
+        );
         let whole = project(&record(), &kept(&["profile", "profile.name"]));
-        assert_eq!(whole, json!({ "profile": { "name": "Ada", "email": "a@x", "timezone": "UTC" } }), "selecting profile and profile.name keeps all of profile");
+        assert_eq!(
+            whole,
+            json!({ "profile": { "name": "Ada", "email": "a@x", "timezone": "UTC" } }),
+            "selecting profile and profile.name keeps all of profile"
+        );
     }
 
     #[test]
     fn a_bracketed_key_and_a_map_key_select_one_member() {
-        let out = project(&record(), &kept(&["id", "[\"display-name\"]", "attributes.region", "attributes[\"http.status-code\"]", "attributes[\"\"]", "labels[].region", "settings.theme"]));
+        let out = project(
+            &record(),
+            &kept(&[
+                "id",
+                "[\"display-name\"]",
+                "attributes.region",
+                "attributes[\"http.status-code\"]",
+                "attributes[\"\"]",
+                "labels[].region",
+                "settings.theme",
+            ]),
+        );
         assert_eq!(
             out,
             json!({
@@ -936,23 +1225,39 @@ mod tests {
             })
         );
         let unselected = project(&record(), &kept(&["attributes.region"]));
-        assert_eq!(unselected, json!({ "attributes": { "region": "eu" } }), "a map key that was not selected is left out, the empty key included");
+        assert_eq!(
+            unselected,
+            json!({ "attributes": { "region": "eu" } }),
+            "a map key that was not selected is left out, the empty key included"
+        );
     }
 
     #[test]
     fn a_member_the_record_lacks_is_not_made_and_a_null_ancestor_stays_null() {
-        let out = project(&json!({ "id": 1, "profile": null }), &kept(&["id", "profile.name", "badge"]));
+        let out = project(
+            &json!({ "id": 1, "profile": null }),
+            &kept(&["id", "profile.name", "badge"]),
+        );
         assert_eq!(out, json!({ "id": 1, "profile": null }));
         assert_eq!(project(&json!(5), &kept(&["id"])), json!(5));
     }
 
     #[test]
     fn a_projection_applies_to_each_record_at_the_pointer_and_to_the_whole_data_at_the_root() {
-        let projection = Projection { records: "/rows".into(), kept: kept(&["id"]) };
+        let projection = Projection {
+            records: "/rows".into(),
+            kept: kept(&["id"]),
+        };
         let mut data = json!({ "team": "core", "rows": [ { "id": 1, "name": "a" }, { "id": 2, "name": "b" } ] });
         projection.apply(&mut data);
-        assert_eq!(data, json!({ "team": "core", "rows": [ { "id": 1 }, { "id": 2 } ] }));
-        let root = Projection { records: String::new(), kept: kept(&["a"]) };
+        assert_eq!(
+            data,
+            json!({ "team": "core", "rows": [ { "id": 1 }, { "id": 2 } ] })
+        );
+        let root = Projection {
+            records: String::new(),
+            kept: kept(&["a"]),
+        };
         let mut whole = json!({ "a": 1, "b": 2 });
         root.apply(&mut whole);
         assert_eq!(whole, json!({ "a": 1 }));
@@ -960,18 +1265,41 @@ mod tests {
     }
 
     fn declared() -> Declared {
-        Declared { records: "/rows".into(), paths: kept(&["name", "profile", "profile.name", "owners[].email", "attributes"]), keep: kept(&["id"]), default: kept(&["name"]), maps: kept(&["attributes"]) }
+        Declared {
+            records: "/rows".into(),
+            paths: kept(&[
+                "name",
+                "profile",
+                "profile.name",
+                "owners[].email",
+                "attributes",
+            ]),
+            keep: kept(&["id"]),
+            default: kept(&["name"]),
+            maps: kept(&["attributes"]),
+        }
     }
 
     #[test]
     fn a_selection_is_the_kept_paths_then_the_selected_each_once() {
-        let selection = declared().select(Some("name,profile.name,name")).unwrap().unwrap();
+        let selection = declared()
+            .select(Some("name,profile.name,name"))
+            .unwrap()
+            .unwrap();
         let written: Vec<String> = selection.kept.iter().map(ToString::to_string).collect();
         assert_eq!(written, ["id", "name", "profile.name"]);
-        assert_eq!(declared().select(None).unwrap().unwrap().kept, kept(&["id", "name"]), "the default applies without --fields");
+        assert_eq!(
+            declared().select(None).unwrap().unwrap().kept,
+            kept(&["id", "name"]),
+            "the default applies without --fields"
+        );
         let mut no_default = declared();
         no_default.default.clear();
-        assert_eq!(no_default.select(None).unwrap(), None, "without a default the answer is the whole record");
+        assert_eq!(
+            no_default.select(None).unwrap(),
+            None,
+            "without a default the answer is the whole record"
+        );
     }
 
     #[test]
@@ -987,10 +1315,28 @@ mod tests {
 
     #[test]
     fn a_refusal_names_the_selectable_paths() {
-        for (value, why) in [("nosuch", "there is no field"), ("id", "always kept"), ("", "empty"), ("name[]", "no field"), ("owners.email", "no field"), ("owners", "not a path of its own"), ("name,", "empty"), ("[\"name\"]", "identifier")] {
+        for (value, why) in [
+            ("nosuch", "there is no field"),
+            ("id", "always kept"),
+            ("", "empty"),
+            ("name[]", "no field"),
+            ("owners.email", "no field"),
+            ("owners", "not a path of its own"),
+            ("name,", "empty"),
+            ("[\"name\"]", "identifier"),
+        ] {
             let error = declared().select(Some(value)).expect_err(value);
             assert!(error.message.contains(why), "{value}: {error}");
-            assert_eq!(error.expected, ["name", "profile", "profile.name", "owners[].email", "attributes"]);
+            assert_eq!(
+                error.expected,
+                [
+                    "name",
+                    "profile",
+                    "profile.name",
+                    "owners[].email",
+                    "attributes"
+                ]
+            );
         }
     }
 
@@ -1014,49 +1360,130 @@ mod tests {
     }
 
     fn check(doc: &Value, paths: &[&str], keep: &[&str], default: &[&str]) -> Vec<String> {
-        check_declaration(doc, &json!({ "$ref": "#/schemas/Report" }), "/rows", &strings(paths), &strings(keep), &strings(default), Rules::at(Minor::V1_2))
+        check_declaration(
+            doc,
+            &json!({ "$ref": "#/schemas/Report" }),
+            "/rows",
+            &strings(paths),
+            &strings(keep),
+            &strings(default),
+            Rules::at(Minor::V1_2),
+        )
     }
 
     #[test]
     fn atip_crate12_10_rules_follow_the_declared_minor_and_1_1_and_1_2_agree() {
         let doc = json!({ "schemas": { "Report": { "type": "object", "properties": { "rows": { "type": "array", "items": { "$ref": "#/schemas/Row" } } } }, "Row": { "type": "object", "properties": { "attributes": { "type": "object", "additionalProperties": { "type": "string" }, "minProperties": 1 } } } } });
-        let declaration = |rules: Rules| check_declaration(&doc, &json!({ "$ref": "#/schemas/Report" }), "/rows", &strings(&["attributes"]), &[], &[], rules);
-        let bracketed = |rules: Rules| check_declaration(&doc, &json!({ "$ref": "#/schemas/Report" }), "/rows", &strings(&["attributes", "attributes[\"x.y\"]"]), &[], &[], rules);
+        let declaration = |rules: Rules| {
+            check_declaration(
+                &doc,
+                &json!({ "$ref": "#/schemas/Report" }),
+                "/rows",
+                &strings(&["attributes"]),
+                &[],
+                &[],
+                rules,
+            )
+        };
+        let bracketed = |rules: Rules| {
+            check_declaration(
+                &doc,
+                &json!({ "$ref": "#/schemas/Report" }),
+                "/rows",
+                &strings(&["attributes", "attributes[\"x.y\"]"]),
+                &[],
+                &[],
+                rules,
+            )
+        };
         // 1.0 keeps a map whole, so its `minProperties` is no problem, and has no bracketed key.
         let one_zero = Rules::for_minor("1.0").expect("1.0 is a minor");
         assert_eq!(declaration(one_zero), Vec::<String>::new());
-        assert!(bracketed(one_zero).iter().any(|problem| problem.contains("bracketed key")), "{:?}", bracketed(one_zero));
+        assert!(
+            bracketed(one_zero)
+                .iter()
+                .any(|problem| problem.contains("bracketed key")),
+            "{:?}",
+            bracketed(one_zero)
+        );
         // 1.1 and 1.2 are the same rules: the map is a cut node, which `minProperties` breaks, and a bracketed key is allowed.
         for text in ["1.1", "1.2"] {
             let rules = Rules::for_minor(text).expect("a known minor");
-            assert!(declaration(rules).iter().any(|problem| problem.contains("minProperties")), "{text}");
-            assert!(!bracketed(rules).iter().any(|problem| problem.contains("bracketed key")), "{text}");
+            assert!(
+                declaration(rules)
+                    .iter()
+                    .any(|problem| problem.contains("minProperties")),
+                "{text}"
+            );
+            assert!(
+                !bracketed(rules)
+                    .iter()
+                    .any(|problem| problem.contains("bracketed key")),
+                "{text}"
+            );
         }
         assert_eq!(Rules::for_minor("1.1"), Rules::for_minor("1.2"));
-        assert_eq!(Rules::at(Minor::V1_2), Rules::for_minor("1.2").expect("known"));
+        assert_eq!(
+            Rules::at(Minor::V1_2),
+            Rules::for_minor("1.2").expect("known")
+        );
         assert_ne!(Rules::at(Minor::V1_0), Rules::at(Minor::V1_1));
     }
 
     #[test]
     fn atip_crate12_11_a_minor_the_crate_does_not_know_is_refused_never_read_as_the_nearest_one() {
         for text in ["1.9", "1.3", "2.0", "", "1"] {
-            assert_eq!(Rules::for_minor(text), Err(UnknownMinor(text.to_string())), "{text:?}");
+            assert_eq!(
+                Rules::for_minor(text),
+                Err(UnknownMinor(text.to_string())),
+                "{text:?}"
+            );
         }
     }
 
     #[test]
     fn a_declaration_that_keeps_the_contract_has_no_problem() {
-        let problems = check(&schemas(), &["name", "profile", "profile.name", "owners", "owners[].email", "attributes", "[\"display-name\"]"], &["id"], &["name"]);
+        let problems = check(
+            &schemas(),
+            &[
+                "name",
+                "profile",
+                "profile.name",
+                "owners",
+                "owners[].email",
+                "attributes",
+                "[\"display-name\"]",
+            ],
+            &["id"],
+            &["name"],
+        );
         assert_eq!(problems, Vec::<String>::new());
     }
 
     #[test]
     fn a_path_outside_the_record_schema_or_through_an_array_without_brackets_is_a_problem() {
-        let problems = check(&schemas(), &["nosuch", "owners.email", "name[]", "profile[].name", "[\"id\"]"], &[], &[]);
+        let problems = check(
+            &schemas(),
+            &[
+                "nosuch",
+                "owners.email",
+                "name[]",
+                "profile[].name",
+                "[\"id\"]",
+            ],
+            &[],
+            &[],
+        );
         let text = problems.join("\n");
         assert!(text.contains("`nosuch` names `nosuch`"), "{text}");
-        assert!(text.contains("goes through the array `owners` without `[]`"), "{text}");
-        assert!(text.contains("`name[]` goes into `name[]`, which is not an array"), "{text}");
+        assert!(
+            text.contains("goes through the array `owners` without `[]`"),
+            "{text}"
+        );
+        assert!(
+            text.contains("`name[]` goes into `name[]`, which is not an array"),
+            "{text}"
+        );
         assert!(text.contains("identifier"), "{text}");
     }
 
@@ -1065,18 +1492,36 @@ mod tests {
         let problems = check(&schemas(), &["name", "id"], &["id"], &["profile"]);
         let text = problems.join("\n");
         assert!(text.contains("`default` has `profile`"), "{text}");
-        assert!(text.contains("`id` is in both `keep` and `paths`"), "{text}");
+        assert!(
+            text.contains("`id` is in both `keep` and `paths`"),
+            "{text}"
+        );
     }
 
     #[test]
     fn a_cut_node_that_can_reject_a_projection_is_a_problem() {
         for (what, patch) in [
-            ("root const", ("Report", json!({ "const": { "team": "x" } }))),
-            ("root allOf", ("Report", json!({ "allOf": [ { "required": ["team"] } ] }))),
+            (
+                "root const",
+                ("Report", json!({ "const": { "team": "x" } })),
+            ),
+            (
+                "root allOf",
+                ("Report", json!({ "allOf": [ { "required": ["team"] } ] })),
+            ),
             ("record enum", ("Row", json!({ "enum": [ { "id": 1 } ] }))),
-            ("record oneOf", ("Row", json!({ "oneOf": [ { "required": ["id"] } ] }))),
-            ("record minProperties", ("Row", json!({ "minProperties": 1 }))),
-            ("ancestor const", ("Profile", json!({ "const": { "name": "a" } }))),
+            (
+                "record oneOf",
+                ("Row", json!({ "oneOf": [ { "required": ["id"] } ] })),
+            ),
+            (
+                "record minProperties",
+                ("Row", json!({ "minProperties": 1 })),
+            ),
+            (
+                "ancestor const",
+                ("Profile", json!({ "const": { "name": "a" } })),
+            ),
         ] {
             let mut doc = schemas();
             for (key, value) in patch.1.as_object().unwrap() {
@@ -1087,13 +1532,22 @@ mod tests {
         }
         let mut doc = schemas();
         doc["schemas"]["Row"]["properties"]["owners"]["uniqueItems"] = json!(true);
-        assert!(check(&doc, &["owners[].email"], &[], &[]).iter().any(|p| p.contains("uniqueItems")), "uniqueItems on an array cut node");
+        assert!(
+            check(&doc, &["owners[].email"], &[], &[])
+                .iter()
+                .any(|p| p.contains("uniqueItems")),
+            "uniqueItems on an array cut node"
+        );
         let mut boolean = schemas();
         boolean["schemas"]["Owner"] = json!(true);
-        assert!(check(&boolean, &["owners[].email"], &[], &[]).iter().any(|p| p.contains("boolean schema")));
+        assert!(check(&boolean, &["owners[].email"], &[], &[])
+            .iter()
+            .any(|p| p.contains("boolean schema")));
         let mut untyped = schemas();
         untyped["schemas"]["Owner"] = json!({ "properties": { "email": { "type": "string" } } });
-        assert!(check(&untyped, &["owners[].email"], &[], &[]).iter().any(|p| p.contains("no `type`")));
+        assert!(check(&untyped, &["owners[].email"], &[], &[])
+            .iter()
+            .any(|p| p.contains("no `type`")));
     }
 
     #[test]
@@ -1101,7 +1555,10 @@ mod tests {
         let mut doc = schemas();
         // `timezone` is an enum on a leaf under a cut node, `owners` is selected whole: both are unrestricted.
         doc["schemas"]["Row"]["properties"]["owners"]["uniqueItems"] = json!(true);
-        assert_eq!(check(&doc, &["owners", "profile.name"], &[], &[]), Vec::<String>::new());
+        assert_eq!(
+            check(&doc, &["owners", "profile.name"], &[], &[]),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -1110,24 +1567,57 @@ mod tests {
         doc["schemas"]["Row"]["properties"]["attributes"]["minProperties"] = json!(1);
         let bad = check(&doc, &["attributes"], &[], &[]);
         assert!(bad.iter().any(|p| p.contains("minProperties")), "{bad:?}");
-        let old = check_declaration(&doc, &json!({ "$ref": "#/schemas/Report" }), "/rows", &strings(&["attributes"]), &[], &[], Rules::at(Minor::V1_0));
+        let old = check_declaration(
+            &doc,
+            &json!({ "$ref": "#/schemas/Report" }),
+            "/rows",
+            &strings(&["attributes"]),
+            &[],
+            &[],
+            Rules::at(Minor::V1_0),
+        );
         assert_eq!(old, Vec::<String>::new(), "a 1.0 map is kept whole");
-        assert_eq!(declared_maps(&doc, &json!({ "$ref": "#/schemas/Report" }), "/rows", &strings(&["attributes", "name"])), kept(&["attributes"]));
+        assert_eq!(
+            declared_maps(
+                &doc,
+                &json!({ "$ref": "#/schemas/Report" }),
+                "/rows",
+                &strings(&["attributes", "name"])
+            ),
+            kept(&["attributes"])
+        );
     }
 
     #[test]
-    fn a_projected_value_passes_the_schema_with_required_reduced_and_a_leak_or_a_wrong_member_does_not() {
+    fn a_projected_value_passes_the_schema_with_required_reduced_and_a_leak_or_a_wrong_member_does_not(
+    ) {
         let doc = schemas();
         let root = json!({ "$ref": "#/schemas/Report" });
         let data = json!({ "team": "core", "rows": [ { "id": 1, "profile": { "name": "Ada" }, "owners": [ { "email": "b@x" } ] } ] });
-        let fine = projected_problems(&doc, &root, "/rows", &kept(&["id", "profile.name", "owners[].email"]), &data);
+        let fine = projected_problems(
+            &doc,
+            &root,
+            "/rows",
+            &kept(&["id", "profile.name", "owners[].email"]),
+            &data,
+        );
         assert_eq!(fine, Vec::<String>::new());
         // Above the record `required` stays: dropping `team` is not a projection.
         let no_team = json!({ "rows": [ { "id": 1 } ] });
         assert!(!projected_problems(&doc, &root, "/rows", &kept(&["id"]), &no_team).is_empty());
         // A selected member that is missing from the record's required, below the record, is a problem; one never selected is not.
         let missing = json!({ "team": "core", "rows": [ { "profile": { "name": "Ada" } } ] });
-        assert!(!projected_problems(&doc, &root, "/rows", &kept(&["id", "profile.name"]), &missing).is_empty(), "id is kept and required: it must be there");
+        assert!(
+            !projected_problems(
+                &doc,
+                &root,
+                "/rows",
+                &kept(&["id", "profile.name"]),
+                &missing
+            )
+            .is_empty(),
+            "id is kept and required: it must be there"
+        );
         let wrong = json!({ "team": "core", "rows": [ { "id": "one" } ] });
         assert!(!projected_problems(&doc, &root, "/rows", &kept(&["id"]), &wrong).is_empty());
     }
@@ -1136,7 +1626,12 @@ mod tests {
     fn a_record_that_is_the_whole_data_reduces_required_at_the_root() {
         let doc = json!({ "schemas": { "Status": { "type": "object", "required": ["a", "b"], "properties": { "a": { "type": "integer" }, "b": { "type": "string" } } } } });
         let root = json!({ "$ref": "#/schemas/Status" });
-        assert_eq!(projected_problems(&doc, &root, "", &kept(&["a"]), &json!({ "a": 1 })), Vec::<String>::new());
-        assert!(!projected_problems(&doc, &root, "", &kept(&["a"]), &json!({ "b": "x" })).is_empty());
+        assert_eq!(
+            projected_problems(&doc, &root, "", &kept(&["a"]), &json!({ "a": 1 })),
+            Vec::<String>::new()
+        );
+        assert!(
+            !projected_problems(&doc, &root, "", &kept(&["a"]), &json!({ "b": "x" })).is_empty()
+        );
     }
 }

@@ -24,30 +24,43 @@ pub fn commands() -> Vec<Command> {
 }
 
 fn skills_show() -> Command {
-    Command::new("skills show", "Print a guide: the default one, or the one NAME names")
-        .operand(Arg::operand("name", "string", "The guide to print").value("NAME"))
-        .options(vec![Arg::option("full", "switch", "Include the long material")])
-        .errors(&["USAGE"])
-        .output(
-            "GuideReport",
-            json!({
-                "type": "object",
-                "required": ["name", "guides"],
-                "properties": {
-                    "name": {"type": "string"},
-                    "text": {"type": "string"},
-                    "guides": {"type": "array", "items": {"type": "string"}},
-                    "full": {"type": "boolean"}
-                }
-            }),
-        )
-        .examples(&["{tool} skills show --json", "{tool} skills show safety --json"])
+    Command::new(
+        "skills show",
+        "Print a guide: the default one, or the one NAME names",
+    )
+    .operand(Arg::operand("name", "string", "The guide to print").value("NAME"))
+    .options(vec![Arg::option(
+        "full",
+        "switch",
+        "Include the long material",
+    )])
+    .errors(&["USAGE"])
+    .output(
+        "GuideReport",
+        json!({
+            "type": "object",
+            "required": ["name", "guides"],
+            "properties": {
+                "name": {"type": "string"},
+                "text": {"type": "string"},
+                "guides": {"type": "array", "items": {"type": "string"}},
+                "full": {"type": "boolean"}
+            }
+        }),
+    )
+    .examples(&[
+        "{tool} skills show --json",
+        "{tool} skills show safety --json",
+    ])
 }
 
 fn build() -> Command {
     let mut command = Command::new("build", "Build the targets, one event for each step")
         .options(vec![
-            Arg::option("target", "string", "What to build").value("TARGET").default(json!("all")).domain(json!({"maxLength": 20})),
+            Arg::option("target", "string", "What to build")
+                .value("TARGET")
+                .default(json!("all"))
+                .domain(json!({"maxLength": 20})),
             Arg::option("quiet", "switch", "Print the result only"),
         ])
         .errors(&["BUILD_FAILED", "USAGE"])
@@ -100,7 +113,10 @@ fn guide_text(tool: &Tool, name: &str) -> String {
     };
     let mut text = body.replace("{tool}", &tool.name());
     if tool.flag("guideBadOption") && name == "overview" {
-        text.push_str(&format!("\n```bash\n{} status --bogus-option --json\n```\n", tool.name()));
+        text.push_str(&format!(
+            "\n```bash\n{} status --bogus-option --json\n```\n",
+            tool.name()
+        ));
     }
     text
 }
@@ -116,7 +132,14 @@ pub fn handle(tool: &Tool, args: &[String], words: &[String]) -> Option<ExitCode
 
 fn skills(tool: &Tool, args: &[String], words: &[String]) -> ExitCode {
     let Some(verb) = words.get(1).map(String::as_str) else {
-        return tool.fail("group", "COMMAND_REQUIRED", "skills needs a command", Some("skills"), &[("expected", json!(["show"]))], 2);
+        return tool.fail(
+            "group",
+            "COMMAND_REQUIRED",
+            "skills needs a command",
+            Some("skills"),
+            &[("expected", json!(["show"]))],
+            2,
+        );
     };
     if verb != "show" {
         return tool.unknown_command(verb, &["show"], Some("skills"));
@@ -136,18 +159,36 @@ fn skills_answer(tool: &Tool, parsed: &Parsed) -> ExitCode {
     let named = parsed.text("name");
     let name = named.unwrap_or(GUIDES[0]);
     if !GUIDES.contains(&name) {
-        let mut extras: Vec<(&str, Value)> = vec![("field", json!("NAME")), ("received", json!(name))];
+        let mut extras: Vec<(&str, Value)> =
+            vec![("field", json!("NAME")), ("received", json!(name))];
         if !tool.flag("skillsUnknownNoExpected") {
-            let names: Vec<&str> = GUIDES.iter().copied().filter(|guide| !(tool.flag("skillsDefaultNotListed") && *guide == "overview")).collect();
+            let names: Vec<&str> = GUIDES
+                .iter()
+                .copied()
+                .filter(|guide| !(tool.flag("skillsDefaultNotListed") && *guide == "overview"))
+                .collect();
             extras.push(("expected", json!(names)));
         }
         if tool.flag("skillsUnknownOk") {
-            return tool.success("skills show", json!({"name": GUIDES[0], "text": guide_text(tool, GUIDES[0]), "guides": GUIDES}));
+            return tool.success(
+                "skills show",
+                json!({"name": GUIDES[0], "text": guide_text(tool, GUIDES[0]), "guides": GUIDES}),
+            );
         }
-        return tool.refuse("USAGE", &format!("{name} is not a guide"), "skills show", &extras);
+        return tool.refuse(
+            "USAGE",
+            &format!("{name} is not a guide"),
+            "skills show",
+            &extras,
+        );
     }
     if tool.flag("skillsNeedsState") && !std::path::Path::new("state.txt").exists() {
-        return tool.refuse("USAGE", "skills show needs the state of the project", "skills show", &[("field", json!("--repo"))]);
+        return tool.refuse(
+            "USAGE",
+            "skills show needs the state of the project",
+            "skills show",
+            &[("field", json!("--repo"))],
+        );
     }
     if tool.flag("skillsPutsFile") {
         std::fs::write("guide-cache.txt", "written by skills show").unwrap_or_default();
@@ -162,7 +203,11 @@ fn skills_answer(tool: &Tool, parsed: &Parsed) -> ExitCode {
     if tool.flag("skillsGuidesDiffer") && named.is_some() {
         guides.retain(|guide| *guide == name);
     }
-    let shown = if tool.flag("skillsWrongName") && named.is_some() { GUIDES[0] } else { name };
+    let shown = if tool.flag("skillsWrongName") && named.is_some() {
+        GUIDES[0]
+    } else {
+        name
+    };
     let mut data = json!({"name": shown, "text": guide_text(tool, name), "guides": guides});
     if parsed.has("full") {
         data["full"] = json!(true);
@@ -192,7 +237,10 @@ fn build_run(tool: &Tool, args: &[String]) -> ExitCode {
     let parsed = match parse(tool, command, args, false) {
         Ok(parsed) => parsed,
         Err(failure) => {
-            if tool.flag("streamRefusalHasStart") && tool.json && args.iter().any(|arg| arg == "--nosuch-xyz-option") {
+            if tool.flag("streamRefusalHasStart")
+                && tool.json
+                && args.iter().any(|arg| arg == "--nosuch-xyz-option")
+            {
                 // The seeded violation: a usage error after a start line, as a stream ending in a failure: the refusal of a stream is one envelope.
                 let _ = failure;
                 print_start(tool, "BuildResult", false);
@@ -208,14 +256,22 @@ fn build_run(tool: &Tool, args: &[String]) -> ExitCode {
     }
     let quiet = parsed.has("quiet");
     let broken = parsed.text("target") == Some("broken");
-    let output = if quiet { "BuildQuietResult" } else { "BuildResult" };
+    let output = if quiet {
+        "BuildQuietResult"
+    } else {
+        "BuildResult"
+    };
     if !tool.json {
         println!("build: {} steps", if quiet { 0 } else { 2 });
         return ExitCode::SUCCESS;
     }
     if tool.flag("streamPrintsEnvelope") {
         // The seeded violation: a command that declares a stream prints one report.
-        let data = if quiet { json!({"artifacts": 2, "quiet": true}) } else { json!({"artifacts": 2}) };
+        let data = if quiet {
+            json!({"artifacts": 2, "quiet": true})
+        } else {
+            json!({"artifacts": 2})
+        };
         return tool.success_with("build", data, stream_meta(tool, output));
     }
     let mut start = json!({"type": "start", "contract": "atip/1", "tool": tool.name(), "toolVersion": "1.2.3", "command": "build", "schemaVersion": "1.0"});
@@ -231,8 +287,14 @@ fn build_run(tool: &Tool, args: &[String]) -> ExitCode {
     tool.print_document(&start);
     if !quiet {
         for (step, status) in [("compile", "started"), ("compile", "done")] {
-            let status = if tool.flag("streamBadEvent") { "nosuch" } else { status };
-            tool.print_document(&json!({"type": "event", "data": {"step": step, "status": status}}));
+            let status = if tool.flag("streamBadEvent") {
+                "nosuch"
+            } else {
+                status
+            };
+            tool.print_document(
+                &json!({"type": "event", "data": {"step": step, "status": status}}),
+            );
         }
     }
     if tool.flag("streamNoEnd") {
@@ -242,18 +304,34 @@ fn build_run(tool: &Tool, args: &[String]) -> ExitCode {
     if broken {
         // A step that fails after the stream began: the end result is the failure, and the exit is its registered one.
         let retryable = tool.flag("streamEndRetryableWrong");
-        let error = json!({"code": "BUILD_FAILED", "message": "step link failed", "retryable": retryable});
-        tool.print_document(&json!({"type": "end", "result": {"ok": false, "error": error, "meta": meta}}));
+        let error =
+            json!({"code": "BUILD_FAILED", "message": "step link failed", "retryable": retryable});
+        tool.print_document(
+            &json!({"type": "end", "result": {"ok": false, "error": error, "meta": meta}}),
+        );
         return ExitCode::from(if tool.flag("streamBrokenExit0") { 0 } else { 2 });
     }
     if tool.flag("streamEndOutputMismatch") {
-        meta.insert("output".into(), json!(if quiet { "BuildResult" } else { "BuildQuietResult" }));
+        meta.insert(
+            "output".into(),
+            json!(if quiet {
+                "BuildResult"
+            } else {
+                "BuildQuietResult"
+            }),
+        );
     }
-    let mut data = if quiet { json!({"artifacts": 2, "quiet": true}) } else { json!({"artifacts": 2}) };
+    let mut data = if quiet {
+        json!({"artifacts": 2, "quiet": true})
+    } else {
+        json!({"artifacts": 2})
+    };
     if tool.flag("streamEndBadData") {
         data = json!({"artifacts": "two"});
     }
-    tool.print_document(&json!({"type": "end", "result": {"ok": true, "data": data, "meta": meta}}));
+    tool.print_document(
+        &json!({"type": "end", "result": {"ok": true, "data": data, "meta": meta}}),
+    );
     ExitCode::SUCCESS
 }
 
@@ -292,7 +370,10 @@ pub fn search_tree(tool: &Tool, model: &Model, query: &str) -> Value {
     entries.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
     if tool.flag("searchRanksLast") {
         // The seeded violation: every command answers, the best last.
-        let answered: Vec<String> = entries.iter().filter_map(|(_, entry)| entry["command"].as_str().map(ToString::to_string)).collect();
+        let answered: Vec<String> = entries
+            .iter()
+            .filter_map(|(_, entry)| entry["command"].as_str().map(ToString::to_string))
+            .collect();
         let mut rest: Vec<(usize, Value)> = model
             .all_ids()
             .into_iter()

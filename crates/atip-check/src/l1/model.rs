@@ -102,10 +102,7 @@ impl Arg {
                 .and_then(Value::as_str)
                 .and_then(|short| short.chars().next()),
             domain: value.get("domain").cloned(),
-            env: value
-                .get("env")
-                .and_then(Value::as_str)
-                .map(str::to_string),
+            env: value.get("env").and_then(Value::as_str).map(str::to_string),
             is_option,
         }
     }
@@ -168,12 +165,7 @@ impl Constraint {
                 let when = self
                     .if_in
                     .as_ref()
-                    .map(|values| {
-                        format!(
-                            " in {}",
-                            Value::Array(values.clone())
-                        )
-                    })
+                    .map(|values| format!(" in {}", Value::Array(values.clone())))
                     .unwrap_or_default();
                 format!("{rule} {name}{when} -> [{}]", self.then.join(", "))
             }
@@ -296,10 +288,7 @@ impl CommandDoc {
                 .iter()
                 .map(|option| Arg::parse(option, true))
                 .collect(),
-            constraints: list("constraints")
-                .iter()
-                .map(Constraint::parse)
-                .collect(),
+            constraints: list("constraints").iter().map(Constraint::parse).collect(),
             validators: list("validators")
                 .iter()
                 .map(|validator| Validator {

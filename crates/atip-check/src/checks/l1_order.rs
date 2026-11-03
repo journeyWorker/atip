@@ -62,7 +62,10 @@ enum Edit {
     /// `arg` left out.
     Remove { arg: Arg },
     /// The arguments in which `witness` differs from `base`, copied (a constraint's witness).
-    Diff { witness: Invocation, base: Invocation },
+    Diff {
+        witness: Invocation,
+        base: Invocation,
+    },
     /// A validator's `rejects` invocation: what the pair starts from, not a change.
     Rejects { invocation: Invocation },
 }
@@ -97,8 +100,12 @@ fn broken(doc: &CommandDoc, invocation: &Invocation) -> Broken {
             found.missing.insert(arg.name.clone());
         }
     }
-    found.values = invocation::broken_arguments(doc, invocation).into_iter().collect();
-    found.constraints = invocation::violated_constraints(doc, &args).into_iter().collect();
+    found.values = invocation::broken_arguments(doc, invocation)
+        .into_iter()
+        .collect();
+    found.constraints = invocation::violated_constraints(doc, &args)
+        .into_iter()
+        .collect();
     found
 }
 
@@ -111,7 +118,10 @@ fn apply(doc: &CommandDoc, fault: &Fault, invocation: &Invocation) -> Option<Inv
     match &fault.edit {
         Edit::Unknown { name, first } => {
             let mut changed = invocation.clone();
-            let item = Item::Option { name: (*name).to_string(), value: None };
+            let item = Item::Option {
+                name: (*name).to_string(),
+                value: None,
+            };
             if *first {
                 changed.items.insert(0, item);
             } else {
@@ -125,7 +135,10 @@ fn apply(doc: &CommandDoc, fault: &Fault, invocation: &Invocation) -> Option<Inv
             if arg.is_option {
                 without_option(&mut changed, &arg.name);
             } else {
-                let index = doc.operands.iter().position(|operand| operand.name == arg.name)?;
+                let index = doc
+                    .operands
+                    .iter()
+                    .position(|operand| operand.name == arg.name)?;
                 invocation::remove_operand(&mut changed, index);
             }
             Some(changed)
@@ -137,7 +150,9 @@ fn apply(doc: &CommandDoc, fault: &Fault, invocation: &Invocation) -> Option<Inv
                 invocation
                     .items
                     .iter()
-                    .filter(|item| matches!(item, Item::Option { name: found, .. } if found == name))
+                    .filter(
+                        |item| matches!(item, Item::Option { name: found, .. } if found == name),
+                    )
                     .cloned()
                     .collect()
             };
@@ -186,8 +201,17 @@ fn add_to(expected: &mut Broken, doc: &CommandDoc, fault: &Fault) {
             expected.missing.insert(arg.name.clone());
             // An operand cannot be left out without the ones after it.
             if !arg.is_option {
-                if let Some(index) = doc.operands.iter().position(|operand| operand.name == arg.name) {
-                    expected.missing.extend(doc.operands[index..].iter().filter(|operand| operand.required).map(|operand| operand.name.clone()));
+                if let Some(index) = doc
+                    .operands
+                    .iter()
+                    .position(|operand| operand.name == arg.name)
+                {
+                    expected.missing.extend(
+                        doc.operands[index..]
+                            .iter()
+                            .filter(|operand| operand.required)
+                            .map(|operand| operand.name.clone()),
+                    );
                 }
             }
         }
@@ -215,21 +239,70 @@ fn build(doc: &CommandDoc, base: &Invocation, faults: &[&Fault]) -> Option<Invoc
 
 impl Run<'_> {
     /// Plans the pairs of `doc` (spec 11.7 step 6), from the first of `bases`; a command with no passing invocation is a gap.
-    pub(crate) fn plan_order(&mut self, run: &mut L1Run, doc: &CommandDoc, bases: &[Invocation], tool: &str) -> Result<(), RunError> {
-        let Some(base) = bases.first().filter(|base| broken(doc, base) == Broken::default()) else {
-            run.order_gaps.push((doc.command.clone(), "no passing `ok` invocation of the command to change into a pair".to_string()));
+    pub(crate) fn plan_order(
+        &mut self,
+        run: &mut L1Run,
+        doc: &CommandDoc,
+        bases: &[Invocation],
+        tool: &str,
+    ) -> Result<(), RunError> {
+        let Some(base) = bases
+            .first()
+            .filter(|base| broken(doc, base) == Broken::default())
+        else {
+            run.order_gaps.push((
+                doc.command.clone(),
+                "no passing `ok` invocation of the command to change into a pair".to_string(),
+            ));
             return Ok(());
         };
         let faults = self.faults(run, doc, base, tool);
         let pick = |stage: Stage| faults.iter().filter(move |fault| fault.stage == stage);
-        let unknown_a = Fault { stage: Stage::Parse, position: 0, label: format!("the unknown option --{UNKNOWN_A}"), edit: Edit::Unknown { name: UNKNOWN_A, first: true }, members: Vec::new(), code: None };
-        let unknown_b = Fault { stage: Stage::Parse, position: 1, label: format!("the unknown option --{UNKNOWN_B}"), edit: Edit::Unknown { name: UNKNOWN_B, first: false }, members: Vec::new(), code: None };
+        let unknown_a = Fault {
+            stage: Stage::Parse,
+            position: 0,
+            label: format!("the unknown option --{UNKNOWN_A}"),
+            edit: Edit::Unknown {
+                name: UNKNOWN_A,
+                first: true,
+            },
+            members: Vec::new(),
+            code: None,
+        };
+        let unknown_b = Fault {
+            stage: Stage::Parse,
+            position: 1,
+            label: format!("the unknown option --{UNKNOWN_B}"),
+            edit: Edit::Unknown {
+                name: UNKNOWN_B,
+                first: false,
+            },
+            members: Vec::new(),
+            code: None,
+        };
         let wrong_type = doc
             .args()
-            .filter(|arg| !matches!(arg.name.as_str(), "input" | "json") && matches!(arg.value_type.as_str(), "integer" | "number" | "enum"))
+            .filter(|arg| {
+                !matches!(arg.name.as_str(), "input" | "json")
+                    && matches!(arg.value_type.as_str(), "integer" | "number" | "enum")
+            })
             .find_map(|arg| {
-                let word = if arg.value_type == "enum" { NOT_A_MEMBER } else { NOT_A_NUMBER };
-                let fault = Fault { stage: Stage::Parse, position: 2, label: format!("the wrong {} {word} of {}", arg.value_type, arg.spelling()), edit: Edit::Set { arg: arg.clone(), word: word.to_string() }, members: Vec::new(), code: None };
+                let word = if arg.value_type == "enum" {
+                    NOT_A_MEMBER
+                } else {
+                    NOT_A_NUMBER
+                };
+                let fault = Fault {
+                    stage: Stage::Parse,
+                    position: 2,
+                    label: format!("the wrong {} {word} of {}", arg.value_type, arg.spelling()),
+                    edit: Edit::Set {
+                        arg: arg.clone(),
+                        word: word.to_string(),
+                    },
+                    members: Vec::new(),
+                    code: None,
+                };
                 build(doc, base, &[&fault]).map(|_| fault)
             });
         let required: Vec<&Fault> = pick(Stage::Required).collect();
@@ -244,14 +317,32 @@ impl Run<'_> {
             }
         };
         // Two parse failures: two unknown options; an unknown option before a value of the wrong type.
-        add("two unknown options", build(doc, base, &[&unknown_b, &unknown_a]).map(|invocation| (&unknown_a, &unknown_b, invocation)).into_iter().collect());
+        add(
+            "two unknown options",
+            build(doc, base, &[&unknown_b, &unknown_a])
+                .map(|invocation| (&unknown_a, &unknown_b, invocation))
+                .into_iter()
+                .collect(),
+        );
         if let Some(wrong) = &wrong_type {
-            add("an unknown option and a value of the wrong type", build(doc, base, &[wrong, &unknown_a]).map(|invocation| (&unknown_a, wrong, invocation)).into_iter().collect());
+            add(
+                "an unknown option and a value of the wrong type",
+                build(doc, base, &[wrong, &unknown_a])
+                    .map(|invocation| (&unknown_a, wrong, invocation))
+                    .into_iter()
+                    .collect(),
+            );
         }
         // An unknown option and a missing required argument.
         add(
             "an unknown option and a missing required argument",
-            required.iter().filter_map(|required| build(doc, base, &[required, &unknown_a]).map(|invocation| (&unknown_a, *required, invocation))).collect(),
+            required
+                .iter()
+                .filter_map(|required| {
+                    build(doc, base, &[required, &unknown_a])
+                        .map(|invocation| (&unknown_a, *required, invocation))
+                })
+                .collect(),
         );
         // A missing required argument and a broken domain, or a broken constraint.
         let mut found = Vec::new();
@@ -308,13 +399,26 @@ impl Run<'_> {
         // A constraint and a validator with different codes: the validator's `rejects` invocation, changed to break the constraint too.
         let mut found = Vec::new();
         for validator in &validators {
-            let Edit::Rejects { invocation: rejects } = &validator.edit else { continue };
-            for constraint in constraints.iter().filter(|constraint| constraint.code != validator.code) {
+            let Edit::Rejects {
+                invocation: rejects,
+            } = &validator.edit
+            else {
+                continue;
+            };
+            for constraint in constraints
+                .iter()
+                .filter(|constraint| constraint.code != validator.code)
+            {
                 // The constraint must leave the arguments the validators read as they are, and the pair breaks only it besides.
-                let Some(changed) = apply(doc, constraint, rejects) else { continue };
+                let Some(changed) = apply(doc, constraint, rejects) else {
+                    continue;
+                };
                 let mut expected = Broken::default();
                 add_to(&mut expected, doc, constraint);
-                if broken(doc, rejects) == Broken::default() && broken(doc, &changed) == expected && validator_args_kept(doc, rejects, &changed) {
+                if broken(doc, rejects) == Broken::default()
+                    && broken(doc, &changed) == expected
+                    && validator_args_kept(doc, rejects, &changed)
+                {
                     found.push((*constraint, *validator, changed));
                 }
             }
@@ -322,7 +426,9 @@ impl Run<'_> {
         add("a constraint and a validator with different codes", found);
         let mut alone_runs: BTreeMap<Vec<String>, usize> = BTreeMap::new();
         for (pair, earlier, later, invocation) in pairs {
-            let Some(alone) = apply(doc, &earlier, base) else { continue };
+            let Some(alone) = apply(doc, &earlier, base) else {
+                continue;
+            };
             let alone_words = invocation::render(&alone);
             let alone_call = match alone_runs.get(&alone_words) {
                 Some(call) => *call,
@@ -333,7 +439,14 @@ impl Run<'_> {
                 }
             };
             let call = self.invoke(Call::new(invocation::render(&invocation)))?;
-            run.orders.push(OrderRun { command: doc.command.clone(), pair, earlier: earlier.label.clone(), later: later.label.clone(), call, alone: alone_call });
+            run.orders.push(OrderRun {
+                command: doc.command.clone(),
+                pair,
+                earlier: earlier.label.clone(),
+                later: later.label.clone(),
+                call,
+                alone: alone_call,
+            });
         }
         Ok(())
     }
@@ -343,7 +456,14 @@ impl Run<'_> {
         let mut faults: Vec<Fault> = Vec::new();
         for (position, arg) in doc.args().enumerate() {
             if arg.required {
-                faults.push(Fault { stage: Stage::Required, position, label: format!("the missing required {}", arg.spelling()), edit: Edit::Remove { arg: arg.clone() }, members: Vec::new(), code: None });
+                faults.push(Fault {
+                    stage: Stage::Required,
+                    position,
+                    label: format!("the missing required {}", arg.spelling()),
+                    edit: Edit::Remove { arg: arg.clone() },
+                    members: Vec::new(),
+                    code: None,
+                });
             }
             if arg.domain.is_some() && !crate::l1::rules::domain_unusable(arg) {
                 let rejects = self
@@ -361,7 +481,17 @@ impl Run<'_> {
                     .map(|probe| probe.word)
                     .chain(rejects);
                 for word in words {
-                    let fault = Fault { stage: Stage::Domain, position, label: format!("the broken domain of {} ({word})", arg.spelling()), edit: Edit::Set { arg: arg.clone(), word }, members: Vec::new(), code: None };
+                    let fault = Fault {
+                        stage: Stage::Domain,
+                        position,
+                        label: format!("the broken domain of {} ({word})", arg.spelling()),
+                        edit: Edit::Set {
+                            arg: arg.clone(),
+                            word,
+                        },
+                        members: Vec::new(),
+                        code: None,
+                    };
                     if build(doc, base, &[&fault]).is_some() {
                         faults.push(fault);
                         break;
@@ -369,26 +499,77 @@ impl Run<'_> {
                 }
             }
         }
-        let constraints: Vec<&ConstraintRun> = run.constraints.iter().filter(|constraint| constraint.command == doc.command).collect();
+        let constraints: Vec<&ConstraintRun> = run
+            .constraints
+            .iter()
+            .filter(|constraint| constraint.command == doc.command)
+            .collect();
         for constraint in constraints {
-            let GroupOutcome::Witness { words } = &constraint.group.outcome else { continue };
-            let Ok(witness) = invocation::parse(doc, words) else { continue };
-            let code = constraint.group.codes.iter().next().cloned().filter(|_| constraint.group.codes.len() == 1);
+            let GroupOutcome::Witness { words } = &constraint.group.outcome else {
+                continue;
+            };
+            let Ok(witness) = invocation::parse(doc, words) else {
+                continue;
+            };
+            let code = constraint
+                .group
+                .codes
+                .iter()
+                .next()
+                .cloned()
+                .filter(|_| constraint.group.codes.len() == 1);
             let members = constraint.group.members.clone();
             let label = format!(
                 "the broken constraint {}",
-                members.iter().filter_map(|index| doc.constraints.get(*index)).map(crate::l1::model::Constraint::label).collect::<Vec<_>>().join(" = ")
+                members
+                    .iter()
+                    .filter_map(|index| doc.constraints.get(*index))
+                    .map(crate::l1::model::Constraint::label)
+                    .collect::<Vec<_>>()
+                    .join(" = ")
             );
-            let fault = Fault { stage: Stage::Constraint, position: members.first().copied().unwrap_or(0), label, edit: Edit::Diff { witness, base: base.clone() }, members, code };
+            let fault = Fault {
+                stage: Stage::Constraint,
+                position: members.first().copied().unwrap_or(0),
+                label,
+                edit: Edit::Diff {
+                    witness,
+                    base: base.clone(),
+                },
+                members,
+                code,
+            };
             if build(doc, base, &[&fault]).is_some() {
                 faults.push(fault);
             }
         }
         for (position, validator) in doc.validators.iter().enumerate() {
-            let Some(line) = validator.rejects.first() else { continue };
-            let Some(words) = invocation::split_line(line).ok().filter(|words| words.first().is_some_and(|word| word == tool)) else { continue };
-            let Ok(rejects) = invocation::parse(doc, &super::in_json_mode(&words[1..])) else { continue };
-            faults.push(Fault { stage: Stage::Validator, position, label: format!("the validator {} ({})", validator.code, validator.rejects.first().map_or("", String::as_str)), edit: Edit::Rejects { invocation: rejects }, members: Vec::new(), code: Some(validator.code.clone()) });
+            let Some(line) = validator.rejects.first() else {
+                continue;
+            };
+            let Some(words) = invocation::split_line(line)
+                .ok()
+                .filter(|words| words.first().is_some_and(|word| word == tool))
+            else {
+                continue;
+            };
+            let Ok(rejects) = invocation::parse(doc, &super::in_json_mode(&words[1..])) else {
+                continue;
+            };
+            faults.push(Fault {
+                stage: Stage::Validator,
+                position,
+                label: format!(
+                    "the validator {} ({})",
+                    validator.code,
+                    validator.rejects.first().map_or("", String::as_str)
+                ),
+                edit: Edit::Rejects {
+                    invocation: rejects,
+                },
+                members: Vec::new(),
+                code: Some(validator.code.clone()),
+            });
         }
         faults.sort_by_key(|fault| (fault.stage, fault.position));
         faults
@@ -397,9 +578,19 @@ impl Run<'_> {
 
 /// Whether `changed` still has the values `rejects` gave the arguments the validators of `doc` read.
 fn validator_args_kept(doc: &CommandDoc, rejects: &Invocation, changed: &Invocation) -> bool {
-    let (before, after) = (invocation::args(doc, rejects), invocation::args(doc, changed));
-    doc.validators.iter().flat_map(|validator| validator.arguments.iter()).all(|name| {
-        before.options.get(name) == after.options.get(name)
-            && doc.operands.iter().position(|operand| &operand.name == name).is_none_or(|index| before.operands.get(index) == after.operands.get(index))
-    })
+    let (before, after) = (
+        invocation::args(doc, rejects),
+        invocation::args(doc, changed),
+    );
+    doc.validators
+        .iter()
+        .flat_map(|validator| validator.arguments.iter())
+        .all(|name| {
+            before.options.get(name) == after.options.get(name)
+                && doc
+                    .operands
+                    .iter()
+                    .position(|operand| &operand.name == name)
+                    .is_none_or(|index| before.operands.get(index) == after.operands.get(index))
+        })
 }

@@ -221,7 +221,13 @@ pub fn leaks(data: &Value, output: &Output, kept: &[String]) -> Vec<String> {
 }
 
 /// Collects the members `steps` names that `unprojected` has and `projected` lacks, walking the two records in step.
-fn dropped_in(unprojected: &Value, projected: &Value, steps: &[Step], at: &str, found: &mut Vec<String>) {
+fn dropped_in(
+    unprojected: &Value,
+    projected: &Value,
+    steps: &[Step],
+    at: &str,
+    found: &mut Vec<String>,
+) {
     let Some((step, rest)) = steps.split_first() else {
         return;
     };
@@ -253,7 +259,12 @@ fn dropped_in(unprojected: &Value, projected: &Value, steps: &[Step], at: &str, 
 
 /// Kept members the unprojected `data` has and the projected one lacks, as `/pointer` paths (spec 6.10 rule 4), record by record;
 /// empty when the two do not have the same number of records.
-pub fn dropped(unprojected: &Value, projected: &Value, output: &Output, kept: &[String]) -> Vec<String> {
+pub fn dropped(
+    unprojected: &Value,
+    projected: &Value,
+    output: &Output,
+    kept: &[String],
+) -> Vec<String> {
     let before = records(unprojected, output);
     let after = records(projected, output);
     if before.len() != after.len() {
@@ -376,9 +387,9 @@ pub fn path_node<'a>(
             .and_then(Value::as_object)?;
         let member = properties.get(&step.name)?;
         node = non_null(schemas, Some(member));
-        let is_array = node
-            .and_then(Value::as_object)
-            .is_some_and(|object| types_of(object).contains(&"array") || object.contains_key("items"));
+        let is_array = node.and_then(Value::as_object).is_some_and(|object| {
+            types_of(object).contains(&"array") || object.contains_key("items")
+        });
         if step.array != is_array && (step.array || index + 1 < steps.len()) {
             return None;
         }
@@ -524,7 +535,11 @@ fn descend(
 }
 
 /// The output's schema with `required` reduced in every object cut node at or below the record along `kept` (spec 6.10, "Projected schema").
-pub fn projected_validator(doc: &CommandDoc, output: &Output, kept: &[String]) -> Result<jsonschema::Validator, String> {
+pub fn projected_validator(
+    doc: &CommandDoc,
+    output: &Output,
+    kept: &[String],
+) -> Result<jsonschema::Validator, String> {
     let trie = field_trie(kept);
     let mut schemas = doc.schemas.clone();
     let name = output.name().to_string();
@@ -570,8 +585,8 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::{
-        dropped, field_path_problem, field_trie, leaks, map_key_of, parse_field_path, projected_validator, records,
-        selectable, Step, Trie,
+        dropped, field_path_problem, field_trie, leaks, map_key_of, parse_field_path,
+        projected_validator, records, selectable, Step, Trie,
     };
     use crate::l1::model::{CommandDoc, Output};
 
@@ -656,28 +671,59 @@ mod tests {
         assert_eq!(parse_field_path("id"), Some(vec![step("id", false, false)]));
         assert_eq!(
             parse_field_path("owners[].email"),
-            Some(vec![step("owners", true, false), step("email", false, false)])
+            Some(vec![
+                step("owners", true, false),
+                step("email", false, false)
+            ])
         );
         assert_eq!(
             parse_field_path(r#"attributes["http.status-code"]"#),
-            Some(vec![step("attributes", false, false), step("http.status-code", false, true)])
+            Some(vec![
+                step("attributes", false, false),
+                step("http.status-code", false, true)
+            ])
         );
-        assert_eq!(parse_field_path(r#"["display-name"]"#), Some(vec![step("display-name", false, true)]));
-        assert_eq!(parse_field_path(r#"attributes[""]"#).map(|steps| steps[1].name.clone()), Some(String::new()));
+        assert_eq!(
+            parse_field_path(r#"["display-name"]"#),
+            Some(vec![step("display-name", false, true)])
+        );
+        assert_eq!(
+            parse_field_path(r#"attributes[""]"#).map(|steps| steps[1].name.clone()),
+            Some(String::new())
+        );
         assert_eq!(
             parse_field_path(r#"labels[]["a.b"][]"#),
             Some(vec![step("labels", true, false), step("a.b", true, true)])
         );
         // The only escapes of a bracketed key are \" and \\.
-        assert_eq!(parse_field_path(r#"a["b\"c"]"#).map(|steps| steps[1].name.clone()), Some("b\"c".to_string()));
-        assert_eq!(parse_field_path(r#"a["b\\c"]"#).map(|steps| steps[1].name.clone()), Some("b\\c".to_string()));
+        assert_eq!(
+            parse_field_path(r#"a["b\"c"]"#).map(|steps| steps[1].name.clone()),
+            Some("b\"c".to_string())
+        );
+        assert_eq!(
+            parse_field_path(r#"a["b\\c"]"#).map(|steps| steps[1].name.clone()),
+            Some("b\\c".to_string())
+        );
     }
 
     #[test]
     fn atip_checkl1_project_a_malformed_field_path_has_no_steps() {
         for path in [
-            "", ".a", "a.", "a..b", "a[", "a[region]", r#"["a""#, r#"["a\n"]"#, r#"a.["b"]"#, "1a", "a[]b", "a b", "a-b",
-            "a\0b", "[\"a\0b\"]",
+            "",
+            ".a",
+            "a.",
+            "a..b",
+            "a[",
+            "a[region]",
+            r#"["a""#,
+            r#"["a\n"]"#,
+            r#"a.["b"]"#,
+            "1a",
+            "a[]b",
+            "a b",
+            "a-b",
+            "a\0b",
+            "[\"a\0b\"]",
         ] {
             assert_eq!(parse_field_path(path), None, "{path:?}");
             assert!(
@@ -691,61 +737,99 @@ mod tests {
     fn atip_checkl1_project_brackets_are_for_names_that_are_not_identifiers_rule_15() {
         assert_eq!(field_path_problem("profile.name"), None);
         assert_eq!(field_path_problem(r#"["display-name"]"#), None);
-        assert_eq!(field_path_problem(r#"attributes["http.status-code"]"#), None);
+        assert_eq!(
+            field_path_problem(r#"attributes["http.status-code"]"#),
+            None
+        );
         let problem = field_path_problem(r#"["name"]"#).expect("a problem");
-        assert!(problem.contains("writes the identifier name in brackets"), "{problem}");
+        assert!(
+            problem.contains("writes the identifier name in brackets"),
+            "{problem}"
+        );
         assert!(field_path_problem(r#"profile["email"]"#).is_some());
     }
 
     #[test]
-    fn atip_checkl1_project_a_covered_member_is_kept_whole_and_an_ancestor_keeps_only_what_is_present() {
+    fn atip_checkl1_project_a_covered_member_is_kept_whole_and_an_ancestor_keeps_only_what_is_present(
+    ) {
         let paths = |paths: &[&str]| paths.iter().map(ToString::to_string).collect::<Vec<_>>();
         for order in [["profile", "profile.name"], ["profile.name", "profile"]] {
             let trie = field_trie(&paths(&order));
             assert_eq!(trie.get("profile"), Some(&Trie::Whole), "{order:?}");
         }
-        let trie = field_trie(&paths(&["id", "owners[].email", "profile.name", "profile.email"]));
+        let trie = field_trie(&paths(&[
+            "id",
+            "owners[].email",
+            "profile.name",
+            "profile.email",
+        ]));
         assert_eq!(trie.get("id"), Some(&Trie::Whole));
         let Some(Trie::Branch(profile)) = trie.get("profile") else {
             panic!("profile is an ancestor: {trie:?}");
         };
         assert_eq!(profile.len(), 2);
-        assert!(matches!(trie.get("owners"), Some(Trie::Branch(owners)) if owners.get("email") == Some(&Trie::Whole)));
+        assert!(
+            matches!(trie.get("owners"), Some(Trie::Branch(owners)) if owners.get("email") == Some(&Trie::Whole))
+        );
         assert!(field_trie(&paths(&["a..b"])).is_empty());
     }
 
     #[test]
     fn atip_checkl1_project_the_records_are_found_through_the_pointer() {
-        let (nested, _, output) = report("atip-examples/report-acme-member-list-fields-nested.json");
+        let (nested, _, output) =
+            report("atip-examples/report-acme-member-list-fields-nested.json");
         assert_eq!(records(&nested["data"], &output).len(), 2);
         let (roster, _, output) = report("atip-examples/report-acme-member-roster-fields.json");
-        assert_eq!(output.fields.as_ref().expect("fields").records, "/member~1list");
+        assert_eq!(
+            output.fields.as_ref().expect("fields").records,
+            "/member~1list"
+        );
         assert_eq!(records(&roster["data"], &output).len(), 2);
         let (export, _, output) = report("atip-examples/report-acme-member-export-fields.json");
-        assert_eq!(output.fields.as_ref().expect("fields").records, "/items/items");
+        assert_eq!(
+            output.fields.as_ref().expect("fields").records,
+            "/items/items"
+        );
         assert_eq!(records(&export["data"], &output).len(), 2);
         let (null, _, output) = report("atip-examples/report-acme-member-export-null.json");
-        assert!(records(&null["data"], &output).is_empty(), "a null report leads nowhere");
+        assert!(
+            records(&null["data"], &output).is_empty(),
+            "a null report leads nowhere"
+        );
         assert!(records(&json!({"other": []}), &output).is_empty());
     }
 
     #[test]
-    fn atip_checkl1_project_the_valid_reports_have_no_leak_no_drop_and_validate_against_the_projected_schema() {
+    fn atip_checkl1_project_the_valid_reports_have_no_leak_no_drop_and_validate_against_the_projected_schema(
+    ) {
         for file in VALID {
             let (report, doc, output) = report(file);
             let kept = kept(&report);
-            assert_eq!(leaks(&report["data"], &output, &kept), Vec::<String>::new(), "{file}");
-            assert_eq!(dropped(&report["data"], &report["data"], &output, &kept), Vec::<String>::new(), "{file}");
-            let validator = projected_validator(&doc, &output, &kept).unwrap_or_else(|error| panic!("{file}: {error}"));
+            assert_eq!(
+                leaks(&report["data"], &output, &kept),
+                Vec::<String>::new(),
+                "{file}"
+            );
+            assert_eq!(
+                dropped(&report["data"], &report["data"], &output, &kept),
+                Vec::<String>::new(),
+                "{file}"
+            );
+            let validator = projected_validator(&doc, &output, &kept)
+                .unwrap_or_else(|error| panic!("{file}: {error}"));
             assert!(validator.is_valid(&report["data"]), "{file}");
         }
     }
 
     #[test]
     fn atip_checkl1_project_without_reducing_required_a_projection_does_not_validate() {
-        let (report, doc, output) = report("atip-examples/report-acme-member-list-fields-nested.json");
+        let (report, doc, output) =
+            report("atip-examples/report-acme-member-list-fields-nested.json");
         let whole = doc.compile_ref(&output.schema_ref).expect("compiles");
-        assert!(!whole.is_valid(&report["data"]), "the projection lacks required members of the unprojected schema");
+        assert!(
+            !whole.is_valid(&report["data"]),
+            "the projection lacks required members of the unprojected schema"
+        );
         let projected = projected_validator(&doc, &output, &kept(&report)).expect("compiles");
         assert!(projected.is_valid(&report["data"]));
     }
@@ -753,17 +837,34 @@ mod tests {
     #[test]
     fn atip_checkl1_project_a_member_no_kept_path_covers_leaks() {
         let cases = [
-            ("report-acme-member-list-fields-leak", vec!["/profile/email"]),
-            ("report-acme-member-list-fields-parent-child-leak", vec!["/name"]),
-            ("report-acme-member-list-fields-map-key-leak", vec!["/attributes/zone"]),
-            ("report-acme-member-list-fields-empty-key-leak", vec!["/attributes/"]),
+            (
+                "report-acme-member-list-fields-leak",
+                vec!["/profile/email"],
+            ),
+            (
+                "report-acme-member-list-fields-parent-child-leak",
+                vec!["/name"],
+            ),
+            (
+                "report-acme-member-list-fields-map-key-leak",
+                vec!["/attributes/zone"],
+            ),
+            (
+                "report-acme-member-list-fields-empty-key-leak",
+                vec!["/attributes/"],
+            ),
         ];
         for (file, expected) in cases {
             let (report, _, output) = report(&format!("atip-examples/invalid/{file}.json"));
-            assert_eq!(leaks(&report["data"], &output, &kept(&report)), expected, "{file}");
+            assert_eq!(
+                leaks(&report["data"], &output, &kept(&report)),
+                expected,
+                "{file}"
+            );
         }
         // A mutated valid report: one more member on a record, in a nested array element.
-        let (mut report, _, output) = report("atip-examples/report-acme-member-list-fields-nested.json");
+        let (mut report, _, output) =
+            report("atip-examples/report-acme-member-list-fields-nested.json");
         report["data"]["members"][0]["owners"][0]["name"] = json!("Lead");
         report["data"]["members"][1]["email"] = json!("grace@example.org");
         assert_eq!(
@@ -774,7 +875,8 @@ mod tests {
 
     #[test]
     fn atip_checkl1_project_a_kept_member_the_unprojected_record_has_must_be_in_the_projection() {
-        let (report, _, output) = report("atip-examples/report-acme-member-list-fields-nested.json");
+        let (report, _, output) =
+            report("atip-examples/report-acme-member-list-fields-nested.json");
         let selected = kept(&report);
         let unprojected = report["data"].clone();
         let mut projected = report["data"].clone();
@@ -810,7 +912,9 @@ mod tests {
     #[test]
     fn atip_checkl1_project_a_kept_required_member_removed_fails_the_projected_schema() {
         for file in ["missing-child", "missing-nested"] {
-            let (report, doc, output) = report(&format!("atip-examples/invalid/report-acme-member-list-fields-{file}.json"));
+            let (report, doc, output) = report(&format!(
+                "atip-examples/invalid/report-acme-member-list-fields-{file}.json"
+            ));
             let validator = projected_validator(&doc, &output, &kept(&report)).expect("compiles");
             assert!(!validator.is_valid(&report["data"]), "{file}");
         }
@@ -818,27 +922,44 @@ mod tests {
 
     #[test]
     fn atip_checkl1_project_a_map_key_is_selectable_only_for_a_document_that_declares_1_1() {
-        let (map_keys, doc, output) = report("atip-examples/report-acme-member-list-fields-map-keys.json");
+        let (map_keys, doc, output) =
+            report("atip-examples/report-acme-member-list-fields-map-keys.json");
         for field in kept(&map_keys) {
             assert!(selectable(&doc, &output, &field, true), "{field}");
         }
         assert!(!selectable(&doc, &output, "attributes.region", false));
-        assert_eq!(map_key_of(&doc, &output, "attributes.region").as_deref(), Some("attributes"));
-        assert_eq!(map_key_of(&doc, &output, r#"attributes["http.status-code"]"#).as_deref(), Some("attributes"));
-        assert_eq!(map_key_of(&doc, &output, "labels[].region").as_deref(), Some("labels[]"));
+        assert_eq!(
+            map_key_of(&doc, &output, "attributes.region").as_deref(),
+            Some("attributes")
+        );
+        assert_eq!(
+            map_key_of(&doc, &output, r#"attributes["http.status-code"]"#).as_deref(),
+            Some("attributes")
+        );
+        assert_eq!(
+            map_key_of(&doc, &output, "labels[].region").as_deref(),
+            Some("labels[]")
+        );
         assert_eq!(map_key_of(&doc, &output, "id"), None);
 
         // A path that does not descend through the array, or names no declared map: not selectable.
         for (file, field) in [
-            ("report-acme-member-list-fields-map-key-without-descent", "labels.region"),
-            ("report-acme-member-list-fields-not-a-map-key", "profile.nickname"),
+            (
+                "report-acme-member-list-fields-map-key-without-descent",
+                "labels.region",
+            ),
+            (
+                "report-acme-member-list-fields-not-a-map-key",
+                "profile.nickname",
+            ),
         ] {
             let (report, doc, output) = report(&format!("atip-examples/invalid/{file}.json"));
             assert!(kept(&report).contains(&field.to_string()), "{file}");
             assert!(!selectable(&doc, &output, field, true), "{file}");
         }
         // A 1.0 document keeps a map whole: its map key is no selection.
-        let (ledger, doc, output) = report("atip-examples/invalid/report-ledger-entry-list-map-key.json");
+        let (ledger, doc, output) =
+            report("atip-examples/invalid/report-ledger-entry-list-map-key.json");
         assert!(!selectable(&doc, &output, "attributes.kind", false));
         assert!(selectable(&doc, &output, "id", false));
         assert_eq!(kept(&ledger), ["id", "attributes.kind"]);

@@ -150,7 +150,12 @@ impl Fixture {
         self.commands
             .iter()
             .flatten()
-            .flat_map(|(id, entry)| entry.missing_value.iter().map(move |argv| (id.as_str(), argv)))
+            .flat_map(|(id, entry)| {
+                entry
+                    .missing_value
+                    .iter()
+                    .map(move |argv| (id.as_str(), argv))
+            })
             .collect()
     }
 }
@@ -185,7 +190,11 @@ pub fn parse(document: &Value) -> Result<Fixture, String> {
     };
     let commands = object.get("commands").map(commands).transpose()?;
     let probe_words = object.get("probe").map(probe).transpose()?;
-    let not_run = object.get("notRun").map(|value| not_run(value, probe_words.as_deref())).transpose()?.unwrap_or_default();
+    let not_run = object
+        .get("notRun")
+        .map(|value| not_run(value, probe_words.as_deref()))
+        .transpose()?
+        .unwrap_or_default();
     Ok(Fixture {
         contract_version: object
             .get("contractVersion")
@@ -230,23 +239,20 @@ pub fn parse(document: &Value) -> Result<Fixture, String> {
 }
 
 fn contract_version(value: &Value) -> Result<Claim, String> {
-    value
-        .as_str()
-        .and_then(Claim::parse)
-        .ok_or_else(|| {
-            format!(
-                "`contractVersion` must be one of the minors this checker knows: {}",
-                MINORS.join(", ")
-            )
-        })
+    value.as_str().and_then(Claim::parse).ok_or_else(|| {
+        format!(
+            "`contractVersion` must be one of the minors this checker knows: {}",
+            MINORS.join(", ")
+        )
+    })
 }
 
 /// `notRun`: an array of command ids, each once, none of them the `probe` (approaches/checker.md 5). A command may be in `commands` too: its first `ok`
 /// invocation is the one run, and the rest of its entries are skipped.
 fn not_run(value: &Value, probe: Option<&[String]>) -> Result<Vec<String>, String> {
-    let list = value
-        .as_array()
-        .ok_or("`notRun` must be an array of command ids: the commands that do not end on their own")?;
+    let list = value.as_array().ok_or(
+        "`notRun` must be an array of command ids: the commands that do not end on their own",
+    )?;
     let mut ids: Vec<String> = Vec::with_capacity(list.len());
     for (index, item) in list.iter().enumerate() {
         let id = item
@@ -420,9 +426,9 @@ fn registry(value: &Value) -> Result<Vec<RegistryRow>, String> {
     let mut parsed: Vec<RegistryRow> = Vec::with_capacity(rows.len());
     for (index, row) in rows.iter().enumerate() {
         let at = format!("registry/{index}");
-        let object = row
-            .as_object()
-            .ok_or_else(|| format!("`{at}` must be an object {{code, exit, retryable, reasons?}}"))?;
+        let object = row.as_object().ok_or_else(|| {
+            format!("`{at}` must be an object {{code, exit, retryable, reasons?}}")
+        })?;
         if let Some(member) = object
             .keys()
             .find(|key| !["code", "exit", "retryable", "reasons"].contains(&key.as_str()))
@@ -465,14 +471,25 @@ fn registry(value: &Value) -> Result<Vec<RegistryRow>, String> {
 
 /// `batchFailsAt` and `batchFailsFirst`: a list of `{input: [document...], index}`; the first one fails, so its `index` is 0.
 fn batch_cases(value: Option<&Value>, id: &str, key: &str) -> Result<Vec<BatchCase>, String> {
-    let Some(value) = value else { return Ok(Vec::new()) };
-    let list = value.as_array().ok_or_else(|| format!("`commands/{id}/{key}` must be an array of {{input, index}}"))?;
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let list = value
+        .as_array()
+        .ok_or_else(|| format!("`commands/{id}/{key}` must be an array of {{input, index}}"))?;
     let mut cases = Vec::with_capacity(list.len());
     for (at, item) in list.iter().enumerate() {
         let path = format!("commands/{id}/{key}/{at}");
-        let object = item.as_object().ok_or_else(|| format!("`{path}` must be an object {{input, index}}"))?;
-        if let Some(member) = object.keys().find(|member| !["input", "index"].contains(&member.as_str())) {
-            return Err(format!("`{path}/{member}` is not a member of a batch entry: only `input` and `index`"));
+        let object = item
+            .as_object()
+            .ok_or_else(|| format!("`{path}` must be an object {{input, index}}"))?;
+        if let Some(member) = object
+            .keys()
+            .find(|member| !["input", "index"].contains(&member.as_str()))
+        {
+            return Err(format!(
+                "`{path}/{member}` is not a member of a batch entry: only `input` and `index`"
+            ));
         }
         let input = object
             .get("input")
@@ -487,7 +504,9 @@ fn batch_cases(value: Option<&Value>, id: &str, key: &str) -> Result<Vec<BatchCa
             .filter(|index| *index < input.len())
             .ok_or_else(|| format!("`{path}/index` must be the index of an item of `input`"))?;
         if key == "batchFailsFirst" && index != 0 {
-            return Err(format!("`{path}/index` must be 0 in `batchFailsFirst`: the first item fails"));
+            return Err(format!(
+                "`{path}/index` must be 0 in `batchFailsFirst`: the first item fails"
+            ));
         }
         cases.push(BatchCase { input, index });
     }
@@ -526,9 +545,16 @@ fn commands(value: &Value) -> Result<BTreeMap<String, CommandEntry>, String> {
                 paged: list("paged")?,
                 domain_rejects: domain_rejects(entry.get("domainRejects"), id)?,
                 batch_fails_at: batch_cases(entry.get("batchFailsAt"), id, "batchFailsAt")?,
-                batch_fails_first: batch_cases(entry.get("batchFailsFirst"), id, "batchFailsFirst")?,
+                batch_fails_first: batch_cases(
+                    entry.get("batchFailsFirst"),
+                    id,
+                    "batchFailsFirst",
+                )?,
                 preview: list("preview")?,
-                async_entry: entry.get("async").map(|value| async_entry(value, id)).transpose()?,
+                async_entry: entry
+                    .get("async")
+                    .map(|value| async_entry(value, id))
+                    .transpose()?,
                 allowed_effects: allowed_effects(entry.get("allowedEffects"), id)?,
             },
         );
@@ -539,11 +565,21 @@ fn commands(value: &Value) -> Result<BTreeMap<String, CommandEntry>, String> {
 /// `async` of command `id`: `{start, worker, outcomes}`.
 fn async_entry(value: &Value, id: &str) -> Result<AsyncEntry, String> {
     let path = format!("commands/{id}/async");
-    let object = value.as_object().ok_or_else(|| format!("`{path}` must be an object {{start, worker, outcomes}}"))?;
-    if let Some(member) = object.keys().find(|member| !["start", "worker", "outcomes"].contains(&member.as_str())) {
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("`{path}` must be an object {{start, worker, outcomes}}"))?;
+    if let Some(member) = object
+        .keys()
+        .find(|member| !["start", "worker", "outcomes"].contains(&member.as_str()))
+    {
         return Err(format!("`{path}/{member}` is not a member of an async entry: only `start`, `worker` and `outcomes`"));
     }
-    let start = argv(object.get("start").ok_or_else(|| format!("`{path}/start` is missing: the invocation that starts the work"))?, &format!("{path}/start"))?;
+    let start = argv(
+        object.get("start").ok_or_else(|| {
+            format!("`{path}/start` is missing: the invocation that starts the work")
+        })?,
+        &format!("{path}/start"),
+    )?;
     let worker = object
         .get("worker")
         .and_then(Value::as_str)
@@ -567,13 +603,21 @@ fn async_entry(value: &Value, id: &str) -> Result<AsyncEntry, String> {
     if outcomes.is_empty() {
         return Err(format!("`{path}/outcomes` must name at least one outcome"));
     }
-    Ok(AsyncEntry { start, worker, outcomes })
+    Ok(AsyncEntry {
+        start,
+        worker,
+        outcomes,
+    })
 }
 
 /// `allowedEffects` of command `id`: a list of non-empty glob patterns.
 fn allowed_effects(value: Option<&Value>, id: &str) -> Result<Vec<String>, String> {
-    let Some(value) = value else { return Ok(Vec::new()) };
-    let list = value.as_array().ok_or_else(|| format!("`commands/{id}/allowedEffects` must be an array of path patterns"))?;
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let list = value.as_array().ok_or_else(|| {
+        format!("`commands/{id}/allowedEffects` must be an array of path patterns")
+    })?;
     list.iter()
         .enumerate()
         .map(|(at, pattern)| {
@@ -581,14 +625,18 @@ fn allowed_effects(value: Option<&Value>, id: &str) -> Result<Vec<String>, Strin
                 .as_str()
                 .filter(|pattern| !pattern.is_empty() && !pattern.contains('\0'))
                 .map(str::to_string)
-                .ok_or_else(|| format!("`commands/{id}/allowedEffects/{at}` must be a non-empty path pattern"))
+                .ok_or_else(|| {
+                    format!("`commands/{id}/allowedEffects/{at}` must be a non-empty path pattern")
+                })
         })
         .collect()
 }
 
 /// `search`: a list of `{query, expect}`, `expect` a command id.
 fn search(value: &Value) -> Result<Vec<SearchQuery>, String> {
-    let list = value.as_array().ok_or("`search` must be an array of {query, expect}")?;
+    let list = value
+        .as_array()
+        .ok_or("`search` must be an array of {query, expect}")?;
     list.iter()
         .enumerate()
         .map(|(at, item)| {
@@ -609,18 +657,25 @@ fn search(value: &Value) -> Result<Vec<SearchQuery>, String> {
 }
 
 /// `domainRejects` of command `id`: an object of argument name to a list of values (strings, as argv words).
-fn domain_rejects(value: Option<&Value>, id: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
+fn domain_rejects(
+    value: Option<&Value>,
+    id: &str,
+) -> Result<BTreeMap<String, Vec<String>>, String> {
     let Some(value) = value else {
         return Ok(BTreeMap::new());
     };
-    let object = value
-        .as_object()
-        .ok_or_else(|| format!("`commands/{id}/domainRejects` must be an object of argument name to a list of values"))?;
+    let object = value.as_object().ok_or_else(|| {
+        format!(
+            "`commands/{id}/domainRejects` must be an object of argument name to a list of values"
+        )
+    })?;
     let mut rejects = BTreeMap::new();
     for (name, values) in object {
         let at = format!("commands/{id}/domainRejects/{name}");
         if name.is_empty() || name.starts_with('-') {
-            return Err(format!("`{at}`: the key is an argument name without dashes (`limit`, not `--limit`)"));
+            return Err(format!(
+                "`{at}`: the key is an argument name without dashes (`limit`, not `--limit`)"
+            ));
         }
         let list = values
             .as_array()
@@ -633,7 +688,11 @@ fn domain_rejects(value: Option<&Value>, id: &str) -> Result<BTreeMap<String, Ve
                 item.as_str()
                     .filter(|text| !text.contains('\0'))
                     .map(str::to_string)
-                    .ok_or_else(|| format!("`{at}/{index}` must be a string (a JSON value is written as its text)"))
+                    .ok_or_else(|| {
+                        format!(
+                            "`{at}/{index}` must be a string (a JSON value is written as its text)"
+                        )
+                    })
             })
             .collect::<Result<Vec<_>, _>>()?;
         rejects.insert(name.clone(), strings);
@@ -677,19 +736,48 @@ mod tests {
         assert_eq!(fixture.env["X"], "1");
         assert_eq!(fixture.timeout.as_secs(), 5);
         assert_eq!(fixture.probe_id().as_deref(), Some("member list"));
-        assert_eq!(fixture.global_options, Some(vec![vec!["--repo".to_string(), ".".to_string()]]));
+        assert_eq!(
+            fixture.global_options,
+            Some(vec![vec!["--repo".to_string(), ".".to_string()]])
+        );
         assert_eq!(fixture.row("USAGE").map(|row| row.exit), Some(2));
-        assert_eq!(fixture.row("INPUT_INVALID").and_then(|row| row.reasons.clone()), Some(vec!["NOT_JSON".to_string()]));
+        assert_eq!(
+            fixture
+                .row("INPUT_INVALID")
+                .and_then(|row| row.reasons.clone()),
+            Some(vec!["NOT_JSON".to_string()])
+        );
         assert_eq!(fixture.warnings, Some(vec!["LEGACY_ALIAS".to_string()]));
         assert_eq!(fixture.group().as_deref(), Some("finding"));
         assert_eq!(fixture.missing_values().len(), 1);
         let entry = &fixture.commands.as_ref().expect("commands")["finding close"];
         assert_eq!(entry.ok.len(), 1);
-        assert_eq!((entry.preview.len(), entry.allowed_effects.len(), entry.async_entry.as_ref().map(|entry| entry.worker.as_str())), (1, 1, Some("W")));
-        assert_eq!(fixture.search, [super::SearchQuery { query: "close it".to_string(), expect: "finding close".to_string() }]);
+        assert_eq!(
+            (
+                entry.preview.len(),
+                entry.allowed_effects.len(),
+                entry
+                    .async_entry
+                    .as_ref()
+                    .map(|entry| entry.worker.as_str())
+            ),
+            (1, 1, Some("W"))
+        );
+        assert_eq!(
+            fixture.search,
+            [super::SearchQuery {
+                query: "close it".to_string(),
+                expect: "finding close".to_string()
+            }]
+        );
         let empty = parse(&json!({})).expect("an empty fixture is valid");
         assert_eq!(
-            (empty.timeout, empty.probe.is_none(), empty.registry.is_none(), empty.claim()),
+            (
+                empty.timeout,
+                empty.probe.is_none(),
+                empty.registry.is_none(),
+                empty.claim()
+            ),
             (DEFAULT_TIMEOUT, true, true, Claim::V1_0)
         );
     }
@@ -726,7 +814,10 @@ mod tests {
             (row(json!({"meaning": "m"})), "registry/0/meaning"),
             (row(json!({"fix": "f"})), "registry/0/fix"),
             (row(json!({"reasons": "NOT_JSON"})), "registry/0/reasons"),
-            (row(json!({"reasons": ["not_json"]})), "registry/0/reasons/0"),
+            (
+                row(json!({"reasons": ["not_json"]})),
+                "registry/0/reasons/0",
+            ),
             (row(json!({"reasons": ["A", "A"]})), "repeats"),
             (
                 json!({"registry": [{"code": "USAGE", "exit": 2, "retryable": false}, {"code": "USAGE", "exit": 2, "retryable": false}]}),
@@ -738,8 +829,14 @@ mod tests {
             (json!({"commands": []}), "commands"),
             (json!({"commands": {"Finding": {}}}), "Finding"),
             (json!({"commands": {"finding": 1}}), "commands/finding"),
-            (json!({"commands": {"finding": {"missingValue": ["a"]}}}), "commands/finding/missingValue/0"),
-            (json!({"commands": {"finding": {"ok": [[]]}}}), "commands/finding/ok/0"),
+            (
+                json!({"commands": {"finding": {"missingValue": ["a"]}}}),
+                "commands/finding/missingValue/0",
+            ),
+            (
+                json!({"commands": {"finding": {"ok": [[]]}}}),
+                "commands/finding/ok/0",
+            ),
         ] {
             let reason = parse(&document).expect_err(&format!("{document} must be refused"));
             assert!(reason.contains(needle), "{reason:?} must name {needle:?}");

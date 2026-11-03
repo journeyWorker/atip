@@ -21,7 +21,12 @@ pub struct UnknownMinor(pub String);
 
 impl fmt::Display for UnknownMinor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "`{}` is not a minor of atip/1 this crate knows (it knows {})", self.0, Minor::ALL.map(Minor::as_str).join(", "))
+        write!(
+            f,
+            "`{}` is not a minor of atip/1 this crate knows (it knows {})",
+            self.0,
+            Minor::ALL.map(Minor::as_str).join(", ")
+        )
     }
 }
 
@@ -35,7 +40,10 @@ impl Minor {
 
     /// The minor written `<major>.<minor>`, or [`UnknownMinor`] for any other text (a later minor, another major, `"1"`, `""`).
     pub fn parse(text: &str) -> Result<Self, UnknownMinor> {
-        Self::ALL.into_iter().find(|minor| minor.as_str() == text).ok_or_else(|| UnknownMinor(text.to_string()))
+        Self::ALL
+            .into_iter()
+            .find(|minor| minor.as_str() == text)
+            .ok_or_else(|| UnknownMinor(text.to_string()))
     }
 
     /// The text of `meta.contractVersion`.
@@ -78,10 +86,19 @@ mod tests {
 
     #[test]
     fn atip_crate12_03_a_text_that_is_not_a_known_minor_is_refused() {
-        for text in ["1.3", "1.9", "2.0", "1", "", "1.2.0", "1.02", " 1.2", "v1.2"] {
-            assert_eq!(Minor::parse(text), Err(UnknownMinor(text.to_string())), "{text:?}");
+        for text in [
+            "1.3", "1.9", "2.0", "1", "", "1.2.0", "1.02", " 1.2", "v1.2",
+        ] {
+            assert_eq!(
+                Minor::parse(text),
+                Err(UnknownMinor(text.to_string())),
+                "{text:?}"
+            );
         }
-        assert!(Minor::parse("1.3").expect_err("refused").to_string().contains("1.0, 1.1, 1.2"));
+        assert!(Minor::parse("1.3")
+            .expect_err("refused")
+            .to_string()
+            .contains("1.0, 1.1, 1.2"));
     }
 
     #[test]

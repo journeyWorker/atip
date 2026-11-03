@@ -30,25 +30,43 @@ pub const SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Domain {
     /// Bounds of an `integer` or `count`, each within ±(2^53-1).
-    Integer { minimum: Option<i64>, maximum: Option<i64> },
+    Integer {
+        minimum: Option<i64>,
+        maximum: Option<i64>,
+    },
     /// Length in characters and a `pattern` of a `string` or `path`.
-    Text { min_length: Option<u64>, max_length: Option<u64>, pattern: Option<&'static str> },
+    Text {
+        min_length: Option<u64>,
+        max_length: Option<u64>,
+        pattern: Option<&'static str>,
+    },
 }
 
 impl Domain {
     /// An integer of at least `minimum`.
     pub const fn at_least(minimum: i64) -> Domain {
-        Domain::Integer { minimum: Some(minimum), maximum: None }
+        Domain::Integer {
+            minimum: Some(minimum),
+            maximum: None,
+        }
     }
 
     /// A text of at least `min_length` characters.
     pub const fn longer_than(min_length: u64) -> Domain {
-        Domain::Text { min_length: Some(min_length), max_length: None, pattern: None }
+        Domain::Text {
+            min_length: Some(min_length),
+            max_length: None,
+            pattern: None,
+        }
     }
 
     /// A text that is `pattern` (`^...$`).
     pub const fn matching(pattern: &'static str) -> Domain {
-        Domain::Text { min_length: None, max_length: None, pattern: Some(pattern) }
+        Domain::Text {
+            min_length: None,
+            max_length: None,
+            pattern: Some(pattern),
+        }
     }
 
     /// The domain as the JSON Schema member of an option or an operand.
@@ -63,7 +81,11 @@ impl Domain {
                     map.insert("maximum".to_string(), json!(maximum));
                 }
             }
-            Domain::Text { min_length, max_length, pattern } => {
+            Domain::Text {
+                min_length,
+                max_length,
+                pattern,
+            } => {
                 if let Some(min_length) = min_length {
                     map.insert("minLength".to_string(), json!(min_length));
                 }
@@ -79,9 +101,23 @@ impl Domain {
     }
 }
 
-const NUMERIC: [&str; 5] = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"];
+const NUMERIC: [&str; 5] = [
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+];
 const STRING: [&str; 3] = ["minLength", "maxLength", "pattern"];
-const STRUCTURAL: [&str; 7] = ["type", "enum", "const", "properties", "required", "additionalProperties", "items"];
+const STRUCTURAL: [&str; 7] = [
+    "type",
+    "enum",
+    "const",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+];
 const ANNOTATIONS: [&str; 4] = ["title", "description", "$comment", "format"];
 
 /// The keywords a domain of `value_type` may use (spec 10.7.4), or `None` when the type has no domain.
@@ -89,7 +125,14 @@ fn keywords(value_type: ValueType) -> Option<Vec<&'static str>> {
     match value_type {
         ValueType::Integer | ValueType::Number | ValueType::Count => Some(NUMERIC.to_vec()),
         ValueType::String | ValueType::Path => Some(STRING.to_vec()),
-        ValueType::Json => Some(NUMERIC.iter().chain(STRING.iter()).chain(STRUCTURAL.iter()).copied().collect()),
+        ValueType::Json => Some(
+            NUMERIC
+                .iter()
+                .chain(STRING.iter())
+                .chain(STRUCTURAL.iter())
+                .copied()
+                .collect(),
+        ),
         ValueType::Switch | ValueType::Enum => None,
     }
 }
@@ -105,7 +148,10 @@ pub fn profile_problems(value_type: ValueType, domain: &Value) -> Vec<String> {
 
 fn check_node(value_type: ValueType, node: &Value, at: &str, problems: &mut Vec<String>) {
     let Some(allowed) = keywords(value_type) else {
-        problems.push(format!("{at}: a {} argument has no domain (spec 10.7.4)", value_type.as_str()));
+        problems.push(format!(
+            "{at}: a {} argument has no domain (spec 10.7.4)",
+            value_type.as_str()
+        ));
         return;
     };
     let Some(map) = node.as_object() else {
@@ -113,7 +159,9 @@ fn check_node(value_type: ValueType, node: &Value, at: &str, problems: &mut Vec<
         return;
     };
     if map.is_empty() && at == "the domain" {
-        problems.push(format!("{at}: is empty: a domain states at least one restriction"));
+        problems.push(format!(
+            "{at}: is empty: a domain states at least one restriction"
+        ));
     }
     let integral = matches!(value_type, ValueType::Integer | ValueType::Count);
     for (keyword, value) in map {
@@ -121,15 +169,24 @@ fn check_node(value_type: ValueType, node: &Value, at: &str, problems: &mut Vec<
             continue;
         }
         if !allowed.contains(&keyword.as_str()) {
-            problems.push(format!("{at}: keyword {keyword} is outside the domain profile of {} (spec 10.7.4)", value_type.as_str()));
+            problems.push(format!(
+                "{at}: keyword {keyword} is outside the domain profile of {} (spec 10.7.4)",
+                value_type.as_str()
+            ));
             continue;
         }
         if NUMERIC.contains(&keyword.as_str()) {
             match value.as_f64() {
                 None => problems.push(format!("{at}: {keyword} is not a finite number")),
-                Some(number) if !number.is_finite() => problems.push(format!("{at}: {keyword} is not a finite number")),
-                Some(number) if integral && !is_safe_integer(value) => problems.push(format!("{at}: {keyword} {number} is not a safe integer (spec 10.7.5)")),
-                Some(number) if keyword == "multipleOf" && number <= 0.0 => problems.push(format!("{at}: multipleOf is not positive")),
+                Some(number) if !number.is_finite() => {
+                    problems.push(format!("{at}: {keyword} is not a finite number"))
+                }
+                Some(number) if integral && !is_safe_integer(value) => problems.push(format!(
+                    "{at}: {keyword} {number} is not a safe integer (spec 10.7.5)"
+                )),
+                Some(number) if keyword == "multipleOf" && number <= 0.0 => {
+                    problems.push(format!("{at}: multipleOf is not positive"))
+                }
                 Some(_) => {}
             }
         }
@@ -140,16 +197,33 @@ fn check_node(value_type: ValueType, node: &Value, at: &str, problems: &mut Vec<
                         problems.push(format!("{at}: pattern {value}: {problem} (spec 10.7.4)"));
                     }
                 }
-                None => problems.push(format!("{at}: pattern {value}: is not a string (spec 10.7.4)")),
+                None => problems.push(format!(
+                    "{at}: pattern {value}: is not a string (spec 10.7.4)"
+                )),
             }
         }
-        if (keyword == "enum" || keyword == "const") && std::slice::from_ref(value).iter().flat_map(|v| v.as_array().map_or_else(|| vec![v], |items| items.iter().collect())).any(|item| item.is_object() || item.is_array()) {
-            problems.push(format!("{at}: {keyword} admits only scalar values in a domain (spec 10.7.4)"));
+        if (keyword == "enum" || keyword == "const")
+            && std::slice::from_ref(value)
+                .iter()
+                .flat_map(|v| {
+                    v.as_array()
+                        .map_or_else(|| vec![v], |items| items.iter().collect())
+                })
+                .any(|item| item.is_object() || item.is_array())
+        {
+            problems.push(format!(
+                "{at}: {keyword} admits only scalar values in a domain (spec 10.7.4)"
+            ));
         }
         if keyword == "properties" {
             if let Some(children) = value.as_object() {
                 for (name, child) in children {
-                    check_node(value_type, child, &format!("{at}/properties/{name}"), problems);
+                    check_node(
+                        value_type,
+                        child,
+                        &format!("{at}/properties/{name}"),
+                        problems,
+                    );
                 }
             }
         }
@@ -160,31 +234,55 @@ fn check_node(value_type: ValueType, node: &Value, at: &str, problems: &mut Vec<
 }
 
 fn is_safe_integer(value: &Value) -> bool {
-    value.as_i64().is_some_and(|number| number.abs() <= SAFE_INTEGER) || value.as_f64().is_some_and(|number| number.fract() == 0.0 && number.abs() <= SAFE_INTEGER as f64)
+    value
+        .as_i64()
+        .is_some_and(|number| number.abs() <= SAFE_INTEGER)
+        || value
+            .as_f64()
+            .is_some_and(|number| number.fract() == 0.0 && number.abs() <= SAFE_INTEGER as f64)
 }
 
 /// What is wrong with `pattern` as a domain `pattern` (spec 10.7.4): `None` when it is `^`, an I-Regexp body with the
 /// contract's restrictions, and `$`, and the Rust `regex` crate compiles it with its default limits (a compiled size of
 /// 10 MiB, a nesting depth of 250).
 pub fn pattern_problem(pattern: &str) -> Option<String> {
-    let body = match pattern.strip_prefix('^').and_then(|rest| rest.strip_suffix('$')) {
+    let body = match pattern
+        .strip_prefix('^')
+        .and_then(|rest| rest.strip_suffix('$'))
+    {
         Some(body) if pattern.chars().count() >= 2 => body,
         _ => return Some("is not ^…$".to_string()),
     };
-    if let Some(at) = pattern.chars().position(|c| matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')) {
+    if let Some(at) = pattern
+        .chars()
+        .position(|c| matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}'))
+    {
         return Some(format!("carries a raw line terminator at offset {at}: the contract's schema requires `^\\^.*\\$$`, and `.` does not match one (write `\\n`, `\\r`, `\\p{{Zl}}`, `\\p{{Zp}}`)"));
     }
     if let Some(problem) = iregexp_problem(body) {
         return Some(problem);
     }
-    regex::Regex::new(pattern).err().map(|error| format!("the Rust regex crate refuses it with its default limits: {error}"))
+    regex::Regex::new(pattern)
+        .err()
+        .map(|error| format!("the Rust regex crate refuses it with its default limits: {error}"))
 }
 
 /// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of spec 10.7.4.
 /// A port of `iregexpProblem` of the contract's `scripts/check.ts`.
 fn iregexp_problem(body: &str) -> Option<String> {
-    let mut scan = Scan { cps: body.chars().collect(), i: 0 };
-    scan.alternatives(0).and_then(|()| if scan.i < scan.cps.len() { scan.fail(&format!("unmatched {}", scan.cps[scan.i])) } else { Ok(()) }).err()
+    let mut scan = Scan {
+        cps: body.chars().collect(),
+        i: 0,
+    };
+    scan.alternatives(0)
+        .and_then(|()| {
+            if scan.i < scan.cps.len() {
+                scan.fail(&format!("unmatched {}", scan.cps[scan.i]))
+            } else {
+                Ok(())
+            }
+        })
+        .err()
 }
 
 struct Scan {
@@ -194,11 +292,15 @@ struct Scan {
 
 type Scanned = Result<(), String>;
 
-const SINGLE_ESCAPES: [char; 17] = ['(', ')', '*', '+', '-', '.', '?', '[', '\\', ']', '^', 'n', 'r', 't', '{', '|', '}'];
+const SINGLE_ESCAPES: [char; 17] = [
+    '(', ')', '*', '+', '-', '.', '?', '[', '\\', ']', '^', 'n', 'r', 't', '{', '|', '}',
+];
 
 fn is_category_name(name: &str) -> bool {
     let mut chars = name.chars();
-    let (Some(major), rest) = (chars.next(), chars.as_str()) else { return false };
+    let (Some(major), rest) = (chars.next(), chars.as_str()) else {
+        return false;
+    };
     let minors = match major {
         'L' => "lmotu",
         'M' => "cen",
@@ -235,7 +337,11 @@ impl Scan {
             if self.at(2) != Some('{') {
                 return self.fail("\\p without {");
             }
-            let Some(end) = self.cps[self.i + 3..].iter().position(|c| *c == '}').map(|at| at + self.i + 3) else {
+            let Some(end) = self.cps[self.i + 3..]
+                .iter()
+                .position(|c| *c == '}')
+                .map(|at| at + self.i + 3)
+            else {
                 return self.fail("unclosed \\p{");
             };
             let name: String = self.cps[self.i + 3..end].iter().collect();
@@ -269,7 +375,9 @@ impl Scan {
             None | Some('-' | '[' | ']') => Ok(false),
             Some(c) => {
                 if (c == '&' || c == '~') && self.at(1) == Some(c) {
-                    return self.fail(&format!("{c}{c} in a character class (a set operation in Rust)"));
+                    return self.fail(&format!(
+                        "{c}{c} in a character class (a set operation in Rust)"
+                    ));
                 }
                 self.i += 1;
                 Ok(true)
@@ -297,7 +405,10 @@ impl Scan {
                 self.i += 1;
             } else {
                 if !self.class_char()? {
-                    return self.fail(&format!("{} in a character class", self.at(0).map_or_else(String::new, |c| c.to_string())));
+                    return self.fail(&format!(
+                        "{} in a character class",
+                        self.at(0).map_or_else(String::new, |c| c.to_string())
+                    ));
                 }
                 if self.at(0) == Some('-') && self.at(1) != Some(']') {
                     self.i += 1;
@@ -377,7 +488,9 @@ impl Scan {
                 '\\' => self.escape(false)?,
                 '.' => return self.fail(". outside a character class"),
                 '^' | '$' => return self.fail(&format!("{c} outside a character class")),
-                '*' | '+' | '?' | '{' | '}' | ']' => return self.fail(&format!("{c} without an atom")),
+                '*' | '+' | '?' | '{' | '}' | ']' => {
+                    return self.fail(&format!("{c} without an atom"))
+                }
                 _ => self.i += 1,
             }
             self.quantifier()?;
@@ -437,7 +550,9 @@ impl Compiled {
 /// time. Needs the feature `validate`.
 #[cfg(feature = "validate")]
 pub fn compile(domain: &Value) -> Result<Compiled, String> {
-    jsonschema::validator_for(domain).map(Compiled).map_err(|error| format!("the domain {domain} does not compile: {error}"))
+    jsonschema::validator_for(domain)
+        .map(Compiled)
+        .map_err(|error| format!("the domain {domain} does not compile: {error}"))
 }
 
 /// The restriction the Rust type of an integer argument carries, which no `valueType` says: an unsigned type refuses
@@ -462,7 +577,9 @@ pub fn merge(a: Option<Value>, b: Option<Value>) -> Result<Option<Value>, String
         (None, other) | (other, None) => return Ok(other),
         (Some(a), Some(b)) => (a, b),
     };
-    let (Some(first), Some(second)) = (a.as_object(), b.as_object()) else { return Err("a domain is an object".to_string()) };
+    let (Some(first), Some(second)) = (a.as_object(), b.as_object()) else {
+        return Err("a domain is an object".to_string());
+    };
     let mut merged = first.clone();
     for (keyword, value) in second {
         match merged.get(keyword.as_str()).cloned() {
@@ -472,12 +589,18 @@ pub fn merge(a: Option<Value>, b: Option<Value>) -> Result<Option<Value>, String
             Some(existing) if existing == *value => {}
             Some(existing) => {
                 let (Some(old), Some(new)) = (existing.as_f64(), value.as_f64()) else {
-                    return Err(format!("the domains give `{keyword}` two values: {existing} and {value}"));
+                    return Err(format!(
+                        "the domains give `{keyword}` two values: {existing} and {value}"
+                    ));
                 };
                 let take_new = match keyword.as_str() {
                     "minimum" | "exclusiveMinimum" | "minLength" => new > old,
                     "maximum" | "exclusiveMaximum" | "maxLength" => new < old,
-                    _ => return Err(format!("the domains give `{keyword}` two values: {existing} and {value}")),
+                    _ => {
+                        return Err(format!(
+                            "the domains give `{keyword}` two values: {existing} and {value}"
+                        ))
+                    }
                 };
                 if take_new {
                     merged.insert(keyword.clone(), value.clone());
@@ -494,7 +617,16 @@ mod tests {
 
     #[test]
     fn a_pattern_of_the_restricted_form_passes_and_each_removed_spelling_is_named() {
-        for good in ["^[a-z][a-z0-9-]*$", "^(core|lead)$", "^\\p{L}{1,10}$", "^[^\\n\\r]+$", "^[a-z]+(-[a-z0-9]+)*$", "^[ \\t]*x$", "^a\\.b$", "^[^\\n\\r\\p{Zl}\\p{Zp}]+$"] {
+        for good in [
+            "^[a-z][a-z0-9-]*$",
+            "^(core|lead)$",
+            "^\\p{L}{1,10}$",
+            "^[^\\n\\r]+$",
+            "^[a-z]+(-[a-z0-9]+)*$",
+            "^[ \\t]*x$",
+            "^a\\.b$",
+            "^[^\\n\\r\\p{Zl}\\p{Zp}]+$",
+        ] {
             assert_eq!(pattern_problem(good), None, "{good}");
         }
         let bad = [
@@ -516,7 +648,8 @@ mod tests {
             ("^a^b$", "^ outside a character class"),
         ];
         for (pattern, expected) in bad {
-            let problem = pattern_problem(pattern).unwrap_or_else(|| panic!("{pattern} should be refused"));
+            let problem =
+                pattern_problem(pattern).unwrap_or_else(|| panic!("{pattern} should be refused"));
             assert!(problem.contains(expected), "{pattern}: {problem}");
         }
     }
@@ -529,11 +662,23 @@ mod tests {
 
     #[test]
     fn the_profile_is_by_value_type_and_bounds_are_safe_integers() {
-        assert!(profile_problems(ValueType::Integer, &json!({ "minimum": 1, "maximum": 4_294_967_295_u64 })).is_empty());
+        assert!(profile_problems(
+            ValueType::Integer,
+            &json!({ "minimum": 1, "maximum": 4_294_967_295_u64 })
+        )
+        .is_empty());
         assert!(!profile_problems(ValueType::Integer, &json!({ "minLength": 1 })).is_empty());
-        assert!(!profile_problems(ValueType::Integer, &json!({ "minimum": 9_007_199_254_740_992_i64 })).is_empty());
+        assert!(!profile_problems(
+            ValueType::Integer,
+            &json!({ "minimum": 9_007_199_254_740_992_i64 })
+        )
+        .is_empty());
         assert!(profile_problems(ValueType::Number, &json!({ "maximum": 1e20 })).is_empty());
-        assert!(profile_problems(ValueType::String, &json!({ "minLength": 1, "pattern": "^[a-z]+$", "format": "uri" })).is_empty());
+        assert!(profile_problems(
+            ValueType::String,
+            &json!({ "minLength": 1, "pattern": "^[a-z]+$", "format": "uri" })
+        )
+        .is_empty());
         assert!(!profile_problems(ValueType::String, &json!({ "anyOf": [] })).is_empty());
         assert!(!profile_problems(ValueType::Switch, &json!({ "minimum": 1 })).is_empty());
         assert!(!profile_problems(ValueType::Enum, &json!({ "minimum": 1 })).is_empty());
@@ -555,19 +700,57 @@ mod tests {
 
     #[test]
     fn a_rust_integer_type_carries_its_own_bounds_and_the_safe_range_bounds_the_wide_ones() {
-        assert_eq!(implicit(32, false), Some(Domain::Integer { minimum: Some(0), maximum: Some(4_294_967_295) }));
-        assert_eq!(implicit(16, false), Some(Domain::Integer { minimum: Some(0), maximum: Some(65_535) }));
-        assert_eq!(implicit(64, false), Some(Domain::Integer { minimum: Some(0), maximum: None }));
+        assert_eq!(
+            implicit(32, false),
+            Some(Domain::Integer {
+                minimum: Some(0),
+                maximum: Some(4_294_967_295)
+            })
+        );
+        assert_eq!(
+            implicit(16, false),
+            Some(Domain::Integer {
+                minimum: Some(0),
+                maximum: Some(65_535)
+            })
+        );
+        assert_eq!(
+            implicit(64, false),
+            Some(Domain::Integer {
+                minimum: Some(0),
+                maximum: None
+            })
+        );
         assert_eq!(implicit(64, true), None);
-        assert_eq!(implicit(32, true), Some(Domain::Integer { minimum: Some(-2_147_483_648), maximum: Some(2_147_483_647) }));
+        assert_eq!(
+            implicit(32, true),
+            Some(Domain::Integer {
+                minimum: Some(-2_147_483_648),
+                maximum: Some(2_147_483_647)
+            })
+        );
     }
 
     #[test]
     fn merging_keeps_the_tighter_bound_and_refuses_two_patterns() {
-        let merged = merge(Some(json!({ "minimum": 0, "maximum": 4_294_967_295_u64 })), Some(json!({ "minimum": 1 }))).expect("merges");
-        assert_eq!(merged, Some(json!({ "minimum": 1, "maximum": 4_294_967_295_u64 })));
-        merge(Some(json!({ "pattern": "^a$" })), Some(json!({ "pattern": "^b$" }))).unwrap_err();
-        assert_eq!(merge(None, Some(json!({ "minLength": 1 }))), Ok(Some(json!({ "minLength": 1 }))));
+        let merged = merge(
+            Some(json!({ "minimum": 0, "maximum": 4_294_967_295_u64 })),
+            Some(json!({ "minimum": 1 })),
+        )
+        .expect("merges");
+        assert_eq!(
+            merged,
+            Some(json!({ "minimum": 1, "maximum": 4_294_967_295_u64 }))
+        );
+        merge(
+            Some(json!({ "pattern": "^a$" })),
+            Some(json!({ "pattern": "^b$" })),
+        )
+        .unwrap_err();
+        assert_eq!(
+            merge(None, Some(json!({ "minLength": 1 }))),
+            Ok(Some(json!({ "minLength": 1 })))
+        );
         assert_eq!(merge(None, None), Ok(None));
     }
 }

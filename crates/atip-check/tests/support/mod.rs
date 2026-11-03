@@ -325,7 +325,10 @@ pub fn cases() -> Vec<Case> {
             tweak: Some(unknown_command_exit_1),
         },
         case("no-null/no-null", json!({"hintNull": true})),
-        case("envelope/valid-envelope", json!({"metaUnknownMember": true})),
+        case(
+            "envelope/valid-envelope",
+            json!({"metaUnknownMember": true}),
+        ),
         case("compact/no-indentation", json!({"pretty": true})),
         case(
             "one-document/one-document-one-newline",
@@ -466,7 +469,10 @@ pub fn cases() -> Vec<Case> {
             "registry/emitted-warnings-registered",
             json!({"unregisteredWarning": true}),
         ),
-        case("usage-hint/hint-names-the-schema", json!({"usageNoHint": true})),
+        case(
+            "usage-hint/hint-names-the-schema",
+            json!({"usageNoHint": true}),
+        ),
         case(
             "hint-form/hint-is-one-command-line",
             json!({"proseHintStartsWithTool": true}),
@@ -525,7 +531,12 @@ pub fn reason_of_messages(messages: &[String]) -> String {
         }
         kept
     };
-    let mut reason = messages.iter().take(3).map(cut).collect::<Vec<_>>().join("; ");
+    let mut reason = messages
+        .iter()
+        .take(3)
+        .map(cut)
+        .collect::<Vec<_>>()
+        .join("; ");
     if messages.len() > 3 {
         reason.push_str(&format!("; and {} more", messages.len() - 3));
     }
@@ -547,19 +558,34 @@ pub fn kind_verdict(data: &Value, owner: &str, kind: &str) -> Result<(), String>
             }
             continue;
         }
-        let findings = findings.and_then(Value::as_array).ok_or(format!("{id} is {result} without findings"))?;
+        let findings = findings
+            .and_then(Value::as_array)
+            .ok_or(format!("{id} is {result} without findings"))?;
         if findings.is_empty() {
             return Err(format!("{id} has an empty findings"));
         }
         for finding in findings {
-            let object = finding.as_object().ok_or(format!("{id}: a finding is not an object"))?;
-            if let Some(member) = object.keys().find(|key| !matches!(key.as_str(), "kind" | "message" | "argv" | "code")) {
+            let object = finding
+                .as_object()
+                .ok_or(format!("{id}: a finding is not an object"))?;
+            if let Some(member) = object
+                .keys()
+                .find(|key| !matches!(key.as_str(), "kind" | "message" | "argv" | "code"))
+            {
                 return Err(format!("{id}: a finding has the member {member}"));
             }
-            if finding["kind"].as_str().is_none_or(str::is_empty) || finding["message"].as_str().is_none_or(str::is_empty) {
-                return Err(format!("{id}: a finding without kind or message: {finding}"));
+            if finding["kind"].as_str().is_none_or(str::is_empty)
+                || finding["message"].as_str().is_none_or(str::is_empty)
+            {
+                return Err(format!(
+                    "{id}: a finding without kind or message: {finding}"
+                ));
             }
-            if object.contains_key("argv") && !finding["argv"].as_array().is_some_and(|argv| !argv.is_empty() && argv.iter().all(Value::is_string)) {
+            if object.contains_key("argv")
+                && !finding["argv"]
+                    .as_array()
+                    .is_some_and(|argv| !argv.is_empty() && argv.iter().all(Value::is_string))
+            {
                 return Err(format!("{id}: argv is not a list of words: {finding}"));
             }
             if object.contains_key("code") && finding["kind"] != "refused-precondition" {
@@ -567,10 +593,15 @@ pub fn kind_verdict(data: &Value, owner: &str, kind: &str) -> Result<(), String>
             }
         }
         if result == "fail" {
-            let messages: Vec<String> = findings.iter().map(|finding| finding["message"].as_str().unwrap_or_default().to_string()).collect();
+            let messages: Vec<String> = findings
+                .iter()
+                .map(|finding| finding["message"].as_str().unwrap_or_default().to_string())
+                .collect();
             let reason = check["reason"].as_str().unwrap_or_default();
             if reason != reason_of_messages(&messages) {
-                return Err(format!("{id}: reason {reason:?} is not the first three messages of {messages:?}"));
+                return Err(format!(
+                    "{id}: reason {reason:?} is not the first three messages of {messages:?}"
+                ));
             }
         }
     }
@@ -580,7 +611,10 @@ pub fn kind_verdict(data: &Value, owner: &str, kind: &str) -> Result<(), String>
         .and_then(|check| check["findings"].as_array())
         .ok_or(format!("{owner} has no findings"))?;
     if !found.iter().any(|finding| finding["kind"] == kind) {
-        let kinds: Vec<&str> = found.iter().filter_map(|finding| finding["kind"].as_str()).collect();
+        let kinds: Vec<&str> = found
+            .iter()
+            .filter_map(|finding| finding["kind"].as_str())
+            .collect();
         return Err(format!("{owner} has no finding of kind {kind}: {kinds:?}"));
     }
     Ok(())

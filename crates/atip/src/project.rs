@@ -31,9 +31,18 @@ use crate::minor::Minor;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Problem {
     /// An argument has a parser of the tool's own and the table has no entry for its value name.
-    UnknownParser { command: String, argument: String, value_name: String },
+    UnknownParser {
+        command: String,
+        argument: String,
+        value_name: String,
+    },
     /// A default value does not parse as the argument's type, or is not one of its possible values.
-    BadDefault { command: String, argument: String, default: String, reason: &'static str },
+    BadDefault {
+        command: String,
+        argument: String,
+        default: String,
+        reason: &'static str,
+    },
     /// An option or operand has no help text, or a command no summary.
     MissingText { command: String, what: String },
     /// An option has no long name.
@@ -74,7 +83,10 @@ pub struct Node<'a> {
 
 /// The subcommands of `cmd` a caller can run: everything but clap's own `help`, sorted by name.
 pub fn subcommands(cmd: &Command) -> Vec<&Command> {
-    let mut subs: Vec<&Command> = cmd.get_subcommands().filter(|sub| sub.get_name() != "help").collect();
+    let mut subs: Vec<&Command> = cmd
+        .get_subcommands()
+        .filter(|sub| sub.get_name() != "help")
+        .collect();
     subs.sort_by(|a, b| a.get_name().cmp(b.get_name()));
     subs
 }
@@ -86,8 +98,17 @@ pub fn nodes(root: &Command) -> Vec<Node<'_>> {
         for sub in subcommands(cmd) {
             prefix.push(sub.get_name().to_string());
             let command = prefix.join(" ");
-            let children: Vec<String> = subcommands(sub).iter().map(|child| format!("{command} {}", child.get_name())).collect();
-            out.push(Node { path: prefix.clone(), command, cmd: sub, is_group: !children.is_empty(), children });
+            let children: Vec<String> = subcommands(sub)
+                .iter()
+                .map(|child| format!("{command} {}", child.get_name()))
+                .collect();
+            out.push(Node {
+                path: prefix.clone(),
+                command,
+                cmd: sub,
+                is_group: !children.is_empty(),
+                children,
+            });
             walk(sub, prefix, out);
             prefix.pop();
         }
@@ -101,7 +122,10 @@ pub fn nodes(root: &Command) -> Vec<Node<'_>> {
 pub fn summary(node: &Node<'_>) -> Result<String, Problem> {
     match node.cmd.get_about().map(ToString::to_string) {
         Some(text) if !text.trim().is_empty() => Ok(text),
-        _ => Err(Problem::MissingText { command: node.command.clone(), what: "the command's summary (its about)".to_string() }),
+        _ => Err(Problem::MissingText {
+            command: node.command.clone(),
+            what: "the command's summary (its about)".to_string(),
+        }),
     }
 }
 
@@ -121,11 +145,25 @@ pub struct Unknown {
 impl Unknown {
     /// One sentence naming the first unknown word.
     pub fn message(&self) -> String {
-        let at = |word: &str| if self.resolved.is_empty() { word.to_string() } else { format!("{} {word}", self.resolved.join(" ")) };
+        let at = |word: &str| {
+            if self.resolved.is_empty() {
+                word.to_string()
+            } else {
+                format!("{} {word}", self.resolved.join(" "))
+            }
+        };
         if self.expected.is_empty() {
-            format!("`{}` is a command and takes no sub-path `{}`", self.resolved.join(" "), self.word)
+            format!(
+                "`{}` is a command and takes no sub-path `{}`",
+                self.resolved.join(" "),
+                self.word
+            )
         } else {
-            format!("unknown command `{}`; valid here: {}", at(&self.word), self.expected.join(", "))
+            format!(
+                "unknown command `{}`; valid here: {}",
+                at(&self.word),
+                self.expected.join(", ")
+            )
         }
     }
 }
@@ -144,7 +182,11 @@ fn distance(a: &str, b: &str) -> usize {
     for (i, ca) in a.chars().enumerate() {
         let mut cur = vec![i + 1];
         for (j, cb) in b.iter().enumerate() {
-            cur.push((prev[j] + usize::from(ca != *cb)).min(prev[j + 1] + 1).min(cur[j] + 1));
+            cur.push(
+                (prev[j] + usize::from(ca != *cb))
+                    .min(prev[j + 1] + 1)
+                    .min(cur[j] + 1),
+            );
         }
         prev = cur;
     }
@@ -163,12 +205,26 @@ pub fn resolve(root: &Command, words: &[String]) -> Result<Resolved, Unknown> {
                 cmd = next;
             }
             None => {
-                let expected: Vec<String> = subs.iter().map(|sub| sub.get_name().to_string()).collect();
+                let expected: Vec<String> =
+                    subs.iter().map(|sub| sub.get_name().to_string()).collect();
                 let limit = (word.chars().count() / 3).max(2);
-                let mut near: Vec<(usize, &String)> = expected.iter().map(|name| (distance(word, name), name)).filter(|(d, _)| *d <= limit).collect();
+                let mut near: Vec<(usize, &String)> = expected
+                    .iter()
+                    .map(|name| (distance(word, name), name))
+                    .filter(|(d, _)| *d <= limit)
+                    .collect();
                 near.sort();
-                let suggestions = near.into_iter().take(3).map(|(_, name)| name.clone()).collect();
-                return Err(Unknown { resolved, word: word.clone(), expected, suggestions });
+                let suggestions = near
+                    .into_iter()
+                    .take(3)
+                    .map(|(_, name)| name.clone())
+                    .collect();
+                return Err(Unknown {
+                    resolved,
+                    word: word.clone(),
+                    expected,
+                    suggestions,
+                });
             }
         }
     }
@@ -182,17 +238,25 @@ pub fn resolve(root: &Command, words: &[String]) -> Result<Resolved, Unknown> {
 /// The first line of every `--help` of the tool: it points at the self-description (spec 4.7). A tool's
 /// root `about` and every group and command keep their own text below it.
 pub fn point_help_at_schema(cmd: Command, line: &'static str) -> Command {
-    cmd.before_help(line).mut_subcommands(|sub| point_help_at_schema(sub, line))
+    cmd.before_help(line)
+        .mut_subcommands(|sub| point_help_at_schema(sub, line))
 }
 
 // -------------------------------------------------------------- value types
 
 fn possible_values(arg: &Arg) -> Vec<String> {
-    arg.get_possible_values().iter().filter(|value| !value.is_hide_set()).map(|value| value.get_name().to_string()).collect()
+    arg.get_possible_values()
+        .iter()
+        .filter(|value| !value.is_hide_set())
+        .map(|value| value.get_name().to_string())
+        .collect()
 }
 
 fn is_builtin(arg: &Arg) -> bool {
-    matches!(arg.get_action(), ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version)
+    matches!(
+        arg.get_action(),
+        ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
+    )
 }
 
 /// Clap's own `--help` and `--version`, which every command accepts and no document lists (spec 10.5).
@@ -201,22 +265,41 @@ pub fn is_builtin_arg(arg: &Arg) -> bool {
 }
 
 fn display_name(arg: &Arg) -> String {
-    arg.get_long().map_or_else(|| arg.get_id().to_string(), |long| format!("--{long}"))
+    arg.get_long()
+        .map_or_else(|| arg.get_id().to_string(), |long| format!("--{long}"))
 }
 
 /// The placeholder help shows for `arg`.
 pub fn value_name(arg: &Arg) -> String {
-    arg.get_value_names().and_then(|names| names.first()).map_or_else(|| arg.get_id().as_str().to_uppercase(), ToString::to_string)
+    arg.get_value_names()
+        .and_then(|names| names.first())
+        .map_or_else(|| arg.get_id().as_str().to_uppercase(), ToString::to_string)
 }
 
 /// Whether `arg` takes several values: appended once per occurrence, or several in one.
 pub fn is_repeatable(arg: &Arg) -> bool {
-    matches!(arg.get_action(), ArgAction::Append | ArgAction::Count) || arg.get_num_args().is_some_and(|range| range.max_values() > 1)
+    matches!(arg.get_action(), ArgAction::Append | ArgAction::Count)
+        || arg
+            .get_num_args()
+            .is_some_and(|range| range.max_values() > 1)
 }
 
 fn is_integer_type(id: &clap::builder::ValueParser) -> bool {
     let id = id.type_id();
-    [TypeId::of::<i8>(), TypeId::of::<i16>(), TypeId::of::<i32>(), TypeId::of::<i64>(), TypeId::of::<isize>(), TypeId::of::<u8>(), TypeId::of::<u16>(), TypeId::of::<u32>(), TypeId::of::<u64>(), TypeId::of::<usize>()].iter().any(|integer| id == *integer)
+    [
+        TypeId::of::<i8>(),
+        TypeId::of::<i16>(),
+        TypeId::of::<i32>(),
+        TypeId::of::<i64>(),
+        TypeId::of::<isize>(),
+        TypeId::of::<u8>(),
+        TypeId::of::<u16>(),
+        TypeId::of::<u32>(),
+        TypeId::of::<u64>(),
+        TypeId::of::<usize>(),
+    ]
+    .iter()
+    .any(|integer| id == *integer)
 }
 
 /// The width and signedness of the integer type `arg` parses into, when it is one.
@@ -234,7 +317,10 @@ fn integer_width(arg: &Arg) -> Option<(u32, bool)> {
         (TypeId::of::<u64>(), 64, false),
         (TypeId::of::<usize>(), 64, false),
     ];
-    widths.iter().find(|(known, _, _)| id == *known).map(|(_, bits, signed)| (*bits, *signed))
+    widths
+        .iter()
+        .find(|(known, _, _)| id == *known)
+        .map(|(_, bits, signed)| (*bits, *signed))
 }
 
 /// Whether `arg` parses into one of Rust's integer types.
@@ -266,7 +352,11 @@ fn implicit_domain(arg: &Arg, value_type: ValueType) -> Option<Value> {
 /// The `valueType` of `arg`, read from its action and its value parser (approaches/rust.md 4.1): a switch and a
 /// count by action, an enum by its possible values, an integer or a number by the parser's output type, a path
 /// and a string by the built-in parsers. A parser of the tool's own is looked up in `custom` by the argument's value name.
-pub fn value_type(command: &str, arg: &Arg, custom: CustomParsers<'_>) -> Result<ValueType, Problem> {
+pub fn value_type(
+    command: &str,
+    arg: &Arg,
+    custom: CustomParsers<'_>,
+) -> Result<ValueType, Problem> {
     match arg.get_action() {
         ArgAction::SetTrue | ArgAction::SetFalse => return Ok(ValueType::Switch),
         ArgAction::Count => return Ok(ValueType::Count),
@@ -289,14 +379,33 @@ pub fn value_type(command: &str, arg: &Arg, custom: CustomParsers<'_>) -> Result
         _ => {}
     }
     let name = value_name(arg);
-    custom.iter().find(|(known, _)| *known == name).map(|(_, value_type)| *value_type).ok_or_else(|| Problem::UnknownParser { command: command.to_string(), argument: display_name(arg), value_name: name })
+    custom
+        .iter()
+        .find(|(known, _)| *known == name)
+        .map(|(_, value_type)| *value_type)
+        .ok_or_else(|| Problem::UnknownParser {
+            command: command.to_string(),
+            argument: display_name(arg),
+            value_name: name,
+        })
 }
 
 /// Largest integer a JSON parser, JavaScript and a Rust `i64` all read the same (spec 10.7.5).
 const SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
-fn parse_default(command: &str, arg: &Arg, value_type: ValueType, text: &str, members: &[String]) -> Result<Value, Problem> {
-    let bad = |reason: &'static str| Problem::BadDefault { command: command.to_string(), argument: display_name(arg), default: text.to_string(), reason };
+fn parse_default(
+    command: &str,
+    arg: &Arg,
+    value_type: ValueType,
+    text: &str,
+    members: &[String],
+) -> Result<Value, Problem> {
+    let bad = |reason: &'static str| Problem::BadDefault {
+        command: command.to_string(),
+        argument: display_name(arg),
+        default: text.to_string(),
+        reason,
+    };
     match value_type {
         ValueType::Integer => {
             let number: i64 = text.parse().map_err(|_unparsed| bad("is not an integer"))?;
@@ -307,7 +416,9 @@ fn parse_default(command: &str, arg: &Arg, value_type: ValueType, text: &str, me
         }
         ValueType::Number => {
             let number: f64 = text.parse().map_err(|_unparsed| bad("is not a number"))?;
-            serde_json::Number::from_f64(number).map(Value::Number).ok_or_else(|| bad("is not finite"))
+            serde_json::Number::from_f64(number)
+                .map(Value::Number)
+                .ok_or_else(|| bad("is not finite"))
         }
         ValueType::Enum => {
             if members.iter().any(|member| member == text) {
@@ -325,32 +436,60 @@ fn parse_default(command: &str, arg: &Arg, value_type: ValueType, text: &str, me
 /// The typed `default` of `arg` (spec 10.7.3): `false` for a switch, `0` for a count, `null` for a required argument or
 /// one with no default, else the clap default parsed with the argument's type (`"100"` is `100`); a repeatable
 /// argument's default is an array of its element type.
-pub fn typed_default(command: &str, arg: &Arg, value_type: ValueType, required: bool, repeatable: bool) -> Result<Value, Problem> {
+pub fn typed_default(
+    command: &str,
+    arg: &Arg,
+    value_type: ValueType,
+    required: bool,
+    repeatable: bool,
+) -> Result<Value, Problem> {
     match value_type {
         ValueType::Switch => return Ok(json!(false)),
         ValueType::Count => return Ok(json!(0)),
         _ => {}
     }
-    let raw: Vec<String> = arg.get_default_values().iter().map(|value| value.to_string_lossy().into_owned()).collect();
+    let raw: Vec<String> = arg
+        .get_default_values()
+        .iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
     if required || raw.is_empty() {
         return Ok(Value::Null);
     }
     let members = possible_values(arg);
-    let parsed = raw.iter().map(|text| parse_default(command, arg, value_type, text, &members)).collect::<Result<Vec<Value>, Problem>>()?;
-    Ok(if repeatable { Value::Array(parsed) } else { parsed.into_iter().next().unwrap_or(Value::Null) })
+    let parsed = raw
+        .iter()
+        .map(|text| parse_default(command, arg, value_type, text, &members))
+        .collect::<Result<Vec<Value>, Problem>>()?;
+    Ok(if repeatable {
+        Value::Array(parsed)
+    } else {
+        parsed.into_iter().next().unwrap_or(Value::Null)
+    })
 }
 
 fn help_of(command: &str, arg: &Arg) -> Result<String, Problem> {
     match arg.get_help().map(ToString::to_string) {
         Some(text) if !text.trim().is_empty() => Ok(text),
-        _ => Err(Problem::MissingText { command: command.to_string(), what: format!("the help of `{}`", display_name(arg)) }),
+        _ => Err(Problem::MissingText {
+            command: command.to_string(),
+            what: format!("the help of `{}`", display_name(arg)),
+        }),
     }
 }
 
 /// The document of the option `arg` of `command`. `flag_only` lists the long names a document cannot carry.
-pub fn option_doc(command: &str, arg: &Arg, custom: CustomParsers<'_>, flag_only: &[&str]) -> Result<OptionDoc, Problem> {
+pub fn option_doc(
+    command: &str,
+    arg: &Arg,
+    custom: CustomParsers<'_>,
+    flag_only: &[&str],
+) -> Result<OptionDoc, Problem> {
     let Some(long) = arg.get_long() else {
-        return Err(Problem::NoLongName { command: command.to_string(), argument: arg.get_id().to_string() });
+        return Err(Problem::NoLongName {
+            command: command.to_string(),
+            argument: arg.get_id().to_string(),
+        });
     };
     let value_type = value_type(command, arg, custom)?;
     let required = arg.is_required_set();
@@ -367,7 +506,9 @@ pub fn option_doc(command: &str, arg: &Arg, custom: CustomParsers<'_>, flag_only
         repeatable,
         default: typed_default(command, arg, value_type, required, repeatable)?,
         default_note: None,
-        env: arg.get_env().map(|name| name.to_string_lossy().into_owned()),
+        env: arg
+            .get_env()
+            .map(|name| name.to_string_lossy().into_owned()),
         flag_only: flag_only.contains(&long),
         domain: implicit_domain(arg, value_type),
         help: help_of(command, arg)?,
@@ -379,7 +520,16 @@ pub fn option_doc(command: &str, arg: &Arg, custom: CustomParsers<'_>, flag_only
 /// (canon's `repo` and `as`) to this set before it passes it to [`option_doc`]; the crate does not know their names.
 pub const fn flag_only_options(minor: Minor) -> &'static [&'static str] {
     if minor.at_least(Minor::V1_2) {
-        &["json", "input", "commit", "plan-digest", "limit", "cursor", "all", "fields"]
+        &[
+            "json",
+            "input",
+            "commit",
+            "plan-digest",
+            "limit",
+            "cursor",
+            "all",
+            "fields",
+        ]
     } else {
         &["json", "input", "commit", "plan-digest"]
     }
@@ -407,7 +557,11 @@ pub fn operand_name(arg: &Arg) -> String {
 }
 
 /// The document of the operand `arg` of `command`.
-pub fn operand_doc(command: &str, arg: &Arg, custom: CustomParsers<'_>) -> Result<OperandDoc, Problem> {
+pub fn operand_doc(
+    command: &str,
+    arg: &Arg,
+    custom: CustomParsers<'_>,
+) -> Result<OperandDoc, Problem> {
     let value_type = value_type(command, arg, custom)?;
     let required = arg.is_required_set();
     let variadic = is_repeatable(arg);
@@ -465,14 +619,21 @@ fn encoded(value_type: ValueType, members: Option<&[String]>) -> Value {
 
 fn property(option: &OptionDoc) -> Value {
     let item = encoded(option.value_type, option.possible_values.as_deref());
-    let mut schema = if option.repeatable && option.value_type != ValueType::Count { json!({ "type": "array", "items": item }) } else { item };
+    let mut schema = if option.repeatable && option.value_type != ValueType::Count {
+        json!({ "type": "array", "items": item })
+    } else {
+        item
+    };
     schema["description"] = json!(option.help);
     schema
 }
 
 fn operands_property(operands: &[OperandDoc]) -> Value {
     let mut schema = json!({ "type": "array", "minItems": 1 });
-    let items: Vec<Value> = operands.iter().map(|operand| encoded(operand.value_type, operand.possible_values.as_deref())).collect();
+    let items: Vec<Value> = operands
+        .iter()
+        .map(|operand| encoded(operand.value_type, operand.possible_values.as_deref()))
+        .collect();
     if let [item] = items.as_slice() {
         schema["items"] = item.clone();
     } else {
@@ -481,7 +642,11 @@ fn operands_property(operands: &[OperandDoc]) -> Value {
     if operands.iter().all(|operand| !operand.variadic) {
         schema["maxItems"] = json!(operands.len());
     }
-    schema["description"] = json!(operands.iter().map(|operand| operand.help.as_str()).collect::<Vec<_>>().join("; "));
+    schema["description"] = json!(operands
+        .iter()
+        .map(|operand| operand.help.as_str())
+        .collect::<Vec<_>>()
+        .join("; "));
     schema
 }
 
@@ -505,13 +670,23 @@ pub fn fragment_schema(title: &str, operands: &[OperandDoc], options: &[OptionDo
 /// The schema of the argument object a command validates after merging (spec 10.10 `argumentsRef`): the fragment's
 /// properties, the keys that are required, and one `oneOf` per set of keys of which exactly one is given
 /// (`one_of` holds document keys: `operands` or a camelCase option name). Informative: it is not stricter than the command.
-pub fn arguments_schema(title: &str, operands: &[OperandDoc], options: &[OptionDoc], one_of: &[Vec<String>]) -> Value {
+pub fn arguments_schema(
+    title: &str,
+    operands: &[OperandDoc],
+    options: &[OptionDoc],
+    one_of: &[Vec<String>],
+) -> Value {
     let mut schema = fragment_schema(title, operands, options);
     let mut required: Vec<String> = Vec::new();
     if operands.first().is_some_and(|operand| operand.required) {
         required.push("operands".to_string());
     }
-    required.extend(options.iter().filter(|option| option.required && !option.flag_only).map(|option| camel_case(&option.name)));
+    required.extend(
+        options
+            .iter()
+            .filter(|option| option.required && !option.flag_only)
+            .map(|option| camel_case(&option.name)),
+    );
     if !required.is_empty() {
         schema["required"] = json!(required);
     }
@@ -553,8 +728,13 @@ fn rewrite_refs(value: &mut Value, names: &BTreeMap<String, String>) {
 /// member keeps its own `$id` or `$schema`, which would make `#/schemas/..` resolve against that URN. A definition
 /// that another schema of the document already holds under the same name and content is shared; one with other content
 /// is kept under the schema's name in front of its own (`BriefApproveManyReportSubject`).
-pub fn add_schema(schemas: &mut BTreeMap<String, Value>, name: &str, mut schema: Value) -> Result<(), String> {
-    let defs: Map<String, Value> = match schema.as_object_mut().and_then(|map| map.remove("$defs")) {
+pub fn add_schema(
+    schemas: &mut BTreeMap<String, Value>,
+    name: &str,
+    mut schema: Value,
+) -> Result<(), String> {
+    let defs: Map<String, Value> = match schema.as_object_mut().and_then(|map| map.remove("$defs"))
+    {
         Some(Value::Object(defs)) => defs,
         _ => Map::new(),
     };
@@ -562,7 +742,8 @@ pub fn add_schema(schemas: &mut BTreeMap<String, Value>, name: &str, mut schema:
         map.remove("$id");
         map.remove("$schema");
     }
-    let mut names: BTreeMap<String, String> = defs.keys().map(|def| (def.clone(), def.clone())).collect();
+    let mut names: BTreeMap<String, String> =
+        defs.keys().map(|def| (def.clone(), def.clone())).collect();
     // A definition is shared only when it is equal to the one already there once its own references are renamed; a
     // rename changes what other definitions refer to, so the decision repeats until nothing changes.
     for _ in 0..=defs.len() {
@@ -575,7 +756,10 @@ pub fn add_schema(schemas: &mut BTreeMap<String, Value>, name: &str, mut schema:
                 map.remove("$schema");
             }
             let current = names[def].clone();
-            let clash = schemas.get(&current).is_some_and(|existing| *existing != renamed) || (current == name);
+            let clash = schemas
+                .get(&current)
+                .is_some_and(|existing| *existing != renamed)
+                || (current == name);
             if clash && current == *def {
                 names.insert(def.clone(), format!("{name}{def}"));
                 changed = true;
@@ -627,7 +811,17 @@ impl Relations {
 
     /// The relations the `constraints` array of a command document states.
     pub fn from_json(rules: &Value) -> Relations {
-        let strings = |value: &Value| -> Vec<String> { value.as_array().map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect()).unwrap_or_default() };
+        let strings = |value: &Value| -> Vec<String> {
+            value
+                .as_array()
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
         let mut found = Relations::default();
         for rule in rules.as_array().map(Vec::as_slice).unwrap_or_default() {
             let names = strings(&rule["names"]);
@@ -641,21 +835,37 @@ impl Relations {
                     }
                     for a in &names {
                         for b in names.iter().filter(|b| *b != a) {
-                            found.conflicts_with.entry(a.clone()).or_default().push(b.clone());
+                            found
+                                .conflicts_with
+                                .entry(a.clone())
+                                .or_default()
+                                .push(b.clone());
                         }
                     }
                 }
                 "requires" if unconditional => found.requires.entry(when).or_default().extend(then),
                 "forbids" if unconditional => {
                     for b in &then {
-                        found.conflicts_with.entry(when.clone()).or_default().push(b.clone());
-                        found.conflicts_with.entry(b.clone()).or_default().push(when.clone());
+                        found
+                            .conflicts_with
+                            .entry(when.clone())
+                            .or_default()
+                            .push(b.clone());
+                        found
+                            .conflicts_with
+                            .entry(b.clone())
+                            .or_default()
+                            .push(when.clone());
                     }
                 }
                 _ => {}
             }
         }
-        for names in found.conflicts_with.values_mut().chain(found.requires.values_mut()) {
+        for names in found
+            .conflicts_with
+            .values_mut()
+            .chain(found.requires.values_mut())
+        {
             names.sort();
             names.dedup();
         }
@@ -680,19 +890,54 @@ mod tests {
     }
 
     fn only_arg(cmd: &Command) -> &Arg {
-        cmd.find_subcommand("run").and_then(|run| run.get_arguments().find(|arg| !is_builtin(arg))).expect("the test command has one argument")
+        cmd.find_subcommand("run")
+            .and_then(|run| run.get_arguments().find(|arg| !is_builtin(arg)))
+            .expect("the test command has one argument")
     }
 
     #[test]
     fn value_types_come_from_the_action_and_the_parser() {
         let cases: Vec<(Arg, ValueType)> = vec![
-            (Arg::new("a").long("a").action(ArgAction::SetTrue).help("h"), ValueType::Switch),
-            (Arg::new("a").long("a").action(ArgAction::Count).help("h"), ValueType::Count),
-            (Arg::new("a").long("a").value_parser(value_parser!(u64).range(1..)).help("h"), ValueType::Integer),
-            (Arg::new("a").long("a").value_parser(value_parser!(i32)).help("h"), ValueType::Integer),
-            (Arg::new("a").long("a").value_parser(value_parser!(f64)).help("h"), ValueType::Number),
-            (Arg::new("a").long("a").value_parser(value_parser!(std::path::PathBuf)).help("h"), ValueType::Path),
-            (Arg::new("a").long("a").value_parser(["x", "y"]).help("h"), ValueType::Enum),
+            (
+                Arg::new("a").long("a").action(ArgAction::SetTrue).help("h"),
+                ValueType::Switch,
+            ),
+            (
+                Arg::new("a").long("a").action(ArgAction::Count).help("h"),
+                ValueType::Count,
+            ),
+            (
+                Arg::new("a")
+                    .long("a")
+                    .value_parser(value_parser!(u64).range(1..))
+                    .help("h"),
+                ValueType::Integer,
+            ),
+            (
+                Arg::new("a")
+                    .long("a")
+                    .value_parser(value_parser!(i32))
+                    .help("h"),
+                ValueType::Integer,
+            ),
+            (
+                Arg::new("a")
+                    .long("a")
+                    .value_parser(value_parser!(f64))
+                    .help("h"),
+                ValueType::Number,
+            ),
+            (
+                Arg::new("a")
+                    .long("a")
+                    .value_parser(value_parser!(std::path::PathBuf))
+                    .help("h"),
+                ValueType::Path,
+            ),
+            (
+                Arg::new("a").long("a").value_parser(["x", "y"]).help("h"),
+                ValueType::Enum,
+            ),
             (Arg::new("a").long("a").help("h"), ValueType::String),
         ];
         for (arg, expected) in cases {
@@ -704,41 +949,128 @@ mod tests {
     /// atip.schemadoc.06: an argument with a parser of the tool's own and no table entry fails the projection.
     #[test]
     fn atip_schemadoc_06_a_custom_parser_without_a_table_entry_fails_and_with_one_passes() {
-        let cmd = command(Arg::new("who").long("who").value_name("WHO_ID").value_parser(parse_id).help("h"));
-        let problem = value_type("run", only_arg(&cmd), &[]).expect_err("an unlisted custom parser is refused");
-        assert_eq!(problem, Problem::UnknownParser { command: "run".into(), argument: "--who".into(), value_name: "WHO_ID".into() });
+        let cmd = command(
+            Arg::new("who")
+                .long("who")
+                .value_name("WHO_ID")
+                .value_parser(parse_id)
+                .help("h"),
+        );
+        let problem = value_type("run", only_arg(&cmd), &[])
+            .expect_err("an unlisted custom parser is refused");
+        assert_eq!(
+            problem,
+            Problem::UnknownParser {
+                command: "run".into(),
+                argument: "--who".into(),
+                value_name: "WHO_ID".into()
+            }
+        );
         assert!(problem.to_string().contains("WHO_ID"), "{problem}");
-        assert_eq!(value_type("run", only_arg(&cmd), &[("WHO_ID", ValueType::String)]), Ok(ValueType::String));
-        assert!(option_doc("run", only_arg(&cmd), &[], &[]).is_err(), "the option document fails the same way");
+        assert_eq!(
+            value_type("run", only_arg(&cmd), &[("WHO_ID", ValueType::String)]),
+            Ok(ValueType::String)
+        );
+        assert!(
+            option_doc("run", only_arg(&cmd), &[], &[]).is_err(),
+            "the option document fails the same way"
+        );
     }
 
     /// atip.schemadoc.06: a default that does not parse as its type fails; one that does is typed.
     #[test]
     fn atip_schemadoc_06_a_default_is_parsed_with_its_type_and_one_that_does_not_parse_fails() {
-        let typed = command(Arg::new("limit").long("limit").value_parser(value_parser!(u64)).default_value("100").help("h"));
-        assert_eq!(option_doc("run", only_arg(&typed), &[], &[]).expect("a typed default").default, json!(100));
-        let broken = Arg::new("limit").long("limit").value_parser(value_parser!(u64)).default_value("many").help("h");
-        assert!(matches!(typed_default("run", &broken, ValueType::Integer, false, false), Err(Problem::BadDefault { .. })));
-        let huge = Arg::new("n").long("n").default_value("9007199254740993").help("h");
-        assert!(matches!(typed_default("run", &huge, ValueType::Integer, false, false), Err(Problem::BadDefault { reason: "is outside ±(2^53-1)", .. })));
-        let outside = Arg::new("e").long("e").value_parser(["a", "b"]).default_value("c").help("h");
-        assert!(matches!(typed_default("run", &outside, ValueType::Enum, false, false), Err(Problem::BadDefault { .. })));
+        let typed = command(
+            Arg::new("limit")
+                .long("limit")
+                .value_parser(value_parser!(u64))
+                .default_value("100")
+                .help("h"),
+        );
+        assert_eq!(
+            option_doc("run", only_arg(&typed), &[], &[])
+                .expect("a typed default")
+                .default,
+            json!(100)
+        );
+        let broken = Arg::new("limit")
+            .long("limit")
+            .value_parser(value_parser!(u64))
+            .default_value("many")
+            .help("h");
+        assert!(matches!(
+            typed_default("run", &broken, ValueType::Integer, false, false),
+            Err(Problem::BadDefault { .. })
+        ));
+        let huge = Arg::new("n")
+            .long("n")
+            .default_value("9007199254740993")
+            .help("h");
+        assert!(matches!(
+            typed_default("run", &huge, ValueType::Integer, false, false),
+            Err(Problem::BadDefault {
+                reason: "is outside ±(2^53-1)",
+                ..
+            })
+        ));
+        let outside = Arg::new("e")
+            .long("e")
+            .value_parser(["a", "b"])
+            .default_value("c")
+            .help("h");
+        assert!(matches!(
+            typed_default("run", &outside, ValueType::Enum, false, false),
+            Err(Problem::BadDefault { .. })
+        ));
     }
 
     #[test]
     fn defaults_are_typed_and_a_required_argument_has_none() {
-        let cmd = command(Arg::new("tags").long("tag").action(ArgAction::Append).default_value("a").help("h"));
-        assert_eq!(option_doc("run", only_arg(&cmd), &[], &[]).expect("repeatable").default, json!(["a"]));
-        let required = command(Arg::new("n").long("n").required(true).value_parser(value_parser!(u32)).default_value("3").help("h"));
-        assert_eq!(option_doc("run", only_arg(&required), &[], &[]).expect("required").default, Value::Null);
+        let cmd = command(
+            Arg::new("tags")
+                .long("tag")
+                .action(ArgAction::Append)
+                .default_value("a")
+                .help("h"),
+        );
+        assert_eq!(
+            option_doc("run", only_arg(&cmd), &[], &[])
+                .expect("repeatable")
+                .default,
+            json!(["a"])
+        );
+        let required = command(
+            Arg::new("n")
+                .long("n")
+                .required(true)
+                .value_parser(value_parser!(u32))
+                .default_value("3")
+                .help("h"),
+        );
+        assert_eq!(
+            option_doc("run", only_arg(&required), &[], &[])
+                .expect("required")
+                .default,
+            Value::Null
+        );
         let flag = command(Arg::new("f").long("f").action(ArgAction::SetTrue).help("h"));
         let doc = option_doc("run", only_arg(&flag), &[], &["f"]).expect("flag");
-        assert_eq!((doc.default, doc.value_name, doc.flag_only), (json!(false), None, true));
+        assert_eq!(
+            (doc.default, doc.value_name, doc.flag_only),
+            (json!(false), None, true)
+        );
     }
 
     #[test]
     fn an_operand_name_is_the_id_without_its_id_suffix() {
-        for (id, name) in [("change_id", "change"), ("change_ids", "change"), ("id", "id"), ("dir", "dir"), ("plugin_id", "plugin"), ("run_id", "run")] {
+        for (id, name) in [
+            ("change_id", "change"),
+            ("change_ids", "change"),
+            ("id", "id"),
+            ("dir", "dir"),
+            ("plugin_id", "plugin"),
+            ("run_id", "run"),
+        ] {
             assert_eq!(operand_name(&Arg::new(id)), name);
         }
     }
@@ -746,38 +1078,81 @@ mod tests {
     #[test]
     fn help_is_required_of_an_option() {
         let cmd = command(Arg::new("quiet").long("quiet").action(ArgAction::SetTrue));
-        assert!(matches!(option_doc("run", only_arg(&cmd), &[], &[]), Err(Problem::MissingText { .. })));
+        assert!(matches!(
+            option_doc("run", only_arg(&cmd), &[], &[]),
+            Err(Problem::MissingText { .. })
+        ));
     }
 
     #[test]
     fn nodes_list_a_group_before_its_commands_in_a_fixed_order() {
         let mut root = Command::new("tool")
             .subcommand(Command::new("zed").about("z"))
-            .subcommand(Command::new("finding").about("f").subcommand(Command::new("list").about("l")).subcommand(Command::new("add").about("a")))
+            .subcommand(
+                Command::new("finding")
+                    .about("f")
+                    .subcommand(Command::new("list").about("l"))
+                    .subcommand(Command::new("add").about("a")),
+            )
             .subcommand(Command::new("alpha").about("a"));
         root.build();
         let listed: Vec<String> = nodes(&root).into_iter().map(|node| node.command).collect();
-        assert_eq!(listed, ["alpha", "finding", "finding add", "finding list", "zed"]);
+        assert_eq!(
+            listed,
+            ["alpha", "finding", "finding add", "finding list", "zed"]
+        );
     }
 
     #[test]
     fn a_path_resolves_to_the_tree_a_group_or_a_command_and_an_unknown_word_names_what_is_valid() {
-        let mut root = Command::new("tool").subcommand(Command::new("finding").about("f").subcommand(Command::new("close").about("c")).subcommand(Command::new("add").about("a")));
+        let mut root = Command::new("tool").subcommand(
+            Command::new("finding")
+                .about("f")
+                .subcommand(Command::new("close").about("c"))
+                .subcommand(Command::new("add").about("a")),
+        );
         root.build();
-        let words = |text: &str| -> Vec<String> { text.split_whitespace().map(str::to_string).collect() };
+        let words =
+            |text: &str| -> Vec<String> { text.split_whitespace().map(str::to_string).collect() };
         assert_eq!(resolve(&root, &[]), Ok(Resolved::Tree));
-        assert_eq!(resolve(&root, &words("finding")), Ok(Resolved::Group(words("finding"))));
-        assert_eq!(resolve(&root, &words("finding close")), Ok(Resolved::Command(words("finding close"))));
-        let unknown = resolve(&root, &words("finding clos")).expect_err("a misspelt word is unknown");
-        assert_eq!((unknown.expected.clone(), unknown.suggestions.clone()), (words("add close"), words("close")));
-        assert!(unknown.message().contains("finding clos"), "{}", unknown.message());
-        let past = resolve(&root, &words("finding close now")).expect_err("a command takes no sub-path");
-        assert!(past.expected.is_empty() && past.message().contains("takes no sub-path"), "{}", past.message());
+        assert_eq!(
+            resolve(&root, &words("finding")),
+            Ok(Resolved::Group(words("finding")))
+        );
+        assert_eq!(
+            resolve(&root, &words("finding close")),
+            Ok(Resolved::Command(words("finding close")))
+        );
+        let unknown =
+            resolve(&root, &words("finding clos")).expect_err("a misspelt word is unknown");
+        assert_eq!(
+            (unknown.expected.clone(), unknown.suggestions.clone()),
+            (words("add close"), words("close"))
+        );
+        assert!(
+            unknown.message().contains("finding clos"),
+            "{}",
+            unknown.message()
+        );
+        let past =
+            resolve(&root, &words("finding close now")).expect_err("a command takes no sub-path");
+        assert!(
+            past.expected.is_empty() && past.message().contains("takes no sub-path"),
+            "{}",
+            past.message()
+        );
     }
 
     #[test]
     fn the_help_pointer_reaches_every_node() {
-        let root = point_help_at_schema(Command::new("tool").about("Root").subcommand(Command::new("g").about("G").subcommand(Command::new("c").about("C"))), "Agents: \"tool schema --json\" describes every command as JSON.");
+        let root = point_help_at_schema(
+            Command::new("tool").about("Root").subcommand(
+                Command::new("g")
+                    .about("G")
+                    .subcommand(Command::new("c").about("C")),
+            ),
+            "Agents: \"tool schema --json\" describes every command as JSON.",
+        );
         for path in [&[][..], &["g"], &["g", "c"]] {
             let mut node = &root;
             for word in path {
@@ -789,32 +1164,84 @@ mod tests {
     }
 
     #[test]
-    fn a_fragment_has_no_required_no_flag_only_key_and_encodes_integers_as_numbers_or_digit_strings() {
+    fn a_fragment_has_no_required_no_flag_only_key_and_encodes_integers_as_numbers_or_digit_strings(
+    ) {
         let mut root = Command::new("tool").subcommand(
             Command::new("run")
                 .about("Runs")
                 .arg(Arg::new("target").help("What").required(true))
-                .arg(Arg::new("round").long("round").required(true).value_parser(value_parser!(u32)).help("Round"))
-                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue).help("JSON"))
-                .arg(Arg::new("mode").long("mode").value_parser(["a", "b"]).help("Mode"))
-                .arg(Arg::new("tag").long("tag").action(ArgAction::Append).help("Tag")),
+                .arg(
+                    Arg::new("round")
+                        .long("round")
+                        .required(true)
+                        .value_parser(value_parser!(u32))
+                        .help("Round"),
+                )
+                .arg(
+                    Arg::new("json")
+                        .long("json")
+                        .action(ArgAction::SetTrue)
+                        .help("JSON"),
+                )
+                .arg(
+                    Arg::new("mode")
+                        .long("mode")
+                        .value_parser(["a", "b"])
+                        .help("Mode"),
+                )
+                .arg(
+                    Arg::new("tag")
+                        .long("tag")
+                        .action(ArgAction::Append)
+                        .help("Tag"),
+                ),
         );
         root.build();
         let run = root.find_subcommand("run").expect("run");
-        let operands: Vec<OperandDoc> = run.get_positionals().map(|arg| operand_doc("run", arg, &[]).expect("operand")).collect();
-        let options: Vec<OptionDoc> = run.get_arguments().filter(|arg| !arg.is_positional() && !is_builtin(arg)).map(|arg| option_doc("run", arg, &[], &["json"]).expect("option")).collect();
+        let operands: Vec<OperandDoc> = run
+            .get_positionals()
+            .map(|arg| operand_doc("run", arg, &[]).expect("operand"))
+            .collect();
+        let options: Vec<OptionDoc> = run
+            .get_arguments()
+            .filter(|arg| !arg.is_positional() && !is_builtin(arg))
+            .map(|arg| option_doc("run", arg, &[], &["json"]).expect("option"))
+            .collect();
         let fragment = fragment_schema("run input", &operands, &options);
         assert!(fragment.get("required").is_none(), "{fragment}");
         assert_eq!(fragment["additionalProperties"], json!(false));
-        assert!(fragment["properties"].get("json").is_none(), "a flag-only option has no property");
-        assert_eq!(fragment["properties"]["round"]["type"], json!(["integer", "string"]));
-        assert_eq!(fragment["properties"]["round"]["pattern"], json!(INTEGER_PATTERN));
+        assert!(
+            fragment["properties"].get("json").is_none(),
+            "a flag-only option has no property"
+        );
+        assert_eq!(
+            fragment["properties"]["round"]["type"],
+            json!(["integer", "string"])
+        );
+        assert_eq!(
+            fragment["properties"]["round"]["pattern"],
+            json!(INTEGER_PATTERN)
+        );
         assert_eq!(fragment["properties"]["mode"]["enum"], json!(["a", "b"]));
         assert_eq!(fragment["properties"]["tag"]["type"], json!("array"));
-        assert_eq!((fragment["properties"]["operands"]["minItems"].clone(), fragment["properties"]["operands"]["maxItems"].clone()), (json!(1), json!(1)));
-        let arguments = arguments_schema("run arguments", &operands, &options, &[vec!["mode".to_string(), "tag".to_string()]]);
+        assert_eq!(
+            (
+                fragment["properties"]["operands"]["minItems"].clone(),
+                fragment["properties"]["operands"]["maxItems"].clone()
+            ),
+            (json!(1), json!(1))
+        );
+        let arguments = arguments_schema(
+            "run arguments",
+            &operands,
+            &options,
+            &[vec!["mode".to_string(), "tag".to_string()]],
+        );
         assert_eq!(arguments["required"], json!(["operands", "round"]));
-        assert_eq!(arguments["allOf"][0]["oneOf"], json!([{ "required": ["mode"] }, { "required": ["tag"] }]));
+        assert_eq!(
+            arguments["allOf"][0]["oneOf"],
+            json!([{ "required": ["mode"] }, { "required": ["tag"] }])
+        );
     }
 
     #[test]
@@ -822,17 +1249,37 @@ mod tests {
         let mut schemas = BTreeMap::new();
         let report = json!({ "$schema": "x", "$id": "urn:x", "type": "object", "properties": { "a": { "$ref": "#/$defs/Item" } }, "$defs": { "Item": { "type": "string" } } });
         add_schema(&mut schemas, "ARep", report).expect("added");
-        assert_eq!(schemas["ARep"]["properties"]["a"]["$ref"], json!("#/schemas/Item"));
-        assert!(schemas["ARep"].get("$id").is_none() && schemas["ARep"].get("$schema").is_none() && schemas["ARep"].get("$defs").is_none());
+        assert_eq!(
+            schemas["ARep"]["properties"]["a"]["$ref"],
+            json!("#/schemas/Item")
+        );
+        assert!(
+            schemas["ARep"].get("$id").is_none()
+                && schemas["ARep"].get("$schema").is_none()
+                && schemas["ARep"].get("$defs").is_none()
+        );
         assert_eq!(schemas["Item"], json!({ "type": "string" }));
         // The same definition is shared; another one under the same name keeps the schema's name in front of its own.
         add_schema(&mut schemas, "BRep", json!({ "properties": { "b": { "$ref": "#/$defs/Item" } }, "$defs": { "Item": { "type": "string" } } })).expect("shared");
-        assert_eq!(schemas["BRep"]["properties"]["b"]["$ref"], json!("#/schemas/Item"));
+        assert_eq!(
+            schemas["BRep"]["properties"]["b"]["$ref"],
+            json!("#/schemas/Item")
+        );
         add_schema(&mut schemas, "CRep", json!({ "properties": { "c": { "$ref": "#/$defs/Item" } }, "$defs": { "Item": { "type": "integer" } } })).expect("kept apart");
-        assert_eq!(schemas["CRep"]["properties"]["c"]["$ref"], json!("#/schemas/CRepItem"));
+        assert_eq!(
+            schemas["CRep"]["properties"]["c"]["$ref"],
+            json!("#/schemas/CRepItem")
+        );
         assert_eq!(schemas["CRepItem"], json!({ "type": "integer" }));
-        assert_eq!(schemas["Item"], json!({ "type": "string" }), "the first definition is untouched");
-        assert!(add_schema(&mut schemas, "ARep", json!({})).is_err(), "a schema is added once");
+        assert_eq!(
+            schemas["Item"],
+            json!({ "type": "string" }),
+            "the first definition is untouched"
+        );
+        assert!(
+            add_schema(&mut schemas, "ARep", json!({})).is_err(),
+            "a schema is added once"
+        );
     }
 
     #[test]
@@ -840,11 +1287,27 @@ mod tests {
         let mut root = Command::new("tool").subcommand(
             Command::new("run")
                 .about("Runs")
-                .arg(Arg::new("a").long("a").action(ArgAction::SetTrue).help("a").conflicts_with("b"))
+                .arg(
+                    Arg::new("a")
+                        .long("a")
+                        .action(ArgAction::SetTrue)
+                        .help("a")
+                        .conflicts_with("b"),
+                )
                 .arg(Arg::new("b").long("b").action(ArgAction::SetTrue).help("b"))
                 .arg(Arg::new("flow").long("flow").help("flow"))
-                .arg(Arg::new("change").long("change").help("change").requires("flow"))
-                .group(clap::ArgGroup::new("one").args(["flow", "change"]).required(true).multiple(false)),
+                .arg(
+                    Arg::new("change")
+                        .long("change")
+                        .help("change")
+                        .requires("flow"),
+                )
+                .group(
+                    clap::ArgGroup::new("one")
+                        .args(["flow", "change"])
+                        .required(true)
+                        .multiple(false),
+                ),
         );
         root.build();
         let mut rules = crate::constraint::clap_rules(root.find_subcommand("run").expect("run"));
@@ -853,29 +1316,91 @@ mod tests {
         assert_eq!(found.conflicts_with["a"], ["b"]);
         assert_eq!(found.conflicts_with["b"], ["a"]);
         assert_eq!(found.requires["change"], ["flow"]);
-        assert_eq!(found.required_one_of, [vec!["flow".to_string(), "change".to_string()]]);
+        assert_eq!(
+            found.required_one_of,
+            [vec!["flow".to_string(), "change".to_string()]]
+        );
     }
 
     #[test]
-    fn atip_crate12_06_the_flag_only_set_is_four_options_at_1_1_and_eight_at_1_2_and_option_doc_marks_limit() {
-        assert_eq!(flag_only_options(Minor::V1_0), ["json", "input", "commit", "plan-digest"]);
-        assert_eq!(flag_only_options(Minor::V1_1), ["json", "input", "commit", "plan-digest"]);
-        assert_eq!(flag_only_options(Minor::V1_2), ["json", "input", "commit", "plan-digest", "limit", "cursor", "all", "fields"]);
-        assert_eq!((flag_only_options(Minor::V1_1).len(), flag_only_options(Minor::V1_2).len()), (4, 8));
+    fn atip_crate12_06_the_flag_only_set_is_four_options_at_1_1_and_eight_at_1_2_and_option_doc_marks_limit(
+    ) {
+        assert_eq!(
+            flag_only_options(Minor::V1_0),
+            ["json", "input", "commit", "plan-digest"]
+        );
+        assert_eq!(
+            flag_only_options(Minor::V1_1),
+            ["json", "input", "commit", "plan-digest"]
+        );
+        assert_eq!(
+            flag_only_options(Minor::V1_2),
+            [
+                "json",
+                "input",
+                "commit",
+                "plan-digest",
+                "limit",
+                "cursor",
+                "all",
+                "fields"
+            ]
+        );
+        assert_eq!(
+            (
+                flag_only_options(Minor::V1_1).len(),
+                flag_only_options(Minor::V1_2).len()
+            ),
+            (4, 8)
+        );
         // A tool adds its own flag-only options (canon's `repo` and `as`) to the crate's set; the crate knows none of them.
-        let with_own: Vec<&str> = flag_only_options(Minor::V1_2).iter().copied().chain(["repo", "as"]).collect();
-        let limit = command(Arg::new("limit").long("limit").value_parser(value_parser!(u32)).help("h"));
-        assert!(option_doc("run", only_arg(&limit), &[], &with_own).expect("limit").flag_only, "at 1.2 `limit` is flagOnly: true");
+        let with_own: Vec<&str> = flag_only_options(Minor::V1_2)
+            .iter()
+            .copied()
+            .chain(["repo", "as"])
+            .collect();
+        let limit = command(
+            Arg::new("limit")
+                .long("limit")
+                .value_parser(value_parser!(u32))
+                .help("h"),
+        );
+        assert!(
+            option_doc("run", only_arg(&limit), &[], &with_own)
+                .expect("limit")
+                .flag_only,
+            "at 1.2 `limit` is flagOnly: true"
+        );
         let repo = command(Arg::new("repo").long("repo").help("h"));
-        assert!(option_doc("run", only_arg(&repo), &[], &with_own).expect("repo").flag_only, "the tool's own option is marked too");
+        assert!(
+            option_doc("run", only_arg(&repo), &[], &with_own)
+                .expect("repo")
+                .flag_only,
+            "the tool's own option is marked too"
+        );
         let at_11: Vec<&str> = flag_only_options(Minor::V1_1).to_vec();
-        assert!(!option_doc("run", only_arg(&limit), &[], &at_11).expect("limit").flag_only, "at 1.1 `limit` is an ordinary option");
+        assert!(
+            !option_doc("run", only_arg(&limit), &[], &at_11)
+                .expect("limit")
+                .flag_only,
+            "at 1.1 `limit` is an ordinary option"
+        );
     }
 
     #[test]
     fn atip_crate12_07_an_option_of_the_set_that_a_document_does_not_mark_flag_only_is_a_problem() {
-        let limit = command(Arg::new("limit").long("limit").value_parser(value_parser!(u32)).help("h"));
-        let json_flag = command(Arg::new("json").long("json").action(ArgAction::SetTrue).help("h"));
+        let limit = command(
+            Arg::new("limit")
+                .long("limit")
+                .value_parser(value_parser!(u32))
+                .help("h"),
+        );
+        let json_flag = command(
+            Arg::new("json")
+                .long("json")
+                .action(ArgAction::SetTrue)
+                .help("h"),
+        );
         let name = command(Arg::new("name").long("name").help("h"));
         let unmarked = [
             option_doc("run", only_arg(&limit), &[], &[]).expect("limit"),
@@ -884,10 +1409,23 @@ mod tests {
         ];
         let at_12 = flag_only_problems(&unmarked, Minor::V1_2);
         assert_eq!(at_12.len(), 1, "{at_12:?}");
-        assert!(at_12[0].contains("`--limit`") && at_12[0].contains("flagOnly: true"), "{at_12:?}");
-        assert_eq!(flag_only_problems(&unmarked, Minor::V1_1), Vec::<String>::new(), "at 1.1 `limit` is an ordinary option");
+        assert!(
+            at_12[0].contains("`--limit`") && at_12[0].contains("flagOnly: true"),
+            "{at_12:?}"
+        );
+        assert_eq!(
+            flag_only_problems(&unmarked, Minor::V1_1),
+            Vec::<String>::new(),
+            "at 1.1 `limit` is an ordinary option"
+        );
         // Marked with the 1.2 set, no option is a problem.
-        let marked = [option_doc("run", only_arg(&limit), &[], flag_only_options(Minor::V1_2)).expect("limit")];
-        assert_eq!(flag_only_problems(&marked, Minor::V1_2), Vec::<String>::new());
+        let marked = [
+            option_doc("run", only_arg(&limit), &[], flag_only_options(Minor::V1_2))
+                .expect("limit"),
+        ];
+        assert_eq!(
+            flag_only_problems(&marked, Minor::V1_2),
+            Vec::<String>::new()
+        );
     }
 }

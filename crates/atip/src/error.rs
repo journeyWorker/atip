@@ -79,12 +79,18 @@ pub struct WarningInfo {
 
 /// The row of `code` in `table`, which MUST be sorted by code.
 pub fn find_code(table: &'static [CodeInfo], code: &str) -> Option<&'static CodeInfo> {
-    table.binary_search_by(|info| info.code.cmp(code)).ok().map(|index| &table[index])
+    table
+        .binary_search_by(|info| info.code.cmp(code))
+        .ok()
+        .map(|index| &table[index])
 }
 
 /// The row of `code` in the warning `table`, which MUST be sorted by code.
 pub fn find_warning(table: &'static [WarningInfo], code: &str) -> Option<&'static WarningInfo> {
-    table.binary_search_by(|info| info.code.cmp(code)).ok().map(|index| &table[index])
+    table
+        .binary_search_by(|info| info.code.cmp(code))
+        .ok()
+        .map(|index| &table[index])
 }
 
 impl CodeInfo {
@@ -98,7 +104,11 @@ impl ReasonInfo {
     /// The reason that stands for the code of `row` (spec 8.3.2): the name is the code, the meaning and the fix are the row's.
     /// A `const fn`, so a static table can build a reason from another row of the same crate's tables.
     pub const fn from_code(row: &CodeInfo) -> ReasonInfo {
-        ReasonInfo { reason: row.code, meaning: row.meaning, fix: row.fix }
+        ReasonInfo {
+            reason: row.code,
+            meaning: row.meaning,
+            fix: row.fix,
+        }
     }
 }
 
@@ -162,8 +172,15 @@ pub const fn count_with_exit(rows: &[CodeInfo], exit: u8) -> usize {
 /// assert_eq!(REASONS.map(|reason| reason.reason), ["LEASE_HELD", "PLAN_STALE"]);
 /// ```
 pub const fn reasons_with_exit<const N: usize>(rows: &[CodeInfo], exit: u8) -> [ReasonInfo; N] {
-    assert!(count_with_exit(rows, exit) == N, "the length of the reasons is not the number of rows with that exit");
-    let mut out = [ReasonInfo { reason: "", meaning: "", fix: "" }; N];
+    assert!(
+        count_with_exit(rows, exit) == N,
+        "the length of the reasons is not the number of rows with that exit"
+    );
+    let mut out = [ReasonInfo {
+        reason: "",
+        meaning: "",
+        fix: "",
+    }; N];
     let mut filled = 0;
     let mut at = 0;
     while at < rows.len() {
@@ -203,14 +220,20 @@ pub const fn reason_of_code(rows: &[CodeInfo], code: &str) -> ReasonInfo {
 /// `rows` with `row` put in its place by code, so a table sorted by code stays sorted ([`find_code`]). `N` is
 /// `rows.len() + 1`; a row whose code `rows` already holds, or any other length, stops the evaluation.
 pub const fn with_row<const N: usize>(rows: &[CodeInfo], row: CodeInfo) -> [CodeInfo; N] {
-    assert!(N == rows.len() + 1, "the length of the table is not the number of rows plus one");
+    assert!(
+        N == rows.len() + 1,
+        "the length of the table is not the number of rows plus one"
+    );
     let mut out = [row; N];
     let mut place = 0;
     while place < rows.len() && str_lt(rows[place].code, row.code) {
         out[place] = rows[place];
         place += 1;
     }
-    assert!(place == rows.len() || !str_eq(rows[place].code, row.code), "the table already has a row of that code");
+    assert!(
+        place == rows.len() || !str_eq(rows[place].code, row.code),
+        "the table already has a row of that code"
+    );
     out[place] = row;
     while place < rows.len() {
         out[place + 1] = rows[place];
@@ -321,9 +344,20 @@ pub struct ErrorDetailBody {
 impl CliError {
     /// An error for `code` with the exit and retryability of its table `row`.
     /// A code with no row is a refusal that cannot be retried.
-    pub fn from_row(code: &'static str, message: impl Into<String>, row: Option<&CodeInfo>) -> Self {
-        let (exit, retryable) = row.map_or((EXIT_REFUSED, false), |info| (info.exit, info.retryable));
-        Self { code, message: message.into(), retryable, exit, detail: None }
+    pub fn from_row(
+        code: &'static str,
+        message: impl Into<String>,
+        row: Option<&CodeInfo>,
+    ) -> Self {
+        let (exit, retryable) =
+            row.map_or((EXIT_REFUSED, false), |info| (info.exit, info.retryable));
+        Self {
+            code,
+            message: message.into(),
+            retryable,
+            exit,
+            detail: None,
+        }
     }
 
     fn detail_mut(&mut self) -> &mut CliErrorDetail {
@@ -357,7 +391,9 @@ impl CliError {
 
     /// The nearest-word suggestions set on the error, closest first.
     pub fn suggested(&self) -> &[String] {
-        self.detail.as_deref().map_or(&[], |detail| detail.suggestions.as_slice())
+        self.detail
+            .as_deref()
+            .map_or(&[], |detail| detail.suggestions.as_slice())
     }
 
     /// Which of the situations registered under the error's code this is (spec 7.6). The reason
@@ -403,7 +439,10 @@ impl CliError {
 
     /// The tool extension members the error carries, by name.
     pub fn extensions(&self) -> Option<&BTreeMap<String, Value>> {
-        self.detail.as_deref().map(|detail| &detail.extensions).filter(|extensions| !extensions.is_empty())
+        self.detail
+            .as_deref()
+            .map(|detail| &detail.extensions)
+            .filter(|extensions| !extensions.is_empty())
     }
 
     /// Replaces the nearest-word suggestions.
@@ -425,7 +464,9 @@ impl CliError {
 
     /// The errors listed with [`CliError::details`].
     pub fn detail_errors(&self) -> &[CliError] {
-        self.detail.as_deref().map_or(&[], |detail| detail.details.as_slice())
+        self.detail
+            .as_deref()
+            .map_or(&[], |detail| detail.details.as_slice())
     }
 
     /// The stderr text: `<tool>: <CODE>: <message>`, then one indented line for
@@ -437,7 +478,10 @@ impl CliError {
         if let Some(field) = field {
             text.push_str(&format!("\n  field: {field}"));
         }
-        if let Some(expected) = self.expected_values().filter(|expected| !expected.is_empty()) {
+        if let Some(expected) = self
+            .expected_values()
+            .filter(|expected| !expected.is_empty())
+        {
             text.push_str(&format!("\n  expected: {}", expected.join(", ")));
         }
         if !suggestions.is_empty() {
@@ -447,7 +491,11 @@ impl CliError {
             text.push_str(&format!("\n  hint: {hint}"));
         }
         for item in self.detail_errors() {
-            text.push_str(&format!("\n  problem: {}: {}", item.field_name().unwrap_or_default(), item.message));
+            text.push_str(&format!(
+                "\n  problem: {}: {}",
+                item.field_name().unwrap_or_default(),
+                item.message
+            ));
         }
         text
     }
@@ -463,12 +511,25 @@ impl CliError {
             message: self.message.clone(),
             retryable: self.retryable,
             field: field.filter(|field| !field.is_empty()),
-            expected: self.expected_values().filter(|expected| !expected.is_empty()).map(<[String]>::to_vec),
-            received: self.received_value().map(|received| redact(self.field_name(), received)),
+            expected: self
+                .expected_values()
+                .filter(|expected| !expected.is_empty())
+                .map(<[String]>::to_vec),
+            received: self
+                .received_value()
+                .map(|received| redact(self.field_name(), received)),
             suggestions,
-            hint: self.hint_text().filter(|hint| !hint.is_empty()).map(str::to_string),
+            hint: self
+                .hint_text()
+                .filter(|hint| !hint.is_empty())
+                .map(str::to_string),
             extensions: self.extensions().cloned().unwrap_or_default(),
-            details: (self.detail_errors().len() > 1).then(|| self.detail_errors().iter().map(CliError::detail_body).collect()),
+            details: (self.detail_errors().len() > 1).then(|| {
+                self.detail_errors()
+                    .iter()
+                    .map(CliError::detail_body)
+                    .collect()
+            }),
         }
     }
 
@@ -478,11 +539,22 @@ impl CliError {
             code: self.code.to_string(),
             reason: self.reason_name().map(str::to_string),
             message: self.message.clone(),
-            field: self.field_name().filter(|field| !field.is_empty()).map(str::to_string),
-            expected: self.expected_values().filter(|expected| !expected.is_empty()).map(<[String]>::to_vec),
-            received: self.received_value().map(|received| redact(self.field_name(), received)),
+            field: self
+                .field_name()
+                .filter(|field| !field.is_empty())
+                .map(str::to_string),
+            expected: self
+                .expected_values()
+                .filter(|expected| !expected.is_empty())
+                .map(<[String]>::to_vec),
+            received: self
+                .received_value()
+                .map(|received| redact(self.field_name(), received)),
             suggestions: self.suggested().to_vec(),
-            hint: self.hint_text().filter(|hint| !hint.is_empty()).map(str::to_string),
+            hint: self
+                .hint_text()
+                .filter(|hint| !hint.is_empty())
+                .map(str::to_string),
             extensions: self.extensions().cloned().unwrap_or_default(),
         }
     }
@@ -505,8 +577,27 @@ impl std::error::Error for CliError {}
 /// token-shaped word (a well-known prefix, or 24 or more mixed-case letters and
 /// digits) is replaced. A digest is lowercase hex and passes.
 pub fn redact(field: Option<&str>, received: &str) -> String {
-    const SECRET_NAMES: [&str; 8] = ["token", "secret", "password", "passwd", "key", "signature", "credential", "auth"];
-    const TOKEN_PREFIXES: [&str; 9] = ["sk-", "ghp_", "gho_", "ghs_", "github_pat_", "xoxb-", "xoxp-", "AKIA", "eyJ"];
+    const SECRET_NAMES: [&str; 8] = [
+        "token",
+        "secret",
+        "password",
+        "passwd",
+        "key",
+        "signature",
+        "credential",
+        "auth",
+    ];
+    const TOKEN_PREFIXES: [&str; 9] = [
+        "sk-",
+        "ghp_",
+        "gho_",
+        "ghs_",
+        "github_pat_",
+        "xoxb-",
+        "xoxp-",
+        "AKIA",
+        "eyJ",
+    ];
     const REDACTED: &str = "<redacted>";
     if let Some(field) = field {
         let field = field.to_ascii_lowercase();
@@ -516,16 +607,29 @@ pub fn redact(field: Option<&str>, received: &str) -> String {
         }
     }
     if let Some((name, value)) = received.split_once('=') {
-        let env_name = name.starts_with(|c: char| c.is_ascii_uppercase()) && name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+        let env_name = name.starts_with(|c: char| c.is_ascii_uppercase())
+            && name
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
         if env_name && !value.is_empty() {
             return format!("{name}={REDACTED}");
         }
     }
     let word = received.trim();
-    let bearer = word.get(..7).is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer "));
-    let token_alphabet = word.len() >= 24 && word.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '+' | '=' | '/'));
-    let mixed = word.chars().any(|c| c.is_ascii_digit()) && word.chars().any(|c| c.is_ascii_uppercase()) && word.chars().any(|c| c.is_ascii_lowercase());
-    if bearer || TOKEN_PREFIXES.iter().any(|prefix| word.starts_with(prefix)) || (token_alphabet && mixed) {
+    let bearer = word
+        .get(..7)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer "));
+    let token_alphabet = word.len() >= 24
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '+' | '=' | '/'));
+    let mixed = word.chars().any(|c| c.is_ascii_digit())
+        && word.chars().any(|c| c.is_ascii_uppercase())
+        && word.chars().any(|c| c.is_ascii_lowercase());
+    if bearer
+        || TOKEN_PREFIXES.iter().any(|prefix| word.starts_with(prefix))
+        || (token_alphabet && mixed)
+    {
         return REDACTED.to_string();
     }
     match received.char_indices().nth(200) {
@@ -536,99 +640,249 @@ pub fn redact(field: Option<&str>, received: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{count_with_exit, find_code, reason_of_code, reasons_with_exit, redact, with_row, CliError, CodeInfo, ReasonInfo, EXIT_FAILED, EXIT_REFUSED};
+    use super::{
+        count_with_exit, find_code, reason_of_code, reasons_with_exit, redact, with_row, CliError,
+        CodeInfo, ReasonInfo, EXIT_FAILED, EXIT_REFUSED,
+    };
 
     const TABLE: &[CodeInfo] = &[
-        CodeInfo { code: "GATE_VIOLATIONS", meaning: "m", exit: EXIT_FAILED, retryable: false, fix: "f", reasons: &[] },
-        CodeInfo { code: "LOCKED", meaning: "m", exit: EXIT_REFUSED, retryable: true, fix: "f", reasons: &[] },
-        CodeInfo { code: "USAGE", meaning: "m", exit: EXIT_REFUSED, retryable: false, fix: "f", reasons: &[ReasonInfo { reason: "SHAPE", meaning: "m", fix: "f" }] },
+        CodeInfo {
+            code: "GATE_VIOLATIONS",
+            meaning: "m",
+            exit: EXIT_FAILED,
+            retryable: false,
+            fix: "f",
+            reasons: &[],
+        },
+        CodeInfo {
+            code: "LOCKED",
+            meaning: "m",
+            exit: EXIT_REFUSED,
+            retryable: true,
+            fix: "f",
+            reasons: &[],
+        },
+        CodeInfo {
+            code: "USAGE",
+            meaning: "m",
+            exit: EXIT_REFUSED,
+            retryable: false,
+            fix: "f",
+            reasons: &[ReasonInfo {
+                reason: "SHAPE",
+                meaning: "m",
+                fix: "f",
+            }],
+        },
     ];
 
     #[test]
     fn display_is_code_and_message_only_and_the_human_form_has_its_own_lines() {
-        let error = CliError::from_row("USAGE", "bad flag", find_code(TABLE, "USAGE")).hint("pass --x").expected(["--x", "--y"]);
+        let error = CliError::from_row("USAGE", "bad flag", find_code(TABLE, "USAGE"))
+            .hint("pass --x")
+            .expected(["--x", "--y"]);
         assert_eq!(error.to_string(), "USAGE: bad flag");
         assert_eq!(error.human("canon", Some("--z"), &["--x".to_string()]), "canon: USAGE: bad flag\n  field: --z\n  expected: --x, --y\n  suggestions: --x\n  hint: pass --x");
-        assert_eq!(CliError::from_row("USAGE", "bad", None).human("canon", None, &[]), "canon: USAGE: bad");
+        assert_eq!(
+            CliError::from_row("USAGE", "bad", None).human("canon", None, &[]),
+            "canon: USAGE: bad"
+        );
         let as_error: &dyn std::error::Error = &error;
         assert!(as_error.source().is_none());
     }
 
     #[test]
     fn an_error_takes_its_exit_and_retryability_from_its_row() {
-        assert_eq!(CliError::from_row("GATE_VIOLATIONS", "x", find_code(TABLE, "GATE_VIOLATIONS")).exit, EXIT_FAILED);
-        assert_eq!(CliError::from_row("USAGE", "x", find_code(TABLE, "USAGE")).exit, EXIT_REFUSED);
+        assert_eq!(
+            CliError::from_row("GATE_VIOLATIONS", "x", find_code(TABLE, "GATE_VIOLATIONS")).exit,
+            EXIT_FAILED
+        );
+        assert_eq!(
+            CliError::from_row("USAGE", "x", find_code(TABLE, "USAGE")).exit,
+            EXIT_REFUSED
+        );
         assert!(CliError::from_row("LOCKED", "x", find_code(TABLE, "LOCKED")).retryable);
         let unlisted = CliError::from_row("NOPE", "x", find_code(TABLE, "NOPE"));
-        assert_eq!((unlisted.exit, unlisted.retryable), (EXIT_REFUSED, false), "a code with no row is a refusal that cannot be retried");
+        assert_eq!(
+            (unlisted.exit, unlisted.retryable),
+            (EXIT_REFUSED, false),
+            "a code with no row is a refusal that cannot be retried"
+        );
         assert!(!CliError::from_row("USAGE", "x", None).retryable);
     }
 
     #[test]
     fn the_body_carries_the_builder_members_and_redacts_by_the_raw_field() {
-        let error = CliError::from_row("USAGE", "bad", None).field("--api-token").expected(["a", "b"]).received("hunter2").suggestions(["a"]).hint("try a");
+        let error = CliError::from_row("USAGE", "bad", None)
+            .field("--api-token")
+            .expected(["a", "b"])
+            .received("hunter2")
+            .suggestions(["a"])
+            .hint("try a");
         assert_eq!(error.field_name(), Some("--api-token"));
-        assert_eq!(error.expected_values(), Some(["a".to_string(), "b".to_string()].as_slice()));
+        assert_eq!(
+            error.expected_values(),
+            Some(["a".to_string(), "b".to_string()].as_slice())
+        );
         assert_eq!(error.received_value(), Some("hunter2"));
         assert_eq!(error.suggested(), ["a"]);
         let body = error.body_with(Some("/apiToken".to_string()), vec!["b".to_string()]);
-        assert_eq!(serde_json::to_string(&body).expect("a body serializes"), r#"{"code":"USAGE","message":"bad","retryable":false,"field":"/apiToken","expected":["a","b"],"received":"<redacted>","suggestions":["b"],"hint":"try a"}"#);
+        assert_eq!(
+            serde_json::to_string(&body).expect("a body serializes"),
+            r#"{"code":"USAGE","message":"bad","retryable":false,"field":"/apiToken","expected":["a","b"],"received":"<redacted>","suggestions":["b"],"hint":"try a"}"#
+        );
         let bare = CliError::from_row("USAGE", "bad", None).body_with(None, Vec::new());
-        assert_eq!(serde_json::to_string(&bare).expect("a body serializes"), r#"{"code":"USAGE","message":"bad","retryable":false}"#, "a member with no value is absent, never null or empty");
-        assert!(CliError::from_row("USAGE", "bad", None).suggested().is_empty());
+        assert_eq!(
+            serde_json::to_string(&bare).expect("a body serializes"),
+            r#"{"code":"USAGE","message":"bad","retryable":false}"#,
+            "a member with no value is absent, never null or empty"
+        );
+        assert!(CliError::from_row("USAGE", "bad", None)
+            .suggested()
+            .is_empty());
     }
 
     #[test]
     fn a_reason_follows_the_code_and_an_empty_received_is_kept() {
         let row = find_code(TABLE, "USAGE").expect("a row");
-        assert_eq!(row.find_reason("SHAPE").map(|reason| reason.meaning), Some("m"));
+        assert_eq!(
+            row.find_reason("SHAPE").map(|reason| reason.meaning),
+            Some("m")
+        );
         assert!(row.find_reason("OTHER").is_none());
-        let error = CliError::from_row("USAGE", "bad", Some(row)).reason("SHAPE").field("--x").received("");
+        let error = CliError::from_row("USAGE", "bad", Some(row))
+            .reason("SHAPE")
+            .field("--x")
+            .received("");
         assert_eq!(error.reason_name(), Some("SHAPE"));
         let body = error.body_with(None, Vec::new());
-        assert_eq!(serde_json::to_string(&body).expect("a body serializes"), r#"{"code":"USAGE","reason":"SHAPE","message":"bad","retryable":false,"received":""}"#, "`received` keeps an empty value the caller sent; a value never sent is absent");
+        assert_eq!(
+            serde_json::to_string(&body).expect("a body serializes"),
+            r#"{"code":"USAGE","reason":"SHAPE","message":"bad","retryable":false,"received":""}"#,
+            "`received` keeps an empty value the caller sent; a value never sent is absent"
+        );
     }
 
     #[test]
     fn a_received_value_is_redacted_when_it_looks_like_a_secret() {
         assert_eq!(redact(Some("--api-token"), "abc"), "<redacted>");
-        assert_eq!(redact(None, "CANON_SECRET=hunter2"), "CANON_SECRET=<redacted>");
+        assert_eq!(
+            redact(None, "CANON_SECRET=hunter2"),
+            "CANON_SECRET=<redacted>"
+        );
         assert_eq!(redact(None, "ghp_0123456789abcdef"), "<redacted>");
         assert_eq!(redact(None, "Ab3dEf6hIj9kLm2nOp5qRs8tUv1"), "<redacted>");
         assert_eq!(redact(Some("--kind"), "evidence"), "evidence");
         let digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        assert_eq!(redact(Some("--plan-digest"), digest), digest, "a digest is not a secret");
-        assert_eq!(redact(Some("--signature-file"), "approval.sig"), "approval.sig");
+        assert_eq!(
+            redact(Some("--plan-digest"), digest),
+            digest,
+            "a digest is not a secret"
+        );
+        assert_eq!(
+            redact(Some("--signature-file"), "approval.sig"),
+            "approval.sig"
+        );
     }
 
     const ROWS: &[CodeInfo] = &[
-        CodeInfo { code: "A_REFUSED", meaning: "a refusal", exit: EXIT_REFUSED, retryable: false, fix: "fix a", reasons: &[] },
-        CodeInfo { code: "LEASE_HELD", meaning: "another run holds the lease", exit: EXIT_REFUSED, retryable: true, fix: "wait for the lease", reasons: &[] },
-        CodeInfo { code: "WRITE_FAILED", meaning: "a write failed", exit: EXIT_FAILED, retryable: false, fix: "fix write", reasons: &[] },
-        CodeInfo { code: "ZED_REFUSED", meaning: "z refusal", exit: EXIT_REFUSED, retryable: false, fix: "fix z", reasons: &[] },
+        CodeInfo {
+            code: "A_REFUSED",
+            meaning: "a refusal",
+            exit: EXIT_REFUSED,
+            retryable: false,
+            fix: "fix a",
+            reasons: &[],
+        },
+        CodeInfo {
+            code: "LEASE_HELD",
+            meaning: "another run holds the lease",
+            exit: EXIT_REFUSED,
+            retryable: true,
+            fix: "wait for the lease",
+            reasons: &[],
+        },
+        CodeInfo {
+            code: "WRITE_FAILED",
+            meaning: "a write failed",
+            exit: EXIT_FAILED,
+            retryable: false,
+            fix: "fix write",
+            reasons: &[],
+        },
+        CodeInfo {
+            code: "ZED_REFUSED",
+            meaning: "z refusal",
+            exit: EXIT_REFUSED,
+            retryable: false,
+            fix: "fix z",
+            reasons: &[],
+        },
     ];
     /// The same rows in another order.
     const SHUFFLED: &[CodeInfo] = &[ROWS[3], ROWS[2], ROWS[0], ROWS[1]];
-    const REASONS: [ReasonInfo; count_with_exit(ROWS, EXIT_REFUSED)] = reasons_with_exit(ROWS, EXIT_REFUSED);
-    const REASONS_SHUFFLED: [ReasonInfo; count_with_exit(SHUFFLED, EXIT_REFUSED)] = reasons_with_exit(SHUFFLED, EXIT_REFUSED);
-    const STOPPED_MIDWAY: CodeInfo = CodeInfo { code: "STOPPED_MIDWAY", meaning: "m", exit: EXIT_FAILED, retryable: false, fix: "f", reasons: &REASONS };
+    const REASONS: [ReasonInfo; count_with_exit(ROWS, EXIT_REFUSED)] =
+        reasons_with_exit(ROWS, EXIT_REFUSED);
+    const REASONS_SHUFFLED: [ReasonInfo; count_with_exit(SHUFFLED, EXIT_REFUSED)] =
+        reasons_with_exit(SHUFFLED, EXIT_REFUSED);
+    const STOPPED_MIDWAY: CodeInfo = CodeInfo {
+        code: "STOPPED_MIDWAY",
+        meaning: "m",
+        exit: EXIT_FAILED,
+        retryable: false,
+        fix: "f",
+        reasons: &REASONS,
+    };
     static WITH_STOPPED: [CodeInfo; ROWS.len() + 1] = with_row(ROWS, STOPPED_MIDWAY);
-    const ONLY_FAILED: [ReasonInfo; count_with_exit(ROWS, EXIT_FAILED)] = reasons_with_exit(ROWS, EXIT_FAILED);
+    const ONLY_FAILED: [ReasonInfo; count_with_exit(ROWS, EXIT_FAILED)] =
+        reasons_with_exit(ROWS, EXIT_FAILED);
 
     #[test]
-    fn atip_crate12_08_a_row_in_a_static_table_gets_its_reasons_from_the_other_rows_whatever_their_order() {
+    fn atip_crate12_08_a_row_in_a_static_table_gets_its_reasons_from_the_other_rows_whatever_their_order(
+    ) {
         let names: Vec<&str> = REASONS.iter().map(|reason| reason.reason).collect();
-        assert_eq!(names, ["A_REFUSED", "LEASE_HELD", "ZED_REFUSED"], "every exit-2 row, sorted by name, and no exit-1 row");
-        assert_eq!(REASONS[1], ReasonInfo { reason: "LEASE_HELD", meaning: "another run holds the lease", fix: "wait for the lease" }, "the meaning and the fix are the row's");
-        assert_eq!(REASONS, REASONS_SHUFFLED, "the result does not depend on the order of the table");
+        assert_eq!(
+            names,
+            ["A_REFUSED", "LEASE_HELD", "ZED_REFUSED"],
+            "every exit-2 row, sorted by name, and no exit-1 row"
+        );
+        assert_eq!(
+            REASONS[1],
+            ReasonInfo {
+                reason: "LEASE_HELD",
+                meaning: "another run holds the lease",
+                fix: "wait for the lease"
+            },
+            "the meaning and the fix are the row's"
+        );
+        assert_eq!(
+            REASONS, REASONS_SHUFFLED,
+            "the result does not depend on the order of the table"
+        );
         assert_eq!(ONLY_FAILED.map(|reason| reason.reason), ["WRITE_FAILED"]);
         // The row that holds them sits in the table in its place, so the table stays sorted for `find_code`.
         let codes: Vec<&str> = WITH_STOPPED.iter().map(|row| row.code).collect();
-        assert_eq!(codes, ["A_REFUSED", "LEASE_HELD", "STOPPED_MIDWAY", "WRITE_FAILED", "ZED_REFUSED"]);
+        assert_eq!(
+            codes,
+            [
+                "A_REFUSED",
+                "LEASE_HELD",
+                "STOPPED_MIDWAY",
+                "WRITE_FAILED",
+                "ZED_REFUSED"
+            ]
+        );
         let found = find_code(&WITH_STOPPED, "STOPPED_MIDWAY").expect("a row");
-        assert_eq!((found.exit, found.retryable, found.reasons.len()), (EXIT_FAILED, false, 3));
+        assert_eq!(
+            (found.exit, found.retryable, found.reasons.len()),
+            (EXIT_FAILED, false, 3)
+        );
         assert_eq!(found.find_reason("LEASE_HELD"), Some(&REASONS[1]));
-        assert!(find_code(&WITH_STOPPED, "ZED_REFUSED").is_some() && find_code(&WITH_STOPPED, "A_REFUSED").is_some(), "the others keep their rows");
+        assert!(
+            find_code(&WITH_STOPPED, "ZED_REFUSED").is_some()
+                && find_code(&WITH_STOPPED, "A_REFUSED").is_some(),
+            "the others keep their rows"
+        );
         // A reason of one named row, made on its own.
         assert_eq!(reason_of_code(ROWS, "ZED_REFUSED"), REASONS[2]);
         assert_eq!(ReasonInfo::from_code(&ROWS[0]), REASONS[0]);
@@ -644,15 +898,26 @@ mod tests {
         let twice = std::panic::catch_unwind(|| with_row::<5>(ROWS, ROWS[1]));
         assert!(twice.is_err(), "a table does not hold one code twice");
         let wrong_length = std::panic::catch_unwind(|| reasons_with_exit::<2>(ROWS, EXIT_REFUSED));
-        assert!(wrong_length.is_err(), "the length of the reasons is the count of the rows");
+        assert!(
+            wrong_length.is_err(),
+            "the length of the reasons is the count of the rows"
+        );
         let wrong_table_length = std::panic::catch_unwind(|| with_row::<9>(ROWS, STOPPED_MIDWAY));
-        assert!(wrong_table_length.is_err(), "the length of the table is the number of rows plus one");
+        assert!(
+            wrong_table_length.is_err(),
+            "the length of the table is the number of rows plus one"
+        );
     }
 
     #[test]
     fn several_errors_of_one_input_are_details_and_one_error_has_none() {
-        let first = CliError::from_row("USAGE", "a is wrong", None).field("/a").reason("SHAPE");
-        let second = CliError::from_row("USAGE", "b is wrong", None).field("/api-token").received("hunter2").suggestions(["c"]);
+        let first = CliError::from_row("USAGE", "a is wrong", None)
+            .field("/a")
+            .reason("SHAPE");
+        let second = CliError::from_row("USAGE", "b is wrong", None)
+            .field("/api-token")
+            .received("hunter2")
+            .suggestions(["c"]);
         let several = first.clone().details(vec![first.clone(), second.clone()]);
         assert_eq!(several.detail_errors().len(), 2);
         let body = several.body_with(Some("/a".to_string()), Vec::new());

@@ -32,11 +32,18 @@ fn glob(pattern: &[u8], text: &[u8]) -> bool {
             (0..=text.len()).any(|at| glob(rest, &text[at..]))
         }
         Some((b'*', rest)) => {
-            let end = text.iter().position(|byte| *byte == b'/').unwrap_or(text.len());
+            let end = text
+                .iter()
+                .position(|byte| *byte == b'/')
+                .unwrap_or(text.len());
             (0..=end).any(|at| glob(rest, &text[at..]))
         }
-        Some((b'?', rest)) => text.split_first().is_some_and(|(byte, tail)| *byte != b'/' && glob(rest, tail)),
-        Some((byte, rest)) => text.split_first().is_some_and(|(head, tail)| head == byte && glob(rest, tail)),
+        Some((b'?', rest)) => text
+            .split_first()
+            .is_some_and(|(byte, tail)| *byte != b'/' && glob(rest, tail)),
+        Some((byte, rest)) => text
+            .split_first()
+            .is_some_and(|(head, tail)| head == byte && glob(rest, tail)),
     }
 }
 
@@ -46,9 +53,15 @@ mod tests {
 
     #[test]
     fn a_pattern_matches_the_whole_path() {
-        assert!(matches(".canon/audit/access.jsonl", "./.canon/audit/access.jsonl"));
+        assert!(matches(
+            ".canon/audit/access.jsonl",
+            "./.canon/audit/access.jsonl"
+        ));
         assert!(!matches(".canon/audit", "./.canon/audit/access.jsonl"));
-        assert!(matches(".canon/audit/*.jsonl", "./.canon/audit/access.jsonl"));
+        assert!(matches(
+            ".canon/audit/*.jsonl",
+            "./.canon/audit/access.jsonl"
+        ));
         assert!(!matches("*.jsonl", "./.canon/audit/access.jsonl"));
         assert!(matches("**/*.jsonl", "./.canon/audit/access.jsonl"));
         assert!(matches("**/access.jsonl", "./access.jsonl"));

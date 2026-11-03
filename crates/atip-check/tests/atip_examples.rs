@@ -59,7 +59,10 @@ fn table() -> Vec<Row> {
 fn load(file: &str) -> Option<Value> {
     let text = std::fs::read_to_string(root().join(file)).expect("example");
     if file.ends_with(".ndjson") {
-        let lines: Vec<Value> = text.lines().filter_map(|line| serde_json::from_str::<Value>(line).ok()).collect();
+        let lines: Vec<Value> = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .collect();
         // A usage error prints one plain envelope; a stream ends with its `end` line, whose `result` is the envelope.
         if let [only] = lines.as_slice() {
             return only.get("ok").is_some().then(|| only.clone());
@@ -110,7 +113,10 @@ fn claim_of(document: &Value) -> Claim {
         Some("tally") => return Claim::V1_1,
         _ => {}
     }
-    match document.pointer("/meta/contractVersion").and_then(Value::as_str) {
+    match document
+        .pointer("/meta/contractVersion")
+        .and_then(Value::as_str)
+    {
         Some("1.0") | None => Claim::V1_0,
         Some("1.1") => Claim::V1_1,
         Some(_) => Claim::V1_2,
@@ -131,7 +137,10 @@ fn layers(document: &Value) -> Vec<(&'static str, Vec<String>)> {
                 .collect(),
         ),
     ];
-    let tool = document.pointer("/meta/tool").and_then(Value::as_str).unwrap_or_default();
+    let tool = document
+        .pointer("/meta/tool")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if claim.at_least(Claim::V1_1) {
         found.push(("L0.hint-form", hint_problems(document, tool)));
     }
@@ -144,12 +153,24 @@ fn layers(document: &Value) -> Vec<(&'static str, Vec<String>)> {
                 .filter_map(|(_, problem)| problem),
         );
         if let Some(code) = warning_only_code_of(document, rows, warning_codes) {
-            registered.extend(warning_only_findings(document, tool, &code).into_iter().filter_map(|(_, problem)| problem));
+            registered.extend(
+                warning_only_findings(document, tool, &code)
+                    .into_iter()
+                    .filter_map(|(_, problem)| problem),
+            );
         }
     }
     found.push(("L0.registry", registered));
-    let collect = |findings: Vec<(&'static str, Option<String>)>| -> Vec<String> { findings.into_iter().filter_map(|(_, problem)| problem).collect() };
-    found.push(("L0.next", collect(next_findings(document, claim, true, tool))));
+    let collect = |findings: Vec<(&'static str, Option<String>)>| -> Vec<String> {
+        findings
+            .into_iter()
+            .filter_map(|(_, problem)| problem)
+            .collect()
+    };
+    found.push((
+        "L0.next",
+        collect(next_findings(document, claim, true, tool)),
+    ));
     found.push(("L0.page", collect(page_findings(document, claim))));
     if document["ok"] == false {
         if let Some((rows, _)) = &registry {
@@ -176,7 +197,10 @@ fn atip_check_34_every_valid_example_of_the_contract_repository_passes_every_lay
         }
         accepted += 1;
     }
-    assert!(accepted >= 40, "the report, registry and stream examples of {PINNED}: {accepted}");
+    assert!(
+        accepted >= 40,
+        "the report, registry and stream examples of {PINNED}: {accepted}"
+    );
     // The one that the unknown-command rules apply to is among them.
     assert_eq!(
         load("report-failure-unknown-command.json").expect("file")["error"]["code"],
@@ -191,7 +215,8 @@ fn atip_check_35_every_invalid_example_is_rejected_by_its_owner_and_the_l1_and_l
     for row in &table {
         match row.expect.as_str() {
             "reject" => {
-                let document = load(&row.file).unwrap_or_else(|| panic!("{} has an envelope", row.file));
+                let document =
+                    load(&row.file).unwrap_or_else(|| panic!("{} has an envelope", row.file));
                 let found = layers(&document);
                 let by = found
                     .iter()
@@ -209,7 +234,12 @@ fn atip_check_35_every_invalid_example_is_rejected_by_its_owner_and_the_l1_and_l
                     .filter(|(layer, problems)| *layer != row.by && !problems.is_empty())
                     .map(|(layer, _)| *layer)
                     .collect();
-                assert!(others.is_empty(), "{} is rejected by {} and also by {others:?}", row.file, row.by);
+                assert!(
+                    others.is_empty(),
+                    "{} is rejected by {} and also by {others:?}",
+                    row.file,
+                    row.by
+                );
             }
             "skip" => {
                 assert!(
@@ -235,7 +265,10 @@ fn atip_check_35_every_invalid_example_is_rejected_by_its_owner_and_the_l1_and_l
         }
     }
     let rejected = table.iter().filter(|row| row.expect == "reject").count();
-    assert!(rejected >= 20, "the L0 matters among the invalid examples: {rejected}");
+    assert!(
+        rejected >= 20,
+        "the L0 matters among the invalid examples: {rejected}"
+    );
     // Every file under the copies has a row, and every row a file.
     let mut on_disk: Vec<String> = Vec::new();
     for dir in ["", "invalid"] {
@@ -261,7 +294,8 @@ fn atip_check_35_every_invalid_example_is_rejected_by_its_owner_and_the_l1_and_l
 }
 
 #[test]
-fn atip_check_35_a_failure_envelope_that_breaks_the_registry_is_rejected_by_the_rule_that_names_it() {
+fn atip_check_35_a_failure_envelope_that_breaks_the_registry_is_rejected_by_the_rule_that_names_it()
+{
     let rows = vec![RegistryRow {
         code: "FINDING_NOT_FOUND".into(),
         exit: 2,
@@ -285,7 +319,9 @@ fn atip_check_35_a_failure_envelope_that_breaks_the_registry_is_rejected_by_the_
         "a code the registry does not list is L0.registry's, not L0.ok-exit's"
     );
     let findings = registry_findings(&failure(json!({"code": "NOPE"})), &rows, &[], Claim::V1_0);
-    assert!(findings.iter().any(|(id, problem)| *id == "emitted-codes-registered" && problem.is_some()));
+    assert!(findings
+        .iter()
+        .any(|(id, problem)| *id == "emitted-codes-registered" && problem.is_some()));
     assert!(failure_problems(&failure(json!({})), &rows, Some(1))[0]
         .contains("exited 1, the registry says 2"));
     let mut with_data = failure(json!({}));
@@ -298,7 +334,8 @@ fn atip_check_35_a_failure_envelope_that_breaks_the_registry_is_rejected_by_the_
 }
 
 #[test]
-fn atip_check_38_a_null_the_contract_forbids_is_rejected_by_the_schema_and_a_format_keyword_is_an_annotation() {
+fn atip_check_38_a_null_the_contract_forbids_is_rejected_by_the_schema_and_a_format_keyword_is_an_annotation(
+) {
     // A null where the contract forbids one is rejected by the schema; `L0.no-null` names it, and `L0.envelope` leaves it.
     let null_hint = json!({"ok": false, "error": {"code": "USAGE", "message": "m", "retryable": false, "hint": null}, "meta": {"schemaVersion": "1.0", "tool": "t", "toolVersion": "1"}});
     assert!(!schemas().envelope_problems(&null_hint).is_empty());
@@ -323,15 +360,30 @@ fn draft_the_table() {
     for dir in ["", "invalid"] {
         for entry in std::fs::read_dir(root().join(dir)).expect("dir") {
             let path = entry.expect("entry").path();
-            if path.is_file() && path.extension().is_some_and(|e| e == "json" || e == "ndjson") {
-                files.push(path.strip_prefix(root()).expect("prefix").to_string_lossy().into_owned());
+            if path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|e| e == "json" || e == "ndjson")
+            {
+                files.push(
+                    path.strip_prefix(root())
+                        .expect("prefix")
+                        .to_string_lossy()
+                        .into_owned(),
+                );
             }
         }
     }
     files.sort();
     for file in files {
         let by: Vec<&str> = load(&file)
-            .map(|document| layers(&document).into_iter().filter(|(_, problems)| !problems.is_empty()).map(|(layer, _)| layer).collect())
+            .map(|document| {
+                layers(&document)
+                    .into_iter()
+                    .filter(|(_, problems)| !problems.is_empty())
+                    .map(|(layer, _)| layer)
+                    .collect()
+            })
             .unwrap_or_default();
         println!("DRAFT {file} {}", by.join(","));
     }

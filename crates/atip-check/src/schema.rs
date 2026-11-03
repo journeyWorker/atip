@@ -83,10 +83,7 @@ impl Schemas {
             atip::schema::WARNING_ENTRY_SCHEMA,
         )?;
         let schema_doc = parse("schema-doc.schema.json", atip::schema::SCHEMA_DOC_SCHEMA)?;
-        let stream_line = parse(
-            "stream-line.schema.json",
-            atip::schema::STREAM_LINE_SCHEMA,
-        )?;
+        let stream_line = parse("stream-line.schema.json", atip::schema::STREAM_LINE_SCHEMA)?;
         let registry = [
             (ERROR_ID, error),
             (ENVELOPE_ID, envelope.clone()),
@@ -94,19 +91,33 @@ impl Schemas {
             (WARNING_ENTRY_ID, warning_entry.clone()),
             (
                 "https://atip.dev/1/input-document.schema.json",
-                parse("input-document.schema.json", atip::schema::INPUT_DOCUMENT_SCHEMA)?,
+                parse(
+                    "input-document.schema.json",
+                    atip::schema::INPUT_DOCUMENT_SCHEMA,
+                )?,
             ),
             (
                 "https://atip.dev/1/batch-report.schema.json",
-                parse("batch-report.schema.json", atip::schema::BATCH_REPORT_SCHEMA)?,
+                parse(
+                    "batch-report.schema.json",
+                    atip::schema::BATCH_REPORT_SCHEMA,
+                )?,
             ),
-            ("https://atip.dev/1/stream-line.schema.json", stream_line.clone()),
+            (
+                "https://atip.dev/1/stream-line.schema.json",
+                stream_line.clone(),
+            ),
             (SCHEMA_DOC_ID, schema_doc.clone()),
             // L2's guide schema: a command document's `schemas` may `$ref` it (the contract's `skills show` example does).
-            ("https://atip.dev/1/guide.schema.json", parse("guide.schema.json", atip::schema::GUIDE_SCHEMA)?),
+            (
+                "https://atip.dev/1/guide.schema.json",
+                parse("guide.schema.json", atip::schema::GUIDE_SCHEMA)?,
+            ),
         ]
         .into_iter()
-        .try_fold(Registry::new(), |builder, (id, schema)| builder.add(id, schema))
+        .try_fold(Registry::new(), |builder, (id, schema)| {
+            builder.add(id, schema)
+        })
         .and_then(jsonschema::RegistryBuilder::prepare)
         .map_err(|error| error.to_string())?;
         let build = |schema: &Value| {

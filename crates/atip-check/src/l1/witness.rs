@@ -17,8 +17,8 @@ use std::collections::BTreeSet;
 use serde_json::Value;
 
 use super::invocation::{
-    args, arg_given, normalise, parse, remove_operand, remove_option, render, requirement_problems, set_operand, set_option,
-    value_problem, violated_constraints, Args, Invocation, Item,
+    arg_given, args, normalise, parse, remove_operand, remove_option, render, requirement_problems,
+    set_operand, set_option, value_problem, violated_constraints, Args, Invocation, Item,
 };
 use super::model::{Arg, CommandDoc, Constraint};
 
@@ -49,12 +49,26 @@ pub fn generate(arg: &Arg, avoid: &[Value]) -> Option<String> {
     let mut candidates: Vec<String> = Vec::new();
     match arg.value_type.as_str() {
         "enum" => candidates.extend(arg.possible_values.iter().cloned()),
-        "integer" | "count" => candidates.extend(["1", "0", "2", "5", "10", "100", "3", "7", "-1"].map(String::from)),
+        "integer" | "count" => {
+            candidates.extend(["1", "0", "2", "5", "10", "100", "3", "7", "-1"].map(String::from))
+        }
         "number" => candidates.extend(["1.5", "1", "0.5", "2", "10", "100", "0"].map(String::from)),
-        "json" => candidates.extend(["{}", "[]", "\"x\"", "1", "true", "{\"a\":1}"].map(String::from)),
-        _ => candidates.extend(["x", "a", "0", "a-b", "a_b", "abc", "A", "item", "example", "x1", "a.b"].map(String::from)),
+        "json" => {
+            candidates.extend(["{}", "[]", "\"x\"", "1", "true", "{\"a\":1}"].map(String::from))
+        }
+        _ => candidates.extend(
+            [
+                "x", "a", "0", "a-b", "a_b", "abc", "A", "item", "example", "x1", "a.b",
+            ]
+            .map(String::from),
+        ),
     }
-    if let Some(min) = arg.domain.as_ref().and_then(|domain| domain.get("minLength")).and_then(Value::as_u64) {
+    if let Some(min) = arg
+        .domain
+        .as_ref()
+        .and_then(|domain| domain.get("minLength"))
+        .and_then(Value::as_u64)
+    {
         if min > 0 && min <= MAX_PROBE_CHARS {
             for letter in ["x", "a", "0"] {
                 candidates.push(letter.repeat(usize::try_from(min).unwrap_or(1)));
@@ -68,7 +82,10 @@ pub fn generate(arg: &Arg, avoid: &[Value]) -> Option<String> {
             }
         }
     }
-    let avoid: Vec<Value> = avoid.iter().map(|value| normalise(&arg.value_type, value)).collect();
+    let avoid: Vec<Value> = avoid
+        .iter()
+        .map(|value| normalise(&arg.value_type, value))
+        .collect();
     candidates.into_iter().find(|word| {
         let value = typed(arg, word);
         value_problem(arg, &value).is_none() && !avoid.contains(&normalise(&arg.value_type, &value))
@@ -164,7 +181,13 @@ fn named(doc: &CommandDoc) -> Vec<String> {
             names.push(name.to_string());
         }
     };
-    for Constraint { names: listed, if_name, then, .. } in &doc.constraints {
+    for Constraint {
+        names: listed,
+        if_name,
+        then,
+        ..
+    } in &doc.constraints
+    {
         for name in listed.iter().chain(if_name).chain(then.iter()) {
             push(name);
         }
@@ -174,7 +197,13 @@ fn named(doc: &CommandDoc) -> Vec<String> {
 
 /// `base` with the arguments of `names` set as `states` say; `None` when the configuration cannot be an invocation
 /// (an operand given after one left out).
-fn apply(doc: &CommandDoc, base: &Args, pools: &[Pool], states: &[State], fills: &dyn Fn(&Arg, usize) -> Option<Value>) -> Option<Args> {
+fn apply(
+    doc: &CommandDoc,
+    base: &Args,
+    pools: &[Pool],
+    states: &[State],
+    fills: &dyn Fn(&Arg, usize) -> Option<Value>,
+) -> Option<Args> {
     let mut result = base.clone();
     let mut operand_gap = false;
     for (pool, state) in pools.iter().zip(states) {
@@ -183,18 +212,36 @@ fn apply(doc: &CommandDoc, base: &Args, pools: &[Pool], states: &[State], fills:
             result.options.remove(&pool.name);
             if let State::Given(choice) = state {
                 let value = if pool.flag {
-                    if arg.value_type == "count" { Value::from(1) } else { Value::Bool(true) }
+                    if arg.value_type == "count" {
+                        Value::from(1)
+                    } else {
+                        Value::Bool(true)
+                    }
                 } else {
                     fills(arg, *choice)?
                 };
-                result.options.insert(pool.name.clone(), if arg.repeatable && !pool.flag { Value::Array(vec![value]) } else { value });
+                result.options.insert(
+                    pool.name.clone(),
+                    if arg.repeatable && !pool.flag {
+                        Value::Array(vec![value])
+                    } else {
+                        value
+                    },
+                );
             }
         }
     }
-    let mut operands = pools.iter().zip(states).filter_map(|(pool, state)| {
-        let index = doc.operands.iter().position(|operand| operand.name == pool.name)?;
-        Some((index, pool, state))
-    }).collect::<Vec<_>>();
+    let mut operands = pools
+        .iter()
+        .zip(states)
+        .filter_map(|(pool, state)| {
+            let index = doc
+                .operands
+                .iter()
+                .position(|operand| operand.name == pool.name)?;
+            Some((index, pool, state))
+        })
+        .collect::<Vec<_>>();
     operands.sort_by_key(|(index, _, _)| *index);
     for (index, pool, state) in operands {
         let arg = doc.operands.get(index)?;
@@ -209,7 +256,9 @@ fn apply(doc: &CommandDoc, base: &Args, pools: &[Pool], states: &[State], fills:
                 }
                 while result.operands.len() < index {
                     let earlier = doc.operands.get(result.operands.len())?;
-                    result.operands.push(typed(earlier, &generate(earlier, &[])?));
+                    result
+                        .operands
+                        .push(typed(earlier, &generate(earlier, &[])?));
                 }
                 let value = fills(arg, *choice)?;
                 if result.operands.len() == index {
@@ -266,7 +315,9 @@ fn fill_for(pools: &[Pool]) -> impl Fn(&Arg, usize) -> Option<Value> + '_ {
         match pool.literals.get(choice) {
             Some(literal) => {
                 let word = word_of(literal);
-                value_problem(arg, &typed(arg, &word)).is_none().then(|| typed(arg, &word))
+                value_problem(arg, &typed(arg, &word))
+                    .is_none()
+                    .then(|| typed(arg, &word))
             }
             None => generate(arg, &pool.literals).map(|word| typed(arg, &word)),
         }
@@ -282,7 +333,10 @@ pub fn plan_constraints(doc: &CommandDoc, base: &Invocation) -> Vec<GroupPlan> {
         for (index, constraint) in doc.constraints.iter().enumerate() {
             seen.push(GroupPlan {
                 members: vec![index],
-                codes: BTreeSet::from([constraint.code.clone().unwrap_or_else(|| "USAGE".to_string())]),
+                codes: BTreeSet::from([constraint
+                    .code
+                    .clone()
+                    .unwrap_or_else(|| "USAGE".to_string())]),
                 outcome: GroupOutcome::Unprovided(why.clone()),
             });
         }
@@ -295,14 +349,24 @@ pub fn plan_constraints(doc: &CommandDoc, base: &Invocation) -> Vec<GroupPlan> {
         let what = problems
             .first()
             .cloned()
-            .or_else(|| violated.first().and_then(|index| doc.constraints.get(*index)).map(Constraint::label))
+            .or_else(|| {
+                violated
+                    .first()
+                    .and_then(|index| doc.constraints.get(*index))
+                    .map(Constraint::label)
+            })
             .unwrap_or_default();
-        return all_unprovided(format!("the fixture invocation `{}` does not satisfy the command's requirements: {what}", render(base).join(" ")));
+        return all_unprovided(format!(
+            "the fixture invocation `{}` does not satisfy the command's requirements: {what}",
+            render(base).join(" ")
+        ));
     }
     let names = named(doc);
     let pools: Vec<Pool> = names.iter().filter_map(|name| pool_of(doc, name)).collect();
     let sizes: Vec<usize> = pools.iter().map(|pool| pool.size() + 1).collect();
-    let total = sizes.iter().try_fold(1_usize, |product, size| product.checked_mul(*size));
+    let total = sizes
+        .iter()
+        .try_fold(1_usize, |product, size| product.checked_mul(*size));
     if total.is_none_or(|total| total > MAX_CONFIGS) {
         return all_unprovided("the rules name too many arguments to compare".to_string());
     }
@@ -317,7 +381,16 @@ pub fn plan_constraints(doc: &CommandDoc, base: &Invocation) -> Vec<GroupPlan> {
     let mut configs: Vec<Config> = Vec::new();
     let mut counter = vec![0_usize; pools.len()];
     loop {
-        let states: Vec<State> = counter.iter().map(|step| if *step == 0 { State::Absent } else { State::Given(*step - 1) }).collect();
+        let states: Vec<State> = counter
+            .iter()
+            .map(|step| {
+                if *step == 0 {
+                    State::Absent
+                } else {
+                    State::Given(*step - 1)
+                }
+            })
+            .collect();
         if let Some(applied) = apply(doc, &base_args, &pools, &states, &fills) {
             configs.push(Config {
                 states,
@@ -355,38 +428,81 @@ pub fn plan_constraints(doc: &CommandDoc, base: &Invocation) -> Vec<GroupPlan> {
             None => groups.push((vec![index], violating)),
         }
     }
-    let group_of = |constraint: usize| groups.iter().position(|(members, _)| members.contains(&constraint));
+    let group_of = |constraint: usize| {
+        groups
+            .iter()
+            .position(|(members, _)| members.contains(&constraint))
+    };
     groups
         .iter()
         .map(|(members, violating)| {
             let codes = members
                 .iter()
                 .filter_map(|index| doc.constraints.get(*index))
-                .map(|constraint| constraint.code.clone().unwrap_or_else(|| "USAGE".to_string()))
+                .map(|constraint| {
+                    constraint
+                        .code
+                        .clone()
+                        .unwrap_or_else(|| "USAGE".to_string())
+                })
                 .collect();
             let mut candidates: Vec<&Config> = configs
                 .iter()
                 .filter(|config| !config.required_broken && config.violated == *members)
                 .collect();
             let distance = |config: &Config| -> usize {
-                config.states.iter().zip(&base_states).filter(|(state, base)| state != base).count()
+                config
+                    .states
+                    .iter()
+                    .zip(&base_states)
+                    .filter(|(state, base)| state != base)
+                    .count()
             };
-            candidates.sort_by_key(|config| (distance(config), config.states.iter().filter(|state| **state != State::Absent).count()));
+            candidates.sort_by_key(|config| {
+                (
+                    distance(config),
+                    config
+                        .states
+                        .iter()
+                        .filter(|state| **state != State::Absent)
+                        .count(),
+                )
+            });
             let mut why = String::new();
             for config in &candidates {
-                match build(doc, base, &base_args, &pools, &base_states, &config.states, &fills) {
+                match build(
+                    doc,
+                    base,
+                    &base_args,
+                    &pools,
+                    &base_states,
+                    &config.states,
+                    &fills,
+                ) {
                     Ok(words) => {
-                        let reparsed = parse(doc, &words).map(|invocation| violated_constraints(doc, &args(doc, &invocation)));
+                        let reparsed = parse(doc, &words)
+                            .map(|invocation| violated_constraints(doc, &args(doc, &invocation)));
                         if reparsed.as_deref() == Ok(members.as_slice()) {
-                            return GroupPlan { members: members.clone(), codes, outcome: GroupOutcome::Witness { words } };
+                            return GroupPlan {
+                                members: members.clone(),
+                                codes,
+                                outcome: GroupOutcome::Witness { words },
+                            };
                         }
-                        why = format!("the invocation built for it, `{}`, is read differently by the grammar", words.join(" "));
+                        why = format!(
+                            "the invocation built for it, `{}`, is read differently by the grammar",
+                            words.join(" ")
+                        );
                     }
                     Err(reason) => why = reason,
                 }
             }
             if !candidates.is_empty() {
-                return GroupPlan { members: members.clone(), codes, outcome: GroupOutcome::Unprovided(why) };
+                return GroupPlan {
+                    members: members.clone(),
+                    codes,
+                    outcome: GroupOutcome::Unprovided(why),
+                };
             }
             let broken_with = violating
                 .iter()
@@ -400,11 +516,18 @@ pub fn plan_constraints(doc: &CommandDoc, base: &Invocation) -> Vec<GroupPlan> {
                         .collect();
                     others.sort_unstable();
                     others.dedup();
-                    Broken { groups: others, required: config.required_broken }
+                    Broken {
+                        groups: others,
+                        required: config.required_broken,
+                    }
                 })
                 .collect();
             let _ = &args_of_unused;
-            GroupPlan { members: members.clone(), codes, outcome: GroupOutcome::Entailed { broken_with } }
+            GroupPlan {
+                members: members.clone(),
+                codes,
+                outcome: GroupOutcome::Entailed { broken_with },
+            }
         })
         .collect()
 }
@@ -429,7 +552,9 @@ fn build(
         if state == before {
             continue;
         }
-        let Some(arg) = doc.arg(&pool.name) else { continue };
+        let Some(arg) = doc.arg(&pool.name) else {
+            continue;
+        };
         if arg.is_option {
             match state {
                 State::Absent => remove_option(&mut invocation, &pool.name),
@@ -438,12 +563,21 @@ fn build(
                         remove_option(&mut invocation, &pool.name);
                         set_option(&mut invocation, &pool.name, None);
                     } else {
-                        let value = fills(arg, *choice).ok_or_else(|| format!("no valid value of --{} outside the values the rules name", pool.name))?;
+                        let value = fills(arg, *choice).ok_or_else(|| {
+                            format!(
+                                "no valid value of --{} outside the values the rules name",
+                                pool.name
+                            )
+                        })?;
                         set_option(&mut invocation, &pool.name, Some(word_of(&value)));
                     }
                 }
             }
-        } else if let Some(index) = doc.operands.iter().position(|operand| operand.name == pool.name) {
+        } else if let Some(index) = doc
+            .operands
+            .iter()
+            .position(|operand| operand.name == pool.name)
+        {
             operand_changes.push((index, pool, state));
         }
     }
@@ -452,14 +586,27 @@ fn build(
         match state {
             State::Absent => remove_operand(&mut invocation, index),
             State::Given(choice) => {
-                let count = invocation.items.iter().filter(|item| matches!(item, Item::Operand(_))).count();
+                let count = invocation
+                    .items
+                    .iter()
+                    .filter(|item| matches!(item, Item::Operand(_)))
+                    .count();
                 for earlier in count..index {
-                    let operand = doc.operands.get(earlier).ok_or("the operands before it are not declared")?;
-                    let word = generate(operand, &[]).ok_or_else(|| format!("no valid value of the operand {}", operand.name))?;
+                    let operand = doc
+                        .operands
+                        .get(earlier)
+                        .ok_or("the operands before it are not declared")?;
+                    let word = generate(operand, &[])
+                        .ok_or_else(|| format!("no valid value of the operand {}", operand.name))?;
                     set_operand(&mut invocation, earlier, word);
                 }
                 let arg = doc.arg(&pool.name).ok_or("the operand is not declared")?;
-                let value = fills(arg, *choice).ok_or_else(|| format!("no valid value of the operand {} outside the values the rules name", pool.name))?;
+                let value = fills(arg, *choice).ok_or_else(|| {
+                    format!(
+                        "no valid value of the operand {} outside the values the rules name",
+                        pool.name
+                    )
+                })?;
                 set_operand(&mut invocation, index, word_of(&value));
             }
         }
@@ -506,7 +653,10 @@ fn number(domain: &Value, key: &str) -> Option<f64> {
 fn format_number(value: f64, integral: bool) -> String {
     if integral || value.fract() == 0.0 && value.abs() < 9.0e15 {
         // The bound is a whole number of at most 15 digits.
-        #[expect(clippy::cast_possible_truncation, reason = "the value is whole and below 9e15, so the cast is exact")]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the value is whole and below 9e15, so the cast is exact"
+        )]
         let whole = value as i64;
         format!("{whole}")
     } else {
@@ -522,32 +672,75 @@ pub fn domain_plan(arg: &Arg) -> DomainPlan {
     let Some(domain) = arg.domain.as_ref().filter(|domain| domain.is_object()) else {
         return plan;
     };
-    plan.needs_rejects = ["pattern", "enum", "const", "properties", "required", "additionalProperties", "items"]
-        .iter()
-        .any(|key| domain.get(*key).is_some());
+    plan.needs_rejects = [
+        "pattern",
+        "enum",
+        "const",
+        "properties",
+        "required",
+        "additionalProperties",
+        "items",
+    ]
+    .iter()
+    .any(|key| domain.get(*key).is_some());
     let integral = matches!(arg.value_type.as_str(), "integer" | "count");
     let is_json = arg.value_type == "json";
     let mut words: Vec<(String, String)> = Vec::new();
     // Numbers.
     let mut numbers: Vec<(f64, String)> = Vec::new();
-    let steps: &[f64] = if integral { &[-1.0, 0.0, 1.0] } else { &[-1.0, -0.5, 0.0, 0.5, 1.0] };
+    let steps: &[f64] = if integral {
+        &[-1.0, 0.0, 1.0]
+    } else {
+        &[-1.0, -0.5, 0.0, 0.5, 1.0]
+    };
     for key in ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"] {
         if let Some(bound) = number(domain, key) {
             for step in steps {
-                numbers.push((bound + step, format!("{key} {}{}", if *step < 0.0 { "- " } else if *step > 0.0 { "+ " } else { "" }, if *step == 0.0 { String::new() } else { step.abs().to_string() }).trim().to_string()));
+                numbers.push((
+                    bound + step,
+                    format!(
+                        "{key} {}{}",
+                        if *step < 0.0 {
+                            "- "
+                        } else if *step > 0.0 {
+                            "+ "
+                        } else {
+                            ""
+                        },
+                        if *step == 0.0 {
+                            String::new()
+                        } else {
+                            step.abs().to_string()
+                        }
+                    )
+                    .trim()
+                    .to_string(),
+                ));
             }
         }
     }
     if let Some(step) = number(domain, "multipleOf").filter(|step| *step > 0.0) {
-        let low = number(domain, "minimum").or_else(|| number(domain, "exclusiveMinimum")).unwrap_or(0.0);
+        let low = number(domain, "minimum")
+            .or_else(|| number(domain, "exclusiveMinimum"))
+            .unwrap_or(0.0);
         let first = (low / step).ceil() * step;
         for count in 0..3 {
             let multiple = first + step * f64::from(count);
             numbers.push((multiple, "a multiple of multipleOf".to_string()));
-            numbers.push((multiple + if integral { 1.0 } else { step / 2.0 }, "not a multiple of multipleOf".to_string()));
+            numbers.push((
+                multiple + if integral { 1.0 } else { step / 2.0 },
+                "not a multiple of multipleOf".to_string(),
+            ));
         }
     }
-    let numeric = domain.as_object().is_some_and(|keys| keys.keys().any(|key| matches!(key.as_str(), "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum" | "multipleOf")));
+    let numeric = domain.as_object().is_some_and(|keys| {
+        keys.keys().any(|key| {
+            matches!(
+                key.as_str(),
+                "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum" | "multipleOf"
+            )
+        })
+    });
     if numeric {
         for (value, why) in numbers {
             if arg.value_type == "count" && value < 0.0 {
@@ -561,7 +754,9 @@ pub fn domain_plan(arg: &Arg) -> DomainPlan {
     let max_length = domain.get("maxLength").and_then(Value::as_u64);
     if min_length.is_some() || max_length.is_some() {
         let lengths: Vec<(u64, &str)> = [
-            min_length.and_then(|min| min.checked_sub(1)).map(|n| (n, "minLength - 1")),
+            min_length
+                .and_then(|min| min.checked_sub(1))
+                .map(|n| (n, "minLength - 1")),
             min_length.map(|n| (n, "minLength")),
             max_length.map(|n| (n, "maxLength")),
             max_length.map(|n| (n + 1, "maxLength + 1")),
@@ -576,18 +771,51 @@ pub fn domain_plan(arg: &Arg) -> DomainPlan {
             }
             let length = usize::try_from(length).unwrap_or(0);
             // A character the rest of the domain (a pattern) admits, found with the shortest length it can have.
-            let letter = ["a", "x", "0", "A", "-", "_"].into_iter().find(|letter| {
-                let sample = letter.repeat(length.clamp(min_length.map_or(1, |n| usize::try_from(n).unwrap_or(1)).max(1), max_length.map_or(usize::MAX, |n| usize::try_from(n).unwrap_or(usize::MAX)).max(1)));
-                value_problem(arg, &typed(arg, &if is_json { Value::String(sample).to_string() } else { sample })).is_none()
-            }).unwrap_or("a");
+            let letter = ["a", "x", "0", "A", "-", "_"]
+                .into_iter()
+                .find(|letter| {
+                    let sample = letter.repeat(
+                        length.clamp(
+                            min_length
+                                .map_or(1, |n| usize::try_from(n).unwrap_or(1))
+                                .max(1),
+                            max_length
+                                .map_or(usize::MAX, |n| usize::try_from(n).unwrap_or(usize::MAX))
+                                .max(1),
+                        ),
+                    );
+                    value_problem(
+                        arg,
+                        &typed(
+                            arg,
+                            &if is_json {
+                                Value::String(sample).to_string()
+                            } else {
+                                sample
+                            },
+                        ),
+                    )
+                    .is_none()
+                })
+                .unwrap_or("a");
             let text = letter.repeat(length);
-            let word = if is_json { Value::String(text).to_string() } else { text };
+            let word = if is_json {
+                Value::String(text).to_string()
+            } else {
+                text
+            };
             words.push((word, why.to_string()));
         }
     }
     // A JSON type the domain excludes.
     if is_json && domain.get("type").is_some() {
-        for (word, why) in [("\"x\"", "a string"), ("1.5", "a number"), ("true", "a boolean"), ("{}", "an object"), ("[]", "an array")] {
+        for (word, why) in [
+            ("\"x\"", "a string"),
+            ("1.5", "a number"),
+            ("true", "a boolean"),
+            ("{}", "an object"),
+            ("[]", "an array"),
+        ] {
             words.push((word.to_string(), format!("{why} where `type` excludes it")));
         }
     }
@@ -597,7 +825,11 @@ pub fn domain_plan(arg: &Arg) -> DomainPlan {
             continue;
         }
         let value = typed(arg, &word);
-        let expect = if value_problem(arg, &value).is_none() { Expect::Accepted } else { Expect::Refused };
+        let expect = if value_problem(arg, &value).is_none() {
+            Expect::Accepted
+        } else {
+            Expect::Refused
+        };
         // A json value that does not even parse says nothing about the domain.
         if is_json && matches!(value, Value::String(_)) && !word.starts_with('"') {
             continue;
@@ -609,7 +841,12 @@ pub fn domain_plan(arg: &Arg) -> DomainPlan {
 
 /// `invocation` with `arg` given as `word` and nothing else changed: an option once with that value (a count that many times),
 /// an operand in its place.
-pub fn with_argument(doc: &CommandDoc, invocation: &Invocation, arg: &Arg, word: &str) -> Option<Invocation> {
+pub fn with_argument(
+    doc: &CommandDoc,
+    invocation: &Invocation,
+    arg: &Arg,
+    word: &str,
+) -> Option<Invocation> {
     let mut changed = invocation.clone();
     if arg.is_option {
         if arg.value_type == "count" {
@@ -622,8 +859,15 @@ pub fn with_argument(doc: &CommandDoc, invocation: &Invocation, arg: &Arg, word:
             set_option(&mut changed, &arg.name, Some(word.to_string()));
         }
     } else {
-        let index = doc.operands.iter().position(|operand| operand.name == arg.name)?;
-        let count = changed.items.iter().filter(|item| matches!(item, Item::Operand(_))).count();
+        let index = doc
+            .operands
+            .iter()
+            .position(|operand| operand.name == arg.name)?;
+        let count = changed
+            .items
+            .iter()
+            .filter(|item| matches!(item, Item::Operand(_)))
+            .count();
         for earlier in count..index {
             let operand = doc.operands.get(earlier)?;
             set_operand(&mut changed, earlier, generate(operand, &[])?);
@@ -635,7 +879,10 @@ pub fn with_argument(doc: &CommandDoc, invocation: &Invocation, arg: &Arg, word:
 
 /// One more occurrence of the flag option `name`.
 fn set_option_again(invocation: &mut Invocation, name: &str) {
-    invocation.items.push(Item::Option { name: name.to_string(), value: None });
+    invocation.items.push(Item::Option {
+        name: name.to_string(),
+        value: None,
+    });
 }
 
 #[cfg(test)]
@@ -655,9 +902,16 @@ mod tests {
 
     #[test]
     fn atip_checkl1_witness_an_integer_domain_gets_a_value_at_each_bound_and_one_beyond() {
-        let doc = doc_with(json!({"name": "limit", "valueName": "N", "valueType": "integer", "required": false, "repeatable": false, "default": null, "help": "h", "domain": {"minimum": 1, "maximum": 100}}));
+        let doc = doc_with(
+            json!({"name": "limit", "valueName": "N", "valueType": "integer", "required": false, "repeatable": false, "default": null, "help": "h", "domain": {"minimum": 1, "maximum": 100}}),
+        );
         let plan = domain_plan(&doc.options[0]);
-        let by_word = |word: &str| plan.probes.iter().find(|probe| probe.word == word).map(|probe| probe.expect);
+        let by_word = |word: &str| {
+            plan.probes
+                .iter()
+                .find(|probe| probe.word == word)
+                .map(|probe| probe.expect)
+        };
         assert_eq!(by_word("0"), Some(Expect::Refused), "minimum - 1");
         assert_eq!(by_word("1"), Some(Expect::Accepted), "minimum");
         assert_eq!(by_word("100"), Some(Expect::Accepted), "maximum");

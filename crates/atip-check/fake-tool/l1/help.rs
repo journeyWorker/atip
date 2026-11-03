@@ -74,7 +74,12 @@ pub fn command_help(tool: &Tool, doc: &Value) -> String {
             let _ = write!(label, " <{value_name}>");
         }
         let mut help = option["help"].as_str().unwrap_or_default().to_string();
-        if let Some(mentioned) = tool.config.get("helpMentions").and_then(|mentions| mentions.get(long)).and_then(Value::as_str) {
+        if let Some(mentioned) = tool
+            .config
+            .get("helpMentions")
+            .and_then(|mentions| mentions.get(long))
+            .and_then(Value::as_str)
+        {
             let _ = write!(help, " (see {mentioned})");
         }
         let mut line = format!("  {label:<28}{help}");
@@ -104,7 +109,11 @@ pub fn group_help(tool: &Tool, model: &Model, group: &str) -> String {
     if !tool.flag("helpNoSchemaLine") && !tool.flag("noSchema") {
         out.push_str(&agents_line(tool, group));
     }
-    let place = if group.is_empty() { name } else { format!("{name} {group}") };
+    let place = if group.is_empty() {
+        name
+    } else {
+        format!("{name} {group}")
+    };
     let _ = writeln!(out, "Usage: {place} <COMMAND>\n");
     out.push_str("Commands:\n");
     for (id, _) in model.children(group) {

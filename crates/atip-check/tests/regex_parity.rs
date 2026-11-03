@@ -8,7 +8,8 @@ use std::path::Path;
 use serde_json::Value;
 
 use atip_check::l1::regex::{
-    compare, ecmascript_answer, form_problem, rust_answer, Answer, Comparison, ECMASCRIPT_UNICODE, RUST_UNICODE,
+    compare, ecmascript_answer, form_problem, rust_answer, Answer, Comparison, ECMASCRIPT_UNICODE,
+    RUST_UNICODE,
 };
 
 fn cases() -> Vec<Value> {
@@ -27,7 +28,11 @@ fn atip_checkl1_25_regex_the_ecmascript_engine_answers_every_recorded_case_as_th
     let cases = cases();
     assert!(cases.len() >= 60, "{}", cases.len());
     for case in &cases {
-        let got = ecmascript_answer(case["pattern"].as_str().expect("pattern"), case["value"].as_str().expect("value")).recorded();
+        let got = ecmascript_answer(
+            case["pattern"].as_str().expect("pattern"),
+            case["value"].as_str().expect("value"),
+        )
+        .recorded();
         assert_eq!(got, case["ecmascript"], "ECMAScript: {}", name(case));
     }
 }
@@ -35,7 +40,11 @@ fn atip_checkl1_25_regex_the_ecmascript_engine_answers_every_recorded_case_as_th
 #[test]
 fn atip_checkl1_25_regex_the_rust_engine_answers_every_recorded_case_as_the_record_says() {
     for case in &cases() {
-        let got = rust_answer(case["pattern"].as_str().expect("pattern"), case["value"].as_str().expect("value")).recorded();
+        let got = rust_answer(
+            case["pattern"].as_str().expect("pattern"),
+            case["value"].as_str().expect("value"),
+        )
+        .recorded();
         assert_eq!(got, case["rust"], "Rust: {}", name(case));
     }
 }
@@ -45,15 +54,25 @@ fn atip_checkl1_25_regex_the_form_of_every_recorded_pattern_is_the_one_the_recor
     for case in &cases() {
         let pattern = case["pattern"].as_str().expect("pattern");
         let of_form = form_problem(pattern).is_none();
-        assert_eq!(Value::Bool(of_form), case["form"], "form of {}: {:?}", name(case), form_problem(pattern));
+        assert_eq!(
+            Value::Bool(of_form),
+            case["form"],
+            "form of {}: {:?}",
+            name(case),
+            form_problem(pattern)
+        );
     }
 }
 
 #[test]
-fn atip_checkl1_25_regex_a_pattern_of_the_form_that_both_engines_compile_agrees_unless_the_record_names_a_unicode_version_difference() {
+fn atip_checkl1_25_regex_a_pattern_of_the_form_that_both_engines_compile_agrees_unless_the_record_names_a_unicode_version_difference(
+) {
     let mut differences = 0;
     for case in &cases() {
-        let (pattern, value) = (case["pattern"].as_str().expect("pattern"), case["value"].as_str().expect("value"));
+        let (pattern, value) = (
+            case["pattern"].as_str().expect("pattern"),
+            case["value"].as_str().expect("value"),
+        );
         if case["form"] != true {
             continue;
         }
@@ -70,40 +89,86 @@ fn atip_checkl1_25_regex_a_pattern_of_the_form_that_both_engines_compile_agrees_
             (Comparison::UnicodeVersion { difference, .. }, Some(recorded)) => {
                 differences += 1;
                 assert_eq!(recorded["kind"], "unicode-version");
-                assert_eq!(Value::String(difference.code_point.clone()), recorded["codePoint"], "{}", name(case));
-                assert_eq!(Value::String(difference.ecmascript_category.to_string()), recorded["ecmascript"], "{}", name(case));
-                assert_eq!(Value::String(difference.rust_category.to_string()), recorded["rust"], "{}", name(case));
-                assert!(difference.describe().contains(ECMASCRIPT_UNICODE) && difference.describe().contains(RUST_UNICODE));
+                assert_eq!(
+                    Value::String(difference.code_point.clone()),
+                    recorded["codePoint"],
+                    "{}",
+                    name(case)
+                );
+                assert_eq!(
+                    Value::String(difference.ecmascript_category.to_string()),
+                    recorded["ecmascript"],
+                    "{}",
+                    name(case)
+                );
+                assert_eq!(
+                    Value::String(difference.rust_category.to_string()),
+                    recorded["rust"],
+                    "{}",
+                    name(case)
+                );
+                assert!(
+                    difference.describe().contains(ECMASCRIPT_UNICODE)
+                        && difference.describe().contains(RUST_UNICODE)
+                );
             }
-            (other, recorded) => panic!("{}: {other:?} against the record's difference {recorded:?}", name(case)),
+            (other, recorded) => panic!(
+                "{}: {other:?} against the record's difference {recorded:?}",
+                name(case)
+            ),
         }
     }
-    assert!(differences >= 1, "the record has a Unicode-version difference and the checker names it");
+    assert!(
+        differences >= 1,
+        "the record has a Unicode-version difference and the checker names it"
+    );
 }
 
 #[test]
-fn atip_checkl1_25_regex_a_pattern_outside_the_form_that_the_engines_read_differently_is_not_a_version_difference() {
+fn atip_checkl1_25_regex_a_pattern_outside_the_form_that_the_engines_read_differently_is_not_a_version_difference(
+) {
     // `^[a&&b]+$` is not of the form; on "a" ECMAScript accepts and Rust rejects, and no code point or category explains it.
     assert!(form_problem("^[a&&b]+$").is_some());
-    assert!(matches!(compare("^[a&&b]+$", "a"), Comparison::Differs { ecmascript: true, rust: false }));
+    assert!(matches!(
+        compare("^[a&&b]+$", "a"),
+        Comparison::Differs {
+            ecmascript: true,
+            rust: false
+        }
+    ));
     // A single ASCII character under a pattern with a category is not a version difference either: the categories do not differ.
     assert!(matches!(compare("^\\p{L}$", "a"), Comparison::Agree(true)));
-    assert!(matches!(
-        ecmascript_answer("^(", "a"),
-        Answer::Refuses(_)
-    ));
+    assert!(matches!(ecmascript_answer("^(", "a"), Answer::Refuses(_)));
 }
 
 #[test]
 fn atip_checkl1_25_the_unicode_versions_the_report_names_belong_to_the_engines_that_are_locked() {
     // The two versions are literals of `src/l1/regex.rs`: they hold for `regress` 0.12 (Unicode 17.0) and `regex-syntax` 0.8 (Unicode 16.0.0). A bump of either crate in
     // Cargo.lock must re-read its tables (U+11DB0 is the code point that tells them apart) before it is accepted.
-    let lock = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock")).expect("Cargo.lock");
+    let lock =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock"))
+            .expect("Cargo.lock");
     let version_of = |name: &str| -> String {
-        let at = lock.find(&format!("name = \"{name}\"\n")).unwrap_or_else(|| panic!("{name} in Cargo.lock"));
-        lock[at..].lines().nth(1).and_then(|line| line.strip_prefix("version = \"")).and_then(|line| line.strip_suffix('"')).unwrap_or_default().to_string()
+        let at = lock
+            .find(&format!("name = \"{name}\"\n"))
+            .unwrap_or_else(|| panic!("{name} in Cargo.lock"));
+        lock[at..]
+            .lines()
+            .nth(1)
+            .and_then(|line| line.strip_prefix("version = \""))
+            .and_then(|line| line.strip_suffix('"'))
+            .unwrap_or_default()
+            .to_string()
     };
-    assert!(version_of("regress").starts_with("0.12."), "regress {}: re-read its Unicode tables and update ECMASCRIPT_UNICODE", version_of("regress"));
-    assert!(version_of("regex-syntax").starts_with("0.8."), "regex-syntax {}: re-read its Unicode tables and update RUST_UNICODE", version_of("regex-syntax"));
+    assert!(
+        version_of("regress").starts_with("0.12."),
+        "regress {}: re-read its Unicode tables and update ECMASCRIPT_UNICODE",
+        version_of("regress")
+    );
+    assert!(
+        version_of("regex-syntax").starts_with("0.8."),
+        "regex-syntax {}: re-read its Unicode tables and update RUST_UNICODE",
+        version_of("regex-syntax")
+    );
     assert_eq!((ECMASCRIPT_UNICODE, RUST_UNICODE), ("17.0", "16.0.0"));
 }

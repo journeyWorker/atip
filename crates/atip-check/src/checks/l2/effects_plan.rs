@@ -38,19 +38,41 @@ pub(crate) struct EffectsRun {
 impl Run<'_> {
     pub(crate) fn plan_effects(&mut self, l1: Option<&L1Run>) -> Result<EffectsRun, RunError> {
         let version = self.invoke(Call::new(["--version"]).measured())?;
-        let mut out = EffectsRun { version: Some(version), ..EffectsRun::default() };
+        let mut out = EffectsRun {
+            version: Some(version),
+            ..EffectsRun::default()
+        };
         let call = self.invoke(Call::new(["--help"]).measured())?;
-        out.helps.push(EffectRun { label: "--help".to_string(), call });
+        out.helps.push(EffectRun {
+            label: "--help".to_string(),
+            call,
+        });
         let commands = self.fixture.commands.clone().unwrap_or_default();
         // The fixture's own `--dry-run` invocations, with or without documents.
         for (id, entry) in &commands {
-            for argv in entry.ok.iter().chain(&entry.refused).filter(|argv| argv.iter().any(|word| word == "--dry-run")) {
+            for argv in entry
+                .ok
+                .iter()
+                .chain(&entry.refused)
+                .filter(|argv| argv.iter().any(|word| word == "--dry-run"))
+            {
                 let call = self.invoke(Call::new(in_json_mode(argv)).measured())?;
-                out.dry_runs.push(EffectRun { label: format!("{id}: the fixture's `{}`", argv.join(" ")), call });
+                out.dry_runs.push(EffectRun {
+                    label: format!("{id}: the fixture's `{}`", argv.join(" ")),
+                    call,
+                });
             }
         }
         let Some(l1) = l1 else { return Ok(out) };
-        let docs: Vec<CommandDoc> = l1.docs.commands.iter().map(|(id, doc)| CommandDoc { command: id.clone(), ..doc.clone() }).collect();
+        let docs: Vec<CommandDoc> = l1
+            .docs
+            .commands
+            .iter()
+            .map(|(id, doc)| CommandDoc {
+                command: id.clone(),
+                ..doc.clone()
+            })
+            .collect();
         for doc in &docs {
             if self.not_run(&doc.command) {
                 continue;
@@ -60,7 +82,10 @@ impl Run<'_> {
                 let mut argv = doc.path.clone();
                 argv.push("--help".to_string());
                 let call = self.invoke(Call::new(argv).measured())?;
-                out.helps.push(EffectRun { label: format!("{} --help", doc.command), call });
+                out.helps.push(EffectRun {
+                    label: format!("{} --help", doc.command),
+                    call,
+                });
             }
             let entry = commands.get(&doc.command);
             let listed: Vec<Vec<String>> = entry.map(|entry| entry.ok.clone()).unwrap_or_default();
@@ -72,18 +97,27 @@ impl Run<'_> {
                     let mut dry = in_json_mode(argv);
                     dry.push("--dry-run".to_string());
                     let call = self.invoke(Call::new(dry).measured())?;
-                    out.dry_runs.push(EffectRun { label: format!("{} --dry-run", doc.command), call });
+                    out.dry_runs.push(EffectRun {
+                        label: format!("{} --dry-run", doc.command),
+                        call,
+                    });
                 }
             }
             // What `schema` changes is `L1.no-state`'s and what `skills show` changes is `L2.skills`': one owner for one pass condition.
             if doc.effect == "read" && doc.command != "schema" && doc.command != "skills show" {
-                let note = doc.raw.get("effectNote").and_then(serde_json::Value::as_str).is_some_and(|note| !note.trim().is_empty());
+                let note = doc
+                    .raw
+                    .get("effectNote")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|note| !note.trim().is_empty());
                 for argv in &listed {
                     let call = self.invoke(Call::new(in_json_mode(argv)).measured())?;
                     out.reads.push(ReadRun {
                         command: doc.command.clone(),
                         call,
-                        patterns: entry.map(|entry| entry.allowed_effects.clone()).unwrap_or_default(),
+                        patterns: entry
+                            .map(|entry| entry.allowed_effects.clone())
+                            .unwrap_or_default(),
                         has_note: note,
                     });
                 }

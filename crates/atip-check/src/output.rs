@@ -29,11 +29,31 @@ pub const REGISTRY: [CodeInfo; 7] = [
 
 /// The reasons under `FIXTURE_INVALID` (spec 7.6), sorted by name.
 pub const FIXTURE_INVALID_REASONS: [ReasonInfo; 5] = [
-    ReasonInfo { reason: "NOT_JSON", meaning: "the fixture file is not JSON", fix: "Write the fixture as one JSON object." },
-    ReasonInfo { reason: "PREPARE_FAILED", meaning: "a prepare command of the fixture did not exit 0", fix: "Run the prepare command named in the message by hand and fix what it reports." },
-    ReasonInfo { reason: "SETUP_FAILED", meaning: "a setup command of the fixture did not exit 0", fix: "Run the setup command named in the message by hand and fix what it reports." },
-    ReasonInfo { reason: "UNREADABLE", meaning: "the fixture file cannot be read", fix: "Pass the path of a readable file with --fixture." },
-    ReasonInfo { reason: "WRONG_SHAPE", meaning: "a member of the fixture has the wrong shape or an unknown value", fix: "Fix the member the message names." },
+    ReasonInfo {
+        reason: "NOT_JSON",
+        meaning: "the fixture file is not JSON",
+        fix: "Write the fixture as one JSON object.",
+    },
+    ReasonInfo {
+        reason: "PREPARE_FAILED",
+        meaning: "a prepare command of the fixture did not exit 0",
+        fix: "Run the prepare command named in the message by hand and fix what it reports.",
+    },
+    ReasonInfo {
+        reason: "SETUP_FAILED",
+        meaning: "a setup command of the fixture did not exit 0",
+        fix: "Run the setup command named in the message by hand and fix what it reports.",
+    },
+    ReasonInfo {
+        reason: "UNREADABLE",
+        meaning: "the fixture file cannot be read",
+        fix: "Pass the path of a readable file with --fixture.",
+    },
+    ReasonInfo {
+        reason: "WRONG_SHAPE",
+        meaning: "a member of the fixture has the wrong shape or an unknown value",
+        fix: "Fix the member the message names.",
+    },
 ];
 
 /// `atip`'s warning registry (spec 7.5.2), sorted by code.
@@ -374,9 +394,14 @@ mod tests {
             text,
             "atip: USAGE: bad\n  field: --bin\n  hint: pass it\n  line one\n  line two"
         );
-        assert!(success_line(&serde_json::json!({"level": "L0"}), 0).contains(r#""command":"check""#));
+        assert!(
+            success_line(&serde_json::json!({"level": "L0"}), 0).contains(r#""command":"check""#)
+        );
         let warned = success_line(&serde_json::json!({"level": "L0"}), 2);
-        assert!(warned.contains(r#""warnings":[{"code":"SHOULD_FAILED""#), "{warned}");
+        assert!(
+            warned.contains(r#""warnings":[{"code":"SHOULD_FAILED""#),
+            "{warned}"
+        );
         assert!(warned.contains(r#""contractVersion":"1.2""#));
     }
 }

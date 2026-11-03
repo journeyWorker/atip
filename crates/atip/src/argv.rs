@@ -28,7 +28,9 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    args.into_iter().take_while(|arg| arg.as_ref() != "--").any(|arg| arg.as_ref() == "--json")
+    args.into_iter()
+        .take_while(|arg| arg.as_ref() != "--")
+        .any(|arg| arg.as_ref() == "--json")
 }
 
 /// [`wants_json`] over this process's own argv, read because the parse may not

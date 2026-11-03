@@ -24,7 +24,11 @@ fn generated() -> Value {
         .map(|row| {
             let mut entry = json!({"code": row.code, "exit": row.exit, "retryable": row.retryable});
             if !row.reasons.is_empty() {
-                entry["reasons"] = json!(row.reasons.iter().map(|reason| reason.reason).collect::<Vec<_>>());
+                entry["reasons"] = json!(row
+                    .reasons
+                    .iter()
+                    .map(|reason| reason.reason)
+                    .collect::<Vec<_>>());
             }
             entry
         })
@@ -74,11 +78,9 @@ fn atip_check_37_atip_check_passes_on_atip_itself() {
     let text = atip_in(&cwd, &tmp, &args);
     assert_eq!(text.code, Some(0), "{}{}", text.stdout, text.stderr);
     assert!(
-        text.stdout
-            .lines()
-            .last()
-            .expect("summary")
-            .starts_with("L0 met: 18 MUST passed, 0 MUST failed, 0 MUST unprovided, 6 not applicable"),
+        text.stdout.lines().last().expect("summary").starts_with(
+            "L0 met: 18 MUST passed, 0 MUST failed, 0 MUST unprovided, 6 not applicable"
+        ),
         "{}",
         text.stdout
     );
@@ -93,7 +95,16 @@ fn atip_check_37_atip_check_passes_on_atip_itself() {
     // atip's own answers carry no `meta.next` and no page, offer no `schema`, and name no USAGE without a field; it claims 1.1 and has
     // no group: six checks do not apply and the other 22 pass.
     for (id, result) in &results {
-        let expected = if ["L0.next", "L0.page", "L0.registry", "L0.contract", "L0.usage-hint", "L0.global-on-group"].contains(&id.as_str()) {
+        let expected = if [
+            "L0.next",
+            "L0.page",
+            "L0.registry",
+            "L0.contract",
+            "L0.usage-hint",
+            "L0.global-on-group",
+        ]
+        .contains(&id.as_str())
+        {
             "unsupported"
         } else {
             "pass"

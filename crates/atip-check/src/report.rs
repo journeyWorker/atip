@@ -163,7 +163,11 @@ impl Report {
 
     /// The text of the report: one line per check, then one summary line. The text is not part of the contract.
     pub fn text(&self) -> String {
-        let mut lines: Vec<String> = self.prepare.iter().map(|step| format!("prepare: {}", step.join(" "))).collect();
+        let mut lines: Vec<String> = self
+            .prepare
+            .iter()
+            .map(|step| format!("prepare: {}", step.join(" ")))
+            .collect();
         lines.extend(self.checks.iter().map(Check::line));
         lines.push(self.summary());
         lines.join("\n")
@@ -173,7 +177,11 @@ impl Report {
     pub fn summary(&self) -> String {
         let must = |result| self.count(Strength::Must, result);
         let advisories = self.count(Strength::Should, CheckResult::Fail);
-        let not_applicable = self.checks.iter().filter(|check| check.result == CheckResult::Unsupported).count();
+        let not_applicable = self
+            .checks
+            .iter()
+            .filter(|check| check.result == CheckResult::Unsupported)
+            .count();
         let verdict = if self.passed { "met" } else { "not met" };
         format!(
             "{} {verdict}: {} MUST passed, {} MUST failed, {} MUST unprovided, {not_applicable} not applicable, {advisories} SHOULD advisories",
@@ -211,7 +219,10 @@ impl Check {
         let base = if self.unlisted.is_empty() {
             base
         } else {
-            format!("{base} (unlisted writes, not probed: {})", self.unlisted.join(", "))
+            format!(
+                "{base} (unlisted writes, not probed: {})",
+                self.unlisted.join(", ")
+            )
         };
         let base = if self.not_run.is_empty() {
             base
@@ -312,11 +323,19 @@ mod tests {
         failing.reason = Some("a; b; c; and 2 more".to_string());
         failing.cut = true;
         let report = Report::new("L0", Claim::V1_1, vec![failing]);
-        assert!(report.text().contains("c; and 2 more (all in --json findings)\n"), "{}", report.text());
+        assert!(
+            report
+                .text()
+                .contains("c; and 2 more (all in --json findings)\n"),
+            "{}",
+            report.text()
+        );
         let mut whole = check("L0.b", Strength::Must, CheckResult::Fail);
         whole.reason = Some("a; b".to_string());
         let report = Report::new("L0", Claim::V1_1, vec![whole]);
         assert!(!report.text().contains("findings"), "{}", report.text());
-        assert!(!serde_json::to_string(&report.checks[0]).expect("json").contains("cut"));
+        assert!(!serde_json::to_string(&report.checks[0])
+            .expect("json")
+            .contains("cut"));
     }
 }

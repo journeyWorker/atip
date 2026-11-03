@@ -27,7 +27,9 @@ pub fn lines(text: &str, tool: &str) -> Vec<GuideLine> {
     for (index, line) in text.lines().enumerate() {
         let number = index + 1;
         let trimmed = line.trim_start();
-        let marker = ["```", "~~~"].into_iter().find(|marker| trimmed.starts_with(marker));
+        let marker = ["```", "~~~"]
+            .into_iter()
+            .find(|marker| trimmed.starts_with(marker));
         if let Some(open) = &fence {
             if trimmed.starts_with(open.as_str()) {
                 fence = None;
@@ -45,9 +47,15 @@ pub fn lines(text: &str, tool: &str) -> Vec<GuideLine> {
                     }
                 }
                 None => {
-                    let starts = line.trim_start().strip_prefix(tool).is_some_and(|rest| rest.starts_with([' ', '\t']));
+                    let starts = line
+                        .trim_start()
+                        .strip_prefix(tool)
+                        .is_some_and(|rest| rest.starts_with([' ', '\t']));
                     if starts {
-                        let joined = GuideLine { line: number, text: line.trim_start().to_string() };
+                        let joined = GuideLine {
+                            line: number,
+                            text: line.trim_start().to_string(),
+                        };
                         if line.ends_with('\\') {
                             pending = Some(joined);
                         } else {
@@ -88,7 +96,9 @@ fn placeholders(text: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
         while at < bytes.len() {
             if bytes[at] == b'<' && bytes.get(at + 1).is_some_and(u8::is_ascii_uppercase) {
                 let mut end = at + 1;
-                while bytes.get(end).is_some_and(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || *byte == b'_') {
+                while bytes.get(end).is_some_and(|byte| {
+                    byte.is_ascii_uppercase() || byte.is_ascii_digit() || *byte == b'_'
+                }) {
                     end += 1;
                 }
                 if bytes.get(end) == Some(&b'>') {
@@ -105,9 +115,15 @@ fn placeholders(text: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
 
 /// A value valid for `arg`, as an argv word: what the contract names (an enum's first value, `1` for an integer, `x` for a string), a generated valid one when a domain refuses that.
 fn value_for(arg: Option<&Arg>) -> String {
-    let Some(arg) = arg else { return "x".to_string() };
+    let Some(arg) = arg else {
+        return "x".to_string();
+    };
     let plain = match arg.value_type.as_str() {
-        "enum" => arg.possible_values.first().cloned().unwrap_or_else(|| "x".to_string()),
+        "enum" => arg
+            .possible_values
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "x".to_string()),
         "integer" | "count" => "1".to_string(),
         "number" => "1".to_string(),
         "json" => "{}".to_string(),
@@ -135,18 +151,26 @@ fn replace_placeholders(text: &str, word: &str) -> String {
 
 /// A JSON value of a document with each placeholder in a string replaced by a value valid for the argument the key names.
 fn fill_document(doc: &CommandDoc, value: &mut Value) {
-    let Some(object) = value.as_object_mut() else { return };
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
     for (key, member) in object.iter_mut() {
         if key == "operands" {
             if let Some(items) = member.as_array_mut() {
                 for (index, item) in items.iter_mut().enumerate() {
-                    let arg = doc.operands.get(index).or_else(|| doc.operands.last().filter(|operand| operand.variadic));
+                    let arg = doc
+                        .operands
+                        .get(index)
+                        .or_else(|| doc.operands.last().filter(|operand| operand.variadic));
                     fill_value(arg, item);
                 }
             }
             continue;
         }
-        let arg = doc.options.iter().find(|option| camel(&option.name) == *key);
+        let arg = doc
+            .options
+            .iter()
+            .find(|option| camel(&option.name) == *key);
         match member {
             Value::Array(items) => {
                 for item in items {
@@ -163,8 +187,13 @@ fn fill_value(arg: Option<&Arg>, value: &mut Value) {
         if is_placeholder(text) {
             let word = value_for(arg);
             let replaced = replace_placeholders(text, &word);
-            let exact = placeholders(text).count() == 1 && placeholders(text).next().is_some_and(|(start, end)| start == 0 && end == text.len());
-            let numeric = arg.is_some_and(|arg| matches!(arg.value_type.as_str(), "integer" | "number" | "count"));
+            let exact = placeholders(text).count() == 1
+                && placeholders(text)
+                    .next()
+                    .is_some_and(|(start, end)| start == 0 && end == text.len());
+            let numeric = arg.is_some_and(|arg| {
+                matches!(arg.value_type.as_str(), "integer" | "number" | "count")
+            });
             *value = match (exact && numeric, replaced.parse::<serde_json::Number>()) {
                 (true, Ok(number)) => Value::Number(number),
                 _ => Value::String(replaced),
@@ -176,25 +205,39 @@ fn fill_value(arg: Option<&Arg>, value: &mut Value) {
 /// The words of `words` (after the tool name) with every placeholder replaced by a value valid for the argument it is written for.
 pub fn substitute(docs: &ToolDocs, words: &[String]) -> Vec<String> {
     let Some(doc) = command_of(docs, words) else {
-        return words.iter().map(|word| replace_placeholders(word, "x")).collect();
+        return words
+            .iter()
+            .map(|word| replace_placeholders(word, "x"))
+            .collect();
     };
     let Ok(parsed) = invocation::parse(doc, words) else {
-        return words.iter().map(|word| replace_placeholders(word, "x")).collect();
+        return words
+            .iter()
+            .map(|word| replace_placeholders(word, "x"))
+            .collect();
     };
     let mut operand = 0;
     let mut items = parsed.items.clone();
     for item in &mut items {
         match item {
             Item::Operand(word) => {
-                let arg = doc.operands.get(operand).or_else(|| doc.operands.last().filter(|arg| arg.variadic));
+                let arg = doc
+                    .operands
+                    .get(operand)
+                    .or_else(|| doc.operands.last().filter(|arg| arg.variadic));
                 operand += 1;
                 if is_placeholder(word) {
                     *word = replace_placeholders(word, &value_for(arg));
                 }
             }
-            Item::Option { name, value: Some(word) } if is_placeholder(word) => {
+            Item::Option {
+                name,
+                value: Some(word),
+            } if is_placeholder(word) => {
                 if name == "input" {
-                    if let Ok(mut parsed) = serde_json::from_str::<Value>(&replace_placeholders_in_json(word)) {
+                    if let Ok(mut parsed) =
+                        serde_json::from_str::<Value>(&replace_placeholders_in_json(word))
+                    {
                         match &mut parsed {
                             Value::Array(documents) => {
                                 for item in documents {
@@ -215,7 +258,11 @@ pub fn substitute(docs: &ToolDocs, words: &[String]) -> Vec<String> {
         }
     }
     let mut rebuilt = parsed;
-    rebuilt.before = rebuilt.before.iter().map(|word| replace_placeholders(word, "x")).collect();
+    rebuilt.before = rebuilt
+        .before
+        .iter()
+        .map(|word| replace_placeholders(word, "x"))
+        .collect();
     rebuilt.items = items;
     invocation::render(&rebuilt)
 }
@@ -272,21 +319,33 @@ mod tests {
         let text = "Intro\n\n```bash\n# a comment\nacme build --json\nsome other\nacme deploy start \\\n  staging --json\n```\nacme not fenced\n";
         let found = lines(text, "acme");
         assert_eq!(found.len(), 2);
-        assert_eq!((found[0].line, found[0].text.as_str()), (5, "acme build --json"));
+        assert_eq!(
+            (found[0].line, found[0].text.as_str()),
+            (5, "acme build --json")
+        );
         assert_eq!(found[1].line, 7);
         assert!(found[1].text.contains("staging"));
     }
 
     #[test]
     fn placeholders_are_found_with_their_spans() {
-        assert_eq!(placeholders("--tag=<TAG> <X1>").collect::<Vec<_>>(), vec![(6, 11), (12, 16)]);
+        assert_eq!(
+            placeholders("--tag=<TAG> <X1>").collect::<Vec<_>>(),
+            vec![(6, 11), (12, 16)]
+        );
         assert!(is_placeholder("<ID>"));
         assert!(!is_placeholder("a < b > c"));
     }
 
     #[test]
     fn a_placeholder_in_a_document_becomes_a_json_string_to_fill() {
-        assert_eq!(replace_placeholders_in_json("{\"a\":<X>}"), "{\"a\":\"<X>\"}");
-        assert_eq!(replace_placeholders_in_json("{\"a\":\"<X>\"}"), "{\"a\":\"<X>\"}");
+        assert_eq!(
+            replace_placeholders_in_json("{\"a\":<X>}"),
+            "{\"a\":\"<X>\"}"
+        );
+        assert_eq!(
+            replace_placeholders_in_json("{\"a\":\"<X>\"}"),
+            "{\"a\":\"<X>\"}"
+        );
     }
 }

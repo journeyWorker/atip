@@ -34,6 +34,12 @@ mod tests {
 
     #[test]
     fn a_document_is_one_compact_line_in_member_order() {
-        assert_eq!(line(&Document { ok: true, data: vec![1, 2] }), r#"{"ok":true,"data":[1,2]}"#);
+        assert_eq!(
+            line(&Document {
+                ok: true,
+                data: vec![1, 2]
+            }),
+            r#"{"ok":true,"data":[1,2]}"#
+        );
     }
 }

@@ -21,7 +21,8 @@ use serde_json::{json, Map, Value};
 use super::invocation::{self, Args};
 use super::model::{camel, ref_name, Arg, CommandDoc, GroupDoc, Output, Tree, TreeEntry};
 use super::project::{
-    decode_pointer, field_path_problem, is_map, non_null, path_node, record_schema, step_names, types_of, Members, Trie,
+    decode_pointer, field_path_problem, is_map, non_null, path_node, record_schema, step_names,
+    types_of, Members, Trie,
 };
 use super::regex;
 use crate::claim::Claim;
@@ -42,7 +43,10 @@ fn joined(prefix: &str, problems: &[String]) -> Option<String> {
 /// Levels are cumulative: a tree that declares a level at or above the claimed one meets it (L0 < L1 < L2).
 fn level_meets(declared: &str, claimed: &str) -> bool {
     const ORDER: [&str; 3] = ["L0", "L1", "L2"];
-    match (ORDER.iter().position(|level| *level == declared), ORDER.iter().position(|level| *level == claimed)) {
+    match (
+        ORDER.iter().position(|level| *level == declared),
+        ORDER.iter().position(|level| *level == claimed),
+    ) {
         (Some(declared), Some(claimed)) => declared >= claimed,
         _ => declared == claimed,
     }
@@ -139,9 +143,15 @@ pub fn group_findings(group: &GroupDoc, tree: &Tree) -> Findings {
             continue;
         }
         match children.iter().find(|child| child.command == entry.command) {
-            None => mismatches.push(format!("{} is not a child of {id} in the tree", entry.command)),
+            None => mismatches.push(format!(
+                "{} is not a child of {id} in the tree",
+                entry.command
+            )),
             Some(child) if *child != entry => {
-                mismatches.push(format!("{} differs from its entry in the tree", entry.command));
+                mismatches.push(format!(
+                    "{} differs from its entry in the tree",
+                    entry.command
+                ));
             }
             Some(_) => {}
         }
@@ -157,7 +167,10 @@ pub fn group_findings(group: &GroupDoc, tree: &Tree) -> Findings {
             "group-path",
             joined(&format!("group {id}: "), &problems).or(entries),
         ),
-        ("group-children", joined(&format!("group {id}: "), &mismatches)),
+        (
+            "group-children",
+            joined(&format!("group {id}: "), &mismatches),
+        ),
     ]
 }
 
@@ -236,7 +249,12 @@ fn value_issues(arg: &Arg, value: &Value) -> Vec<String> {
 /// `rule-3-domain-compile`, `rule-4-names`, `rule-4-codes`, `rule-4-relation-once`, `rule-5`, `rule-6`, `rule-7`, `rule-9`, `rule-10`, `rule-11`, `rule-13`
 /// (rule 8 is `L1.grammar`'s).
 /// `exit_of` gives the registered exit of a code; `claim` decides whether a declared map is a cut node (rule 16).
-pub fn command_findings(doc: &CommandDoc, tool: &str, claim: Claim, exit_of: &dyn Fn(&str) -> Option<i64>) -> Findings {
+pub fn command_findings(
+    doc: &CommandDoc,
+    tool: &str,
+    claim: Claim,
+    exit_of: &dyn Fn(&str) -> Option<i64>,
+) -> Findings {
     let mut findings: Findings = vec![("rule-1", rule_1(doc))];
 
     findings.push(("rule-2-refs", rule_2_refs(doc)));
@@ -298,7 +316,10 @@ fn rule_1(doc: &CommandDoc) -> Option<String> {
     finding(
         doc,
         "1",
-        &[format!("command {:?} is not its path {path:?}", doc.command)],
+        &[format!(
+            "command {:?} is not its path {path:?}",
+            doc.command
+        )],
     )
 }
 
@@ -350,7 +371,10 @@ fn rule_2_outputs(doc: &CommandDoc) -> Option<String> {
     let mut problems = Vec::new();
     for output in &doc.outputs {
         if !seen.insert(&output.schema_ref) {
-            problems.push(format!("two outputs share the schemaRef {}", output.schema_ref));
+            problems.push(format!(
+                "two outputs share the schemaRef {}",
+                output.schema_ref
+            ));
         }
     }
     finding(doc, "2", &problems)
@@ -358,9 +382,23 @@ fn rule_2_outputs(doc: &CommandDoc) -> Option<String> {
 
 // ---- rule 3: defaults and domains ----
 
-const NUMERIC_KEYWORDS: [&str; 5] = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"];
+const NUMERIC_KEYWORDS: [&str; 5] = [
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+];
 const STRING_KEYWORDS: [&str; 3] = ["minLength", "maxLength", "pattern"];
-const STRUCTURAL_KEYWORDS: [&str; 7] = ["type", "enum", "const", "properties", "required", "additionalProperties", "items"];
+const STRUCTURAL_KEYWORDS: [&str; 7] = [
+    "type",
+    "enum",
+    "const",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+];
 const DOMAIN_ANNOTATIONS: [&str; 4] = ["title", "description", "$comment", "format"];
 
 /// The keywords a domain of `value_type` may use (spec 10.7.4), `None` for a type that has no domain.
@@ -392,7 +430,11 @@ pub fn domain_profile_problems(arg: &Arg) -> Vec<String> {
 
 /// Whether the domain of `arg` is one a value cannot be judged against: outside the profile of its valueType or not a JSON Schema that compiles. `L1.walk` reports it (rule 3); the other checks leave the argument's domain alone.
 pub fn domain_unusable(arg: &Arg) -> bool {
-    !domain_profile_problems(arg).is_empty() || arg.domain.as_ref().is_some_and(|domain| invocation::domain_compile_error(domain).is_some())
+    !domain_profile_problems(arg).is_empty()
+        || arg
+            .domain
+            .as_ref()
+            .is_some_and(|domain| invocation::domain_compile_error(domain).is_some())
 }
 
 /// What rule 3 finds in the domain of one argument.
@@ -423,7 +465,8 @@ impl DomainState {
             return;
         };
         let Some(object) = node.as_object() else {
-            self.profile.push(format!("{at}: a domain schema is an object"));
+            self.profile
+                .push(format!("{at}: a domain schema is an object"));
             return;
         };
         let integral = arg.value_type == "integer" || arg.value_type == "count";
@@ -446,8 +489,11 @@ impl DomainState {
                             self.profile.push(format!(
                                 "{at}: {keyword} {number} is not a safe integer (spec 10.7.5)"
                             ));
-                        } else if keyword == "multipleOf" && number.as_f64().is_some_and(|n| n <= 0.0) {
-                            self.profile.push(format!("{at}: multipleOf is not positive"));
+                        } else if keyword == "multipleOf"
+                            && number.as_f64().is_some_and(|n| n <= 0.0)
+                        {
+                            self.profile
+                                .push(format!("{at}: multipleOf is not positive"));
                         }
                     }
                     _ => self
@@ -518,10 +564,7 @@ impl DomainStates {
             state.walk(arg, domain, &at);
             if state.profile.is_empty() && state.patterns.is_empty() {
                 if let Err(error) = schemas().validator(domain) {
-                    state.compile = Some(format!(
-                        "{at} does not compile: {}",
-                        first_line(&error)
-                    ));
+                    state.compile = Some(format!("{at} does not compile: {}", first_line(&error)));
                 }
             }
             if state.broken() {
@@ -602,12 +645,14 @@ fn rule_3_defaults(doc: &CommandDoc, domains: &DomainStates) -> Option<String> {
         if outside || domains.states.get(&index).is_some_and(DomainState::broken) {
             continue;
         }
-        let defaults: Vec<&Value> =
-            if arg.value_type != "count" && (arg.repeatable || arg.variadic) && arg.default.is_array() {
-                elements
-            } else {
-                vec![&arg.default]
-            };
+        let defaults: Vec<&Value> = if arg.value_type != "count"
+            && (arg.repeatable || arg.variadic)
+            && arg.default.is_array()
+        {
+            elements
+        } else {
+            vec![&arg.default]
+        };
         for default in defaults {
             for issue in value_issues(arg, default) {
                 problems.push(format!("default of {}: {issue}", arg.name));
@@ -655,9 +700,7 @@ fn rule_4_names_and_codes(doc: &CommandDoc) -> (Option<String>, Option<String>) 
         }
         if let Some(code) = &constraint.code {
             if !doc.errors.contains(code) {
-                code_problems.push(format!(
-                    "constraint {index} code {code} is not in errors"
-                ));
+                code_problems.push(format!("constraint {index} code {code} is not in errors"));
             }
         }
     }
@@ -825,12 +868,19 @@ fn rule_10(doc: &CommandDoc) -> Option<String> {
 
 /// The explicit arguments of one `--input` document, `camelCase` keys naming options (spec 11.5), with the problems of
 /// their values.
-fn document_args(doc: &CommandDoc, document: &Map<String, Value>, at: &str, problems: &mut Vec<String>) -> Args {
+fn document_args(
+    doc: &CommandDoc,
+    document: &Map<String, Value>,
+    at: &str,
+    problems: &mut Vec<String>,
+) -> Args {
     let mut args = Args::default();
     if let Some(Value::Array(operands)) = document.get("operands") {
         args.operands.clone_from(operands);
         for (index, value) in operands.iter().enumerate() {
-            let arg = doc.operands.get(index.min(doc.operands.len().saturating_sub(1)));
+            let arg = doc
+                .operands
+                .get(index.min(doc.operands.len().saturating_sub(1)));
             if let Some(arg) = arg.filter(|arg| index < doc.operands.len() || arg.variadic) {
                 for issue in value_issues(arg, value) {
                     problems.push(format!("{at} /operands/{index}: {issue}"));
@@ -842,7 +892,11 @@ fn document_args(doc: &CommandDoc, document: &Map<String, Value>, at: &str, prob
         if key == "operands" {
             continue;
         }
-        let Some(option) = doc.options.iter().find(|option| camel(&option.name) == *key) else {
+        let Some(option) = doc
+            .options
+            .iter()
+            .find(|option| camel(&option.name) == *key)
+        else {
             problems.push(format!("{at} /{key}: no such option"));
             continue;
         };
@@ -850,7 +904,9 @@ fn document_args(doc: &CommandDoc, document: &Map<String, Value>, at: &str, prob
             problems.push(format!("{at} /{key}: a flag-only option in a document"));
         }
         let values: Vec<&Value> = match value {
-            Value::Array(items) if option.repeatable && option.value_type != "count" => items.iter().collect(),
+            Value::Array(items) if option.repeatable && option.value_type != "count" => {
+                items.iter().collect()
+            }
             one => vec![one],
         };
         for item in values {
@@ -933,9 +989,9 @@ const CUT_DEPTH: usize = 64;
 
 /// Whether `branch` is exactly `{"type": "null"}`.
 fn is_bare_null(branch: &Value) -> bool {
-    branch
-        .as_object()
-        .is_some_and(|object| object.len() == 1 && object.get("type").and_then(Value::as_str) == Some("null"))
+    branch.as_object().is_some_and(|object| {
+        object.len() == 1 && object.get("type").and_then(Value::as_str) == Some("null")
+    })
 }
 
 /// Checks that every cut node along `trie` is projectable (spec 6.10, rule 11). The caller passes the output's root
@@ -954,13 +1010,19 @@ fn check_cut(
         return;
     };
     if depth > CUT_DEPTH {
-        problems.push(format!("{at}: the cut nodes are nested without end (a reference cycle)"));
+        problems.push(format!(
+            "{at}: the cut nodes are nested without end (a reference cycle)"
+        ));
         return;
     }
     let Some(object) = node.as_object() else {
         problems.push(format!(
             "{at}: the {} schema {node} is not a projectable cut node (spec 6.10)",
-            if node.is_boolean() { "boolean" } else { "non-object" }
+            if node.is_boolean() {
+                "boolean"
+            } else {
+                "non-object"
+            }
         ));
         return;
     };
@@ -1017,7 +1079,10 @@ fn check_cut(
             }
         }
         if types.iter().any(|t| *t != "array" && *t != "null") {
-            problems.push(format!("{at}: an array cut node admits {}", types.join(", ")));
+            problems.push(format!(
+                "{at}: an array cut node admits {}",
+                types.join(", ")
+            ));
         }
         check_cut(
             schemas,
@@ -1031,7 +1096,8 @@ fn check_cut(
     }
     for keyword in object.keys() {
         let allowed = ANNOTATIONS.contains(&keyword.as_str())
-            || ["type", "properties", "required", "additionalProperties"].contains(&keyword.as_str());
+            || ["type", "properties", "required", "additionalProperties"]
+                .contains(&keyword.as_str());
         if !allowed {
             problems.push(format!(
                 "{at}: keyword {keyword} in an object cut node (spec 6.10)"
@@ -1039,7 +1105,10 @@ fn check_cut(
         }
     }
     if types.iter().any(|t| *t != "object" && *t != "null") {
-        problems.push(format!("{at}: an object cut node admits {}", types.join(", ")));
+        problems.push(format!(
+            "{at}: an object cut node admits {}",
+            types.join(", ")
+        ));
     }
     let properties = object.get("properties").and_then(Value::as_object);
     for (member, child) in trie {
@@ -1070,7 +1139,11 @@ fn cut_trie(doc: &CommandDoc, output: &Output, v11: bool) -> Members {
     for path in declared {
         let names = step_names(path);
         let map = v11 && is_map(path_node(&doc.schemas, record, path));
-        let take = if map { names.len() } else { names.len().saturating_sub(1) };
+        let take = if map {
+            names.len()
+        } else {
+            names.len().saturating_sub(1)
+        };
         let mut node = &mut ancestors;
         for segment in &names[..take] {
             let entry = node
@@ -1151,7 +1224,9 @@ fn rule_11(doc: &CommandDoc, v11: bool) -> Option<String> {
             if let Some(problem) = field_path_problem(path) {
                 problems.push(problem);
             } else if path_node(&doc.schemas, record, path).is_none() {
-                problems.push(format!("field path {path} is not declared by the record schema"));
+                problems.push(format!(
+                    "field path {path} is not declared by the record schema"
+                ));
             }
         }
     }
@@ -1238,8 +1313,14 @@ mod tests {
     /// The exit of every code of the example registries of canon and acme, for rule 13.
     fn exit_of(code: &str) -> Option<i64> {
         let mut exits: BTreeMap<String, i64> = BTreeMap::new();
-        for file in ["atip-examples/schema-errors.json", "atip-examples/schema-errors-acme.json"] {
-            for entry in load(file)["data"]["errors"].as_array().expect("an errors list") {
+        for file in [
+            "atip-examples/schema-errors.json",
+            "atip-examples/schema-errors-acme.json",
+        ] {
+            for entry in load(file)["data"]["errors"]
+                .as_array()
+                .expect("an errors list")
+            {
                 if let (Some(code), Some(exit)) = (entry["code"].as_str(), entry["exit"].as_i64()) {
                     exits.entry(code.to_string()).or_insert(exit);
                 }
@@ -1250,7 +1331,10 @@ mod tests {
 
     /// The tool and the claim of an answer: `meta.tool` and `meta.contractVersion` (absent means 1.0).
     fn identity(answer: &Value) -> (String, Claim) {
-        let tool = answer["meta"]["tool"].as_str().unwrap_or("tool").to_string();
+        let tool = answer["meta"]["tool"]
+            .as_str()
+            .unwrap_or("tool")
+            .to_string();
         let claim = match answer["meta"]["contractVersion"].as_str() {
             Some("1.2") => Claim::V1_2,
             Some("1.1") => Claim::V1_1,
@@ -1308,16 +1392,28 @@ mod tests {
         ("schema-schemas-not-compiling", "rule-2-compile"),
         ("schema-enum-default-outside", "rule-3-defaults"),
         ("schema-domain-bound-unsafe", "rule-3-domain-profile"),
-        ("schema-domain-numeric-keyword-on-string", "rule-3-domain-profile"),
+        (
+            "schema-domain-numeric-keyword-on-string",
+            "rule-3-domain-profile",
+        ),
         ("schema-domain-outside-profile", "rule-3-domain-profile"),
         ("schema-domain-ref", "rule-3-domain-profile"),
         ("schema-domain-structural-enum", "rule-3-domain-profile"),
         ("schema-domain-pattern-alternation", "rule-3-domain-pattern"),
-        ("schema-domain-pattern-class-intersection", "rule-3-domain-pattern"),
-        ("schema-domain-pattern-class-symmetric-difference", "rule-3-domain-pattern"),
+        (
+            "schema-domain-pattern-class-intersection",
+            "rule-3-domain-pattern",
+        ),
+        (
+            "schema-domain-pattern-class-symmetric-difference",
+            "rule-3-domain-pattern",
+        ),
         ("schema-domain-pattern-dot", "rule-3-domain-pattern"),
         ("schema-domain-pattern-lookahead", "rule-3-domain-pattern"),
-        ("schema-domain-pattern-rust-size-limit", "rule-3-domain-pattern"),
+        (
+            "schema-domain-pattern-rust-size-limit",
+            "rule-3-domain-pattern",
+        ),
         ("schema-domain-pattern-shorthand", "rule-3-domain-pattern"),
         ("schema-domain-pattern-unanchored", "rule-3-domain-pattern"),
         ("schema-constraint-code-not-in-errors", "rule-4-codes"),
@@ -1411,7 +1507,8 @@ mod tests {
     }
 
     #[test]
-    fn atip_checkl1_rules_a_command_reports_the_conditions_its_document_has_something_to_judge_for() {
+    fn atip_checkl1_rules_a_command_reports_the_conditions_its_document_has_something_to_judge_for()
+    {
         let (_, tag) = judge("schema-docs/schema-command-acme-member-tag.json");
         let conditions: Vec<&str> = tag.iter().map(|(condition, _)| *condition).collect();
         assert_eq!(
@@ -1524,17 +1621,25 @@ mod tests {
 
     #[test]
     fn atip_checkl1_rules_a_relation_stated_in_another_order_with_another_code_is_stated_twice() {
-        let findings = mutated("schema-docs/schema-command-canon-finding-close.json", |data| {
-            let constraints = data["constraints"].as_array_mut().expect("constraints");
-            constraints.push(json!({"rule": "atMostOne", "names": ["no-promote", "promote"], "code": "USAGE"}));
-        });
-        assert_eq!(failing(&findings), vec!["rule-4-relation-once"], "{findings:#?}");
+        let findings = mutated(
+            "schema-docs/schema-command-canon-finding-close.json",
+            |data| {
+                let constraints = data["constraints"].as_array_mut().expect("constraints");
+                constraints.push(json!({"rule": "atMostOne", "names": ["no-promote", "promote"], "code": "USAGE"}));
+            },
+        );
+        assert_eq!(
+            failing(&findings),
+            vec!["rule-4-relation-once"],
+            "{findings:#?}"
+        );
         assert!(problem_of(&findings, "rule-4-relation-once")
             .ends_with("constraint 3 repeats constraint 2 (spec 10.8.2)"));
     }
 
     #[test]
-    fn atip_checkl1_rules_a_validator_code_registered_with_exit_1_is_rule_13_and_an_unregistered_one_is_not() {
+    fn atip_checkl1_rules_a_validator_code_registered_with_exit_1_is_rule_13_and_an_unregistered_one_is_not(
+    ) {
         let mut answer = load("schema-docs/schema-command-canon-purge.json");
         let (tool, claim) = identity(&answer);
         answer["data"]["validators"][0]["code"] = json!("WRITE_FAILED");
@@ -1546,7 +1651,10 @@ mod tests {
         let findings = command_findings(&doc, &tool, claim, &exit_of);
         assert!(problem_of(&findings, "rule-13").contains("exits 1, not 2"));
         let findings = command_findings(&doc, &tool, claim, &|_| None);
-        assert!(!failing(&findings).contains(&"rule-13"), "an unregistered code is not judged: {findings:#?}");
+        assert!(
+            !failing(&findings).contains(&"rule-13"),
+            "an unregistered code is not judged: {findings:#?}"
+        );
     }
 
     #[test]
@@ -1579,7 +1687,11 @@ mod tests {
             let (answer, tree) = tree_answer(&format!("schema-docs/{file}"));
             let findings = tree_findings(&answer, &tree, &tree.level);
             let conditions: Vec<&str> = findings.iter().map(|(c, _)| *c).collect();
-            assert_eq!(conditions, ["level", "groups-first", "unique-ids", "entry-path"], "{file}");
+            assert_eq!(
+                conditions,
+                ["level", "groups-first", "unique-ids", "entry-path"],
+                "{file}"
+            );
             assert!(holding(&findings), "{file}: {findings:#?}");
         }
         // A search answer lists matches, not the tree: its order is not judged.
@@ -1591,7 +1703,8 @@ mod tests {
     }
 
     #[test]
-    fn atip_checkl1_rules_a_tree_at_or_above_the_claimed_level_meets_it_and_another_fails_only_level() {
+    fn atip_checkl1_rules_a_tree_at_or_above_the_claimed_level_meets_it_and_another_fails_only_level(
+    ) {
         let (answer, tree) = tree_answer("schema-docs/schema-tree.json");
         // The example tree declares L2: it meets an L1 claim (levels are cumulative) and fails an unknown one.
         assert_eq!(tree.level, "L2");
@@ -1616,7 +1729,8 @@ mod tests {
             .map(|(condition, _)| *condition)
             .collect();
         assert_eq!(failing, ["groups-first"], "{findings:#?}");
-        assert!(problem_of(&findings, "groups-first").contains("finding add is listed before its group finding"));
+        assert!(problem_of(&findings, "groups-first")
+            .contains("finding add is listed before its group finding"));
     }
 
     #[test]
@@ -1670,20 +1784,27 @@ mod tests {
         let (_, tree) = tree_answer("schema-docs/schema-tree.json");
         let (_, group) = group_answer("schema-docs/invalid/schema-group-id-mismatch.json");
         let findings = group_findings(&group, &tree);
-        assert!(problem_of(&findings, "group-path").contains("group \"findings\" is not its path \"finding\""));
+        assert!(problem_of(&findings, "group-path")
+            .contains("group \"findings\" is not its path \"finding\""));
         assert!(findings[1].1.is_none(), "{findings:#?}");
     }
 
     #[test]
-    fn atip_checkl1_rules_a_group_that_lists_other_children_than_the_tree_fails_only_group_children() {
+    fn atip_checkl1_rules_a_group_that_lists_other_children_than_the_tree_fails_only_group_children(
+    ) {
         let (_, tree) = tree_answer("schema-docs/schema-tree.json");
         let (mut answer, _) = group_answer("schema-docs/schema-group.json");
-        let removed = answer["data"]["commands"].as_array_mut().expect("commands").remove(0);
+        let removed = answer["data"]["commands"]
+            .as_array_mut()
+            .expect("commands")
+            .remove(0);
         let group = GroupDoc::parse(&answer["data"]).expect("a group");
         let findings = group_findings(&group, &tree);
         assert!(findings[0].1.is_none());
-        assert!(problem_of(&findings, "group-children")
-            .contains(&format!("the tree's child {} is not listed", removed["command"].as_str().expect("a command"))));
+        assert!(problem_of(&findings, "group-children").contains(&format!(
+            "the tree's child {} is not listed",
+            removed["command"].as_str().expect("a command")
+        )));
 
         let (mut answer, _) = group_answer("schema-docs/schema-group.json");
         answer["data"]["commands"].as_array_mut().expect("commands").push(json!(
@@ -1691,6 +1812,7 @@ mod tests {
         ));
         let group = GroupDoc::parse(&answer["data"]).expect("a group");
         let findings = group_findings(&group, &tree);
-        assert!(problem_of(&findings, "group-children").contains("finding purge is not a child of finding in the tree"));
+        assert!(problem_of(&findings, "group-children")
+            .contains("finding purge is not a child of finding in the tree"));
     }
 }

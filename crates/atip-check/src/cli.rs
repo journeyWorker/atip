@@ -38,7 +38,14 @@ pub enum Command {
 
 const COMMANDS: [&str; 1] = ["check"];
 const ROOT_OPTIONS: [&str; 3] = ["--json", "--version", "--help"];
-const CHECK_OPTIONS: [&str; 6] = ["--bin", "--level", "--fixture", "--contract", "--json", "--help"];
+const CHECK_OPTIONS: [&str; 6] = [
+    "--bin",
+    "--level",
+    "--fixture",
+    "--contract",
+    "--json",
+    "--help",
+];
 const LEVELS: [&str; 3] = ["L0", "L1", "L2"];
 
 pub const ROOT_HELP: &str = "atip: run a built binary and check the atip/1 contract from outside
@@ -215,10 +222,12 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
         Some(given) => {
             let given = given.to_string_lossy().into_owned();
             if !MINORS.contains(&given.as_str()) {
-                return Err(usage(format!("{given} is not a contract minor this checker knows"))
-                    .field("--contract")
-                    .expected(MINORS)
-                    .received(given.as_str()));
+                return Err(usage(format!(
+                    "{given} is not a contract minor this checker knows"
+                ))
+                .field("--contract")
+                .expected(MINORS)
+                .received(given.as_str()));
             }
             Some(given)
         }

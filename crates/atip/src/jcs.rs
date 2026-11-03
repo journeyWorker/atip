@@ -42,7 +42,10 @@ impl std::error::Error for Error {}
 
 /// The SHA-256 of `bytes` as 64 lower-case hex digits: what a binding or a digest is made of.
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 /// `value` as its RFC 8785 canonical JSON text.
@@ -90,10 +93,18 @@ fn write(value: &Value, out: &mut String) -> Result<(), Error> {
 /// A number as RFC 8785 writes it: an integer within ±(2^53-1) as its digits, any other as the ECMAScript form of the double.
 fn integer(number: &Number) -> Result<String, Error> {
     if let Some(signed) = number.as_i64() {
-        return if signed.unsigned_abs() <= SAFE_INTEGER { Ok(signed.to_string()) } else { Err(Error::NumberNotSafe(number.to_string())) };
+        return if signed.unsigned_abs() <= SAFE_INTEGER {
+            Ok(signed.to_string())
+        } else {
+            Err(Error::NumberNotSafe(number.to_string()))
+        };
     }
     if let Some(unsigned) = number.as_u64() {
-        return if unsigned <= SAFE_INTEGER { Ok(unsigned.to_string()) } else { Err(Error::NumberNotSafe(number.to_string())) };
+        return if unsigned <= SAFE_INTEGER {
+            Ok(unsigned.to_string())
+        } else {
+            Err(Error::NumberNotSafe(number.to_string()))
+        };
     }
     match number.as_f64() {
         Some(float) if float.is_finite() => Ok(ecmascript(float)),
@@ -111,26 +122,45 @@ fn ecmascript(value: f64) -> String {
     // are equally close to the double, ECMAScript takes the even one (`1424953923781206.25` is `1424953923781206.2`) where the
     // shortest-digits writer rounds up, so the digits are the correctly rounded value of that length when it reads back.
     let shortest = format!("{:e}", value.abs());
-    let digit_count = shortest.split_once('e').map_or(1, |(mantissa, _)| mantissa.chars().filter(char::is_ascii_digit).count());
+    let digit_count = shortest.split_once('e').map_or(1, |(mantissa, _)| {
+        mantissa.chars().filter(char::is_ascii_digit).count()
+    });
     let rounded = format!("{:.*e}", digit_count.saturating_sub(1), value.abs());
-    let scientific = if rounded.parse::<f64>().is_ok_and(|read_back| read_back == value.abs()) { rounded } else { shortest };
+    let scientific = if rounded
+        .parse::<f64>()
+        .is_ok_and(|read_back| read_back == value.abs())
+    {
+        rounded
+    } else {
+        shortest
+    };
     let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
     let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
     let k = i32::try_from(digits.len()).unwrap_or(i32::MAX);
     // value = 0.DIGITS * 10^n
     let n = exponent.parse::<i32>().unwrap_or_default() + 1;
     let body = if k <= n && n <= 21 {
-        format!("{digits}{}", "0".repeat(usize::try_from(n - k).unwrap_or_default()))
+        format!(
+            "{digits}{}",
+            "0".repeat(usize::try_from(n - k).unwrap_or_default())
+        )
     } else if 0 < n && n <= 21 {
         let (whole, fraction) = digits.split_at(usize::try_from(n).unwrap_or_default());
         format!("{whole}.{fraction}")
     } else if -6 < n && n <= 0 {
-        format!("0.{}{digits}", "0".repeat(usize::try_from(-n).unwrap_or_default()))
+        format!(
+            "0.{}{digits}",
+            "0".repeat(usize::try_from(-n).unwrap_or_default())
+        )
     } else {
         let power = n - 1;
         let sign_of_power = if power < 0 { "-" } else { "+" };
         let (first, rest) = digits.split_at(1);
-        let fraction = if rest.is_empty() { String::new() } else { format!(".{rest}") };
+        let fraction = if rest.is_empty() {
+            String::new()
+        } else {
+            format!(".{rest}")
+        };
         format!("{first}{fraction}e{sign_of_power}{}", power.abs())
     };
     format!("{sign}{body}")
@@ -147,7 +177,9 @@ fn string(text: &str, out: &mut String) {
             '\n' => out.push_str("\\n"),
             '\u{c}' => out.push_str("\\f"),
             '\r' => out.push_str("\\r"),
-            control if control < '\u{20}' => out.push_str(&format!("\\u{:04x}", u32::from(control))),
+            control if control < '\u{20}' => {
+                out.push_str(&format!("\\u{:04x}", u32::from(control)))
+            }
             other => out.push(other),
         }
     }
@@ -186,37 +218,73 @@ mod tests {
     /// escape, and the literals, which keep their `null`.
     #[test]
     fn atip_cratecursor_12_rfc_8785_writes_strings_and_literals_as_the_appendix_does() {
-        let text = canonical(r#"{"string": "\u20ac$\u000F\u000aA'\u0042\u0022\u005c\\\"\/", "literals": [null, true, false]}"#);
-        assert_eq!(text, "{\"literals\":[null,true,false],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}");
+        let text = canonical(
+            r#"{"string": "\u20ac$\u000F\u000aA'\u0042\u0022\u005c\\\"\/", "literals": [null, true, false]}"#,
+        );
+        assert_eq!(
+            text,
+            "{\"literals\":[null,true,false],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
+        );
     }
 
     #[test]
-    fn atip_cratecursor_12_a_control_character_is_escaped_short_where_the_rfc_has_a_short_form_and_by_u00xx_otherwise() {
-        assert_eq!(to_string(&json!("\u{8}\t\n\u{c}\r\u{1}\u{1f}\u{7f}")).expect("canonical"), "\"\\b\\t\\n\\f\\r\\u0001\\u001f\u{7f}\"");
-        assert_eq!(to_string(&json!("é😀\u{2028}")).expect("canonical"), "\"é😀\u{2028}\"", "everything else is written as it is, in UTF-8");
+    fn atip_cratecursor_12_a_control_character_is_escaped_short_where_the_rfc_has_a_short_form_and_by_u00xx_otherwise(
+    ) {
+        assert_eq!(
+            to_string(&json!("\u{8}\t\n\u{c}\r\u{1}\u{1f}\u{7f}")).expect("canonical"),
+            "\"\\b\\t\\n\\f\\r\\u0001\\u001f\u{7f}\""
+        );
+        assert_eq!(
+            to_string(&json!("é😀\u{2028}")).expect("canonical"),
+            "\"é😀\u{2028}\"",
+            "everything else is written as it is, in UTF-8"
+        );
     }
 
     #[test]
     fn atip_cratecursor_12_whitespace_nulls_and_empty_members_are_kept_exactly() {
-        assert_eq!(canonical(" { \"b\" : [ ] , \"a\" : { } , \"c\" : null } "), r#"{"a":{},"b":[],"c":null}"#);
-        assert_eq!(canonical(r#"[{"b":2,"a":1},[3,{"z":null,"y":true}]]"#), r#"[{"a":1,"b":2},[3,{"y":true,"z":null}]]"#);
+        assert_eq!(
+            canonical(" { \"b\" : [ ] , \"a\" : { } , \"c\" : null } "),
+            r#"{"a":{},"b":[],"c":null}"#
+        );
+        assert_eq!(
+            canonical(r#"[{"b":2,"a":1},[3,{"z":null,"y":true}]]"#),
+            r#"[{"a":1,"b":2},[3,{"y":true,"z":null}]]"#
+        );
     }
 
     #[test]
-    fn atip_cratecursor_12_integers_within_the_safe_range_are_written_and_a_whole_float_is_the_integer() {
-        assert_eq!(canonical("[0,-0,1,1.0,-1.0,9007199254740991,-9007199254740991,1e2,12345678901234]"), "[0,0,1,1,-1,9007199254740991,-9007199254740991,100,12345678901234]");
+    fn atip_cratecursor_12_integers_within_the_safe_range_are_written_and_a_whole_float_is_the_integer(
+    ) {
+        assert_eq!(
+            canonical("[0,-0,1,1.0,-1.0,9007199254740991,-9007199254740991,1e2,12345678901234]"),
+            "[0,0,1,1,-1,9007199254740991,-9007199254740991,100,12345678901234]"
+        );
         assert_eq!(canonical("[-0.0, 0.0]"), "[0,0]");
     }
 
     #[test]
-    fn atip_cratecursor_12_an_integer_beyond_the_safe_range_is_an_error_and_every_other_number_is_the_ecmascript_form_of_its_double() {
+    fn atip_cratecursor_12_an_integer_beyond_the_safe_range_is_an_error_and_every_other_number_is_the_ecmascript_form_of_its_double(
+    ) {
         // 64-bit integers outside ±(2^53-1) are refused, whatever their sign, alone or inside a document.
-        for text in ["9007199254740992", "-9007199254740992", "9007199254740993", "18446744073709551615", "-9223372036854775808"] {
+        for text in [
+            "9007199254740992",
+            "-9007199254740992",
+            "9007199254740993",
+            "18446744073709551615",
+            "-9223372036854775808",
+        ] {
             let value: Value = serde_json::from_str(text).expect("JSON");
-            assert!(matches!(to_string(&value), Err(Error::NumberNotSafe(_))), "{text}");
+            assert!(
+                matches!(to_string(&value), Err(Error::NumberNotSafe(_))),
+                "{text}"
+            );
             assert!(to_string(&json!({ "a": [value] })).is_err(), "{text}");
         }
-        assert!(to_string(&json!({ "a": 9_007_199_254_740_993_u64 })).expect_err("refused").to_string().contains("9007199254740993"));
+        assert!(to_string(&json!({ "a": 9_007_199_254_740_993_u64 }))
+            .expect_err("refused")
+            .to_string()
+            .contains("9007199254740993"));
         // A number written with a fraction or an exponent is a double, as it is to every other implementation.
         assert_eq!(canonical("[1.5,0.1,-2.5,1e300,9007199254740993.0,4.50,2e-3,1E-27,5e-324,1e21,1e20,0.000001,1e-7]"), "[1.5,0.1,-2.5,1e+300,9007199254740992,4.5,0.002,1e-27,5e-324,1e+21,100000000000000000000,0.000001,1e-7]");
     }

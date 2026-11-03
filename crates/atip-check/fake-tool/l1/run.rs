@@ -37,7 +37,9 @@ pub fn handle(tool: &Tool, args: &[String]) -> Option<ExitCode> {
         return Some(help_for(tool, &words));
     }
     if tool.flag("l2") {
-        if let Some(code) = super::safety::handle(tool, args, &words).or_else(|| super::guides::handle(tool, args, &words)) {
+        if let Some(code) = super::safety::handle(tool, args, &words)
+            .or_else(|| super::guides::handle(tool, args, &words))
+        {
             return Some(code);
         }
     }
@@ -86,11 +88,7 @@ fn help_for(tool: &Tool, words: &[String]) -> ExitCode {
         std::fs::write("help-cache.txt", "written by --help").unwrap_or_default();
     }
     let text = if let Some(command) = model.command(&current) {
-        let doc = patched(
-            tool,
-            &current,
-            command_doc(&tool.name(), command),
-        );
+        let doc = patched(tool, &current, command_doc(&tool.name(), command));
         help::command_help(tool, &doc)
     } else {
         help::group_help(tool, &model, &current)
@@ -194,7 +192,11 @@ fn schema(tool: &Tool, args: &[String]) -> ExitCode {
         .collect();
     if let Some(query) = parsed.text("search") {
         cache();
-        let tree = patched(tool, "<tree>", super::guides::search_tree(tool, &model, query));
+        let tree = patched(
+            tool,
+            "<tree>",
+            super::guides::search_tree(tool, &model, query),
+        );
         return tool.success("schema", tree);
     }
     let registry: Vec<(String, Option<String>)> = ["errors", "error", "warnings", "warning"]
@@ -208,7 +210,10 @@ fn schema(tool: &Tool, args: &[String]) -> ExitCode {
         })
         .collect();
     if !registry.is_empty() {
-        if registry.iter().all(|(name, _)| name == "--errors" || name == "--warnings") {
+        if registry
+            .iter()
+            .all(|(name, _)| name == "--errors" || name == "--warnings")
+        {
             cache();
         }
         return tool.schema(&registry);
@@ -233,12 +238,26 @@ fn schema(tool: &Tool, args: &[String]) -> ExitCode {
             &[("field", json!("--errors"))],
         );
     }
-    let tree = patched(tool, "<tree>", tree_doc(&model, tool.flag("treeGroupsLast"), &tool.text("treeLevel", if tool.flag("l2") { "L2" } else { "L1" })));
+    let tree = patched(
+        tool,
+        "<tree>",
+        tree_doc(
+            &model,
+            tool.flag("treeGroupsLast"),
+            &tool.text("treeLevel", if tool.flag("l2") { "L2" } else { "L1" }),
+        ),
+    );
     cache();
     tool.success("schema", tree)
 }
 
-fn schema_path(tool: &Tool, model: &Model, words: &[String], quoted: bool, cache: &dyn Fn()) -> ExitCode {
+fn schema_path(
+    tool: &Tool,
+    model: &Model,
+    words: &[String],
+    quoted: bool,
+    cache: &dyn Fn(),
+) -> ExitCode {
     let mut current = String::new();
     for (index, word) in words.iter().enumerate() {
         let candidate = if current.is_empty() {
@@ -432,9 +451,10 @@ impl Member {
         }
         record.insert(
             "profile".into(),
-            self.profile.map_or(Value::Null, |(name, email)| {
-                json!({"name": name, "email": email, "timezone": "UTC"})
-            }),
+            self.profile.map_or(
+                Value::Null,
+                |(name, email)| json!({"name": name, "email": email, "timezone": "UTC"}),
+            ),
         );
         record.insert("tags".into(), json!(self.tags));
         record.insert(
@@ -467,7 +487,12 @@ fn encode_cursor(offset: usize, binding: &str) -> String {
 }
 
 /// The offset a cursor stands for, or the refusal for it.
-fn decode_cursor(tool: &Tool, cursor: &str, binding: &str, total: usize) -> Result<usize, ExitCode> {
+fn decode_cursor(
+    tool: &Tool,
+    cursor: &str,
+    binding: &str,
+    total: usize,
+) -> Result<usize, ExitCode> {
     let parts: Vec<&str> = cursor.split('.').collect();
     let offset = match parts.as_slice() {
         ["m1", offset, hash] if u32::from_str_radix(hash, 16).is_ok() => {
@@ -484,7 +509,10 @@ fn decode_cursor(tool: &Tool, cursor: &str, binding: &str, total: usize) -> Resu
         )
     };
     let Some((offset, hash)) = offset.filter(|(offset, _)| *offset <= total) else {
-        return Err(refuse("that is not a cursor of this command", "CURSOR_INVALID"));
+        return Err(refuse(
+            "that is not a cursor of this command",
+            "CURSOR_INVALID",
+        ));
     };
     if hash != format!("{:08x}", binding_hash(binding)) && !tool.flag("cursorIgnoresFilter") {
         let code = if tool.flag("cursorFilterRefusedAsUsage") {
@@ -498,7 +526,12 @@ fn decode_cursor(tool: &Tool, cursor: &str, binding: &str, total: usize) -> Resu
 }
 
 /// `argv` of the next page: the invocation again, with the cursor of the next page.
-fn next_page_argv(args: &[String], cursor: &str, document: &[String], keep_input: bool) -> Vec<String> {
+fn next_page_argv(
+    args: &[String],
+    cursor: &str,
+    document: &[String],
+    keep_input: bool,
+) -> Vec<String> {
     let mut argv = Vec::new();
     let mut words = args.iter().take_while(|arg| arg.as_str() != "--");
     while let Some(word) = words.next() {
@@ -546,12 +579,22 @@ fn selectable(tool: &Tool, declared: &[String], maps: &[&str], selected: &str) -
 }
 
 /// The kept paths and their trie: the selection of `--fields` plus the `keep` paths, or the refusal.
-fn projection(tool: &Tool, value: &str, doc: &Value) -> Result<(Vec<String>, Vec<String>), ExitCode> {
+fn projection(
+    tool: &Tool,
+    value: &str,
+    doc: &Value,
+) -> Result<(Vec<String>, Vec<String>), ExitCode> {
     let fields = &doc["outputs"][0]["fields"];
     let strings = |value: &Value| -> Vec<String> {
         value
             .as_array()
-            .map(|items| items.iter().filter_map(Value::as_str).map(ToString::to_string).collect())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(ToString::to_string)
+                    .collect()
+            })
             .unwrap_or_default()
     };
     let declared = strings(&fields["paths"]);
@@ -559,7 +602,9 @@ fn projection(tool: &Tool, value: &str, doc: &Value) -> Result<(Vec<String>, Vec
     let mut selection: Vec<String> = Vec::new();
     for path in project::split_list(value) {
         if !selectable(tool, &declared, &["attributes"], &path) {
-            if tool.flag("fieldsAcceptsUnknown") || (tool.flag("fieldsUnknownAcceptedInText") && !tool.json) {
+            if tool.flag("fieldsAcceptsUnknown")
+                || (tool.flag("fieldsUnknownAcceptedInText") && !tool.json)
+            {
                 continue;
             }
             return Err(tool.refuse(
@@ -588,18 +633,36 @@ fn list(tool: &Tool, args: &[String], parsed: &Parsed) -> ExitCode {
     let doc = command_doc(&tool.name(), command);
     if tool.flag("ghostTeamUsage") && parsed.text("team") == Some("ghost") {
         // The seeded violation: a refusal the model does not declare, for a value its documents accept.
-        return tool.refuse("USAGE", "there is no such team", "member list", &[("field", json!("--team"))]);
+        return tool.refuse(
+            "USAGE",
+            "there is no such team",
+            "member list",
+            &[("field", json!("--team"))],
+        );
     }
     if tool.flag("inputRefused") && parsed.has("input") {
-        return tool.refuse("INPUT_INVALID", "the document is not read", "member list", &[("field", json!("--input"))]);
+        return tool.refuse(
+            "INPUT_INVALID",
+            "the document is not read",
+            "member list",
+            &[("field", json!("--input"))],
+        );
     }
     let env_team = std::env::var("FAKE_TEAM").ok().filter(|_| tool.is_1_2());
-    let team_text = parsed.text("team").map(ToString::to_string).or_else(|| env_team.clone());
+    let team_text = parsed
+        .text("team")
+        .map(ToString::to_string)
+        .or_else(|| env_team.clone());
     let team = team_text.as_deref();
     let sort = parsed.text("sort").unwrap_or("name");
     if tool.flag("fieldsNeedsJson") && !tool.json && parsed.has("fields") {
         // The seeded violation of 1.2: `--fields` is refused without `--json`.
-        return tool.refuse("USAGE", "--fields needs --json", "member list", &[("field", json!("--fields"))]);
+        return tool.refuse(
+            "USAGE",
+            "--fields needs --json",
+            "member list",
+            &[("field", json!("--fields"))],
+        );
     }
     let mut members: Vec<&Member> = MEMBERS
         .iter()
@@ -613,15 +676,33 @@ fn list(tool: &Tool, args: &[String], parsed: &Parsed) -> ExitCode {
     // A cursor is bound to the arguments the invocation gave (a default written out is another invocation) and, for
     // an option it left out, to the value its environment variable has (spec 6.9, 1.2); before 1.2, to the effective values.
     let binding = if tool.is_1_2() && !tool.flag("cursorBindsEffective") {
-        let env = if tool.flag("cursorIgnoresEnv") || parsed.has("team") { String::new() } else { env_team.clone().unwrap_or_default() };
-        let kinds: Vec<&str> = parsed.values("kind").iter().filter_map(Value::as_str).collect();
-        format!("team={};sort={};env={env};kind={}", parsed.text("team").unwrap_or_default(), parsed.text("sort").unwrap_or_default(), kinds.join(","))
+        let env = if tool.flag("cursorIgnoresEnv") || parsed.has("team") {
+            String::new()
+        } else {
+            env_team.clone().unwrap_or_default()
+        };
+        let kinds: Vec<&str> = parsed
+            .values("kind")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        format!(
+            "team={};sort={};env={env};kind={}",
+            parsed.text("team").unwrap_or_default(),
+            parsed.text("sort").unwrap_or_default(),
+            kinds.join(",")
+        )
     } else {
         format!("team={};sort={sort}", team.unwrap_or_default())
     };
     if tool.flag("cursorRefusesAll") && parsed.has("all") && parsed.has("cursor") {
         // The seeded violation of 1.2: a cursor made under `--limit` is refused when `--all` replaces it.
-        return tool.refuse("CURSOR_INVALID", "that cursor was made with --limit", "member list", &[("field", json!("--cursor"))]);
+        return tool.refuse(
+            "CURSOR_INVALID",
+            "that cursor was made with --limit",
+            "member list",
+            &[("field", json!("--cursor"))],
+        );
     }
     let offset = match parsed.text("cursor") {
         None => 0,
@@ -635,22 +716,35 @@ fn list(tool: &Tool, args: &[String], parsed: &Parsed) -> ExitCode {
         remaining
     } else {
         let limit = usize::try_from(parsed.int("limit").unwrap_or(50)).unwrap_or(usize::MAX);
-        let limit = if tool.flag("limitIgnored") { limit.saturating_add(1) } else { limit };
+        let limit = if tool.flag("limitIgnored") {
+            limit.saturating_add(1)
+        } else {
+            limit
+        };
         limit.min(remaining)
     };
-    let page: Vec<Value> = members[offset..offset + size].iter().map(|member| member.record()).collect();
+    let page: Vec<Value> = members[offset..offset + size]
+        .iter()
+        .map(|member| member.record())
+        .collect();
     let more = offset + size < members.len();
     let mut meta = Map::new();
     let mut page_meta = json!({"returned": page.len(), "total": members.len()});
     if more {
-        let next_offset = if tool.flag("cursorRepeats") { offset } else { offset + size };
+        let next_offset = if tool.flag("cursorRepeats") {
+            offset
+        } else {
+            offset + size
+        };
         let cursor = encode_cursor(next_offset, &binding);
         page_meta["nextCursor"] = json!(cursor);
         // The arguments an `--input` document gave, as options (and, seeded, a default written out beside them).
         let mut document: Vec<String> = Vec::new();
         if parsed.has("input") {
             for name in ["team", "sort"] {
-                let written = args.iter().any(|word| word == &format!("--{name}") || word.starts_with(&format!("--{name}=")));
+                let written = args.iter().any(|word| {
+                    word == &format!("--{name}") || word.starts_with(&format!("--{name}="))
+                });
                 if let (Some(value), false) = (parsed.text(name), written) {
                     document.extend([format!("--{name}"), value.to_string()]);
                 }
@@ -699,7 +793,9 @@ fn list(tool: &Tool, args: &[String], parsed: &Parsed) -> ExitCode {
 /// The seeded violations of a projection: what it leaves, drops or breaks.
 fn seed_projection(tool: &Tool, selection: &[String], record: &Value, projected: &mut Value) {
     if tool.flag("fieldsKeepsUnselected") {
-        if let (Some(profile), Some(original)) = (projected.get_mut("profile"), record.get("profile")) {
+        if let (Some(profile), Some(original)) =
+            (projected.get_mut("profile"), record.get("profile"))
+        {
             if profile.is_object() {
                 *profile = original.clone();
             }
@@ -719,7 +815,11 @@ fn seed_projection(tool: &Tool, selection: &[String], record: &Value, projected:
 
 fn search(tool: &Tool, parsed: &Parsed) -> ExitCode {
     let query = parsed.text("query").map(str::to_lowercase);
-    let tags: Vec<&str> = parsed.values("tag").iter().filter_map(Value::as_str).collect();
+    let tags: Vec<&str> = parsed
+        .values("tag")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
     let filter_team = parsed
         .values("filter")
         .first()
@@ -798,7 +898,11 @@ fn tag_item(tool: &Tool, parsed: &Parsed) -> Result<Value, ItemError> {
     let id = parsed.int("member").unwrap_or_default();
     if !MEMBERS.iter().any(|member| member.id == id) {
         // The hint is a runnable command line; the seeded violation names a command the tool does not have.
-        let listing = if tool.flag("hintNoCommand") { "member lst" } else { "member list" };
+        let listing = if tool.flag("hintNoCommand") {
+            "member lst"
+        } else {
+            "member list"
+        };
         return Err(ItemError {
             code: "MEMBER_NOT_FOUND",
             message: format!("there is no member {id}"),
@@ -816,25 +920,38 @@ fn tag_item(tool: &Tool, parsed: &Parsed) -> Result<Value, ItemError> {
         .unwrap_or_else(|| json!({"member": id, "tags": []}));
     let mut tags: Vec<String> = before["tags"]
         .as_array()
-        .map(|items| items.iter().filter_map(Value::as_str).map(ToString::to_string).collect())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect()
+        })
         .unwrap_or_default();
-    tags.extend(parsed.values("tag").iter().filter_map(Value::as_str).map(ToString::to_string));
+    tags.extend(
+        parsed
+            .values("tag")
+            .iter()
+            .filter_map(Value::as_str)
+            .map(ToString::to_string),
+    );
     tags.sort();
     tags.dedup();
     let mut after = json!({"member": id, "tags": tags});
-    let note = parsed
-        .text("note")
-        .map(ToString::to_string)
-        .or_else(|| {
-            before["note"]
-                .as_str()
-                .filter(|_| !parsed.has("clear-note"))
-                .map(ToString::to_string)
-        });
+    let note = parsed.text("note").map(ToString::to_string).or_else(|| {
+        before["note"]
+            .as_str()
+            .filter(|_| !parsed.has("clear-note"))
+            .map(ToString::to_string)
+    });
     if let Some(note) = note {
         after["note"] = json!(note);
     }
-    let status = if after == before { "unchanged" } else { "written" };
+    let status = if after == before {
+        "unchanged"
+    } else {
+        "written"
+    };
     if status == "written" {
         std::fs::create_dir_all("tags").unwrap_or_default();
         std::fs::write(&path, after.to_string()).unwrap_or_default();
@@ -848,7 +965,14 @@ fn tag_item(tool: &Tool, parsed: &Parsed) -> Result<Value, ItemError> {
 fn record(tool: &Tool, args: &[String], words: &[String]) -> ExitCode {
     let model = Model::of(tool);
     match words.get(1).map(String::as_str) {
-        None => tool.fail("group", "COMMAND_REQUIRED", "record needs a command", Some("record"), &[("expected", json!(["put"]))], 2),
+        None => tool.fail(
+            "group",
+            "COMMAND_REQUIRED",
+            "record needs a command",
+            Some("record"),
+            &[("expected", json!(["put"]))],
+            2,
+        ),
         Some("put") => {
             let Some(command) = model.command("record put") else {
                 return tool.unknown_command("put", &["put"], Some("record"));
@@ -874,16 +998,41 @@ fn put(tool: &Tool, parsed: &Parsed) -> ExitCode {
     // that is not in the repository is). With `dashPreconditionNamed` the refusal names the argument and the value it received.
     if tool.flag("dashPrecondition") {
         let both = tool.flag("dashPreconditionBoth");
-        let mut given = parsed.text("label").map(|label| ("/label", label)).into_iter().chain(parsed.text("note").filter(|_| both).map(|note| ("/note", note)));
+        let mut given = parsed
+            .text("label")
+            .map(|label| ("/label", label))
+            .into_iter()
+            .chain(
+                parsed
+                    .text("note")
+                    .filter(|_| both)
+                    .map(|note| ("/note", note)),
+            );
         if let Some((pointer, text)) = given.find(|(_, text)| text.starts_with(['-', '{', '['])) {
             let field = tool.text("dashPreconditionField", pointer);
-            let extras: Vec<(&str, Value)> = if tool.flag("dashPreconditionNamed") { vec![("field", json!(field)), ("received", json!(text))] } else { Vec::new() };
+            let extras: Vec<(&str, Value)> = if tool.flag("dashPreconditionNamed") {
+                vec![("field", json!(field)), ("received", json!(text))]
+            } else {
+                Vec::new()
+            };
             let code = tool.text("dashPreconditionCode", "ALREADY_SEALED");
-            return tool.fail("usage", &code, "the value names something that is not there", Some("record put"), &extras, 2);
+            return tool.fail(
+                "usage",
+                &code,
+                "the value names something that is not there",
+                Some("record put"),
+                &extras,
+                2,
+            );
         }
     }
     let mut record = json!({"id": id, "round": parsed.int("round").unwrap_or_default()});
-    for (key, value) in [("label", parsed.text("label").map(|text| json!(text))), ("weight", parsed.values("weight").first().cloned()), ("score", parsed.values("score").first().cloned()), ("meta", parsed.values("meta").first().cloned())] {
+    for (key, value) in [
+        ("label", parsed.text("label").map(|text| json!(text))),
+        ("weight", parsed.values("weight").first().cloned()),
+        ("score", parsed.values("score").first().cloned()),
+        ("meta", parsed.values("meta").first().cloned()),
+    ] {
         if let Some(value) = value {
             record[key] = value;
         }
@@ -892,8 +1041,14 @@ fn put(tool: &Tool, parsed: &Parsed) -> ExitCode {
         record["note"] = json!(note);
     }
     let path = std::path::Path::new("records").join(format!("{id}.json"));
-    let before: Option<Value> = std::fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str(&text).ok());
-    let status = if before.as_ref() == Some(&record) { "unchanged" } else { "written" };
+    let before: Option<Value> = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok());
+    let status = if before.as_ref() == Some(&record) {
+        "unchanged"
+    } else {
+        "written"
+    };
     if status == "written" {
         std::fs::create_dir_all("records").unwrap_or_default();
         std::fs::write(&path, record.to_string()).unwrap_or_default();
@@ -907,12 +1062,20 @@ fn put(tool: &Tool, parsed: &Parsed) -> ExitCode {
     if tool.flag("dataFormDiffers") && std::env::var_os("FAKE_FROM_DOCUMENT").is_some() {
         // Seeded: the document form prints another label than the argv form, in `data` alone: the same exit, `ok` and code, and a value that is the same
         // on every run of the argv form (so it is not a varying path).
-        record["label"] = json!(format!("{}-from-document", record["label"].as_str().unwrap_or("")));
+        record["label"] = json!(format!(
+            "{}-from-document",
+            record["label"].as_str().unwrap_or("")
+        ));
     }
     if tool.flag("dataStamp") {
         // Seeded: a value that differs on every run, as a timestamp does (the label carries the nanoseconds of the run).
-        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_nanos());
-        record["label"] = json!(format!("{}@{nanos}", record["label"].as_str().unwrap_or("")));
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
+        record["label"] = json!(format!(
+            "{}@{nanos}",
+            record["label"].as_str().unwrap_or("")
+        ));
     }
     tool.success_with("record put", record, Map::new())
 }
@@ -934,11 +1097,19 @@ pub fn execute_batch(tool: &Tool, id: &'static str, items: Vec<Parsed>) -> ExitC
             continue;
         }
         let result = if parsed.has("__late__") {
-            Err(ItemError { code: "USAGE", message: "the item is not valid".to_string(), extras: vec![("field", json!(format!("/{index}")))] })
+            Err(ItemError {
+                code: "USAGE",
+                message: "the item is not valid".to_string(),
+                extras: vec![("field", json!(format!("/{index}")))],
+            })
         } else {
             match id {
                 "member tag" => tag_item(tool, parsed),
-                _ => Err(ItemError { code: "USAGE", message: format!("{id} takes no batch"), extras: Vec::new() }),
+                _ => Err(ItemError {
+                    code: "USAGE",
+                    message: format!("{id} takes no batch"),
+                    extras: Vec::new(),
+                }),
             }
         };
         match result {
@@ -955,8 +1126,18 @@ pub fn execute_batch(tool: &Tool, id: &'static str, items: Vec<Parsed>) -> ExitC
     }
     let mut meta = tool.meta(Some(id));
     let failing = failed.is_some() || tool.flag("batchFailsOnSuccess");
-    if !(tool.flag("batchNoOutput") || tool.flag(if failing { "batchNoOutputOnFailure" } else { "batchNoOutputOnSuccess" })) {
-        let output = if id == "member tag" { "MemberTagBatchReport" } else { "BatchReport" };
+    if !(tool.flag("batchNoOutput")
+        || tool.flag(if failing {
+            "batchNoOutputOnFailure"
+        } else {
+            "batchNoOutputOnSuccess"
+        }))
+    {
+        let output = if id == "member tag" {
+            "MemberTagBatchReport"
+        } else {
+            "BatchReport"
+        };
         meta.insert("output".into(), json!(output));
     }
     if tool.flag("batchItemsShort") {
@@ -964,7 +1145,16 @@ pub fn execute_batch(tool: &Tool, id: &'static str, items: Vec<Parsed>) -> ExitC
     }
     let failed = failed.or_else(|| {
         // The seeded violation: a batch whose items all ran is reported as stopped at its last item.
-        tool.flag("batchFailsOnSuccess").then(|| (items.len().saturating_sub(1), ItemError { code: "INTERNAL", message: "the batch stopped".to_string(), extras: Vec::new() }))
+        tool.flag("batchFailsOnSuccess").then(|| {
+            (
+                items.len().saturating_sub(1),
+                ItemError {
+                    code: "INTERNAL",
+                    message: "the batch stopped".to_string(),
+                    extras: Vec::new(),
+                },
+            )
+        })
     });
     let Some((index, error)) = failed else {
         if tool.flag("batchOkSingleReport") {
@@ -989,7 +1179,11 @@ pub fn execute_batch(tool: &Tool, id: &'static str, items: Vec<Parsed>) -> ExitC
     if index == 0 && tool.flag("batchFirstFailPlain") {
         return tool.refuse(error.code, &error.message, id, &error.extras);
     }
-    let field = if tool.flag("batchWrongField") { "--input".to_string() } else { format!("/{index}") };
+    let field = if tool.flag("batchWrongField") {
+        "--input".to_string()
+    } else {
+        format!("/{index}")
+    };
     if tool.flag("batchReportBadShape") {
         if let Some(item) = report.first_mut() {
             item["note"] = json!("extra");

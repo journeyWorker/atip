@@ -122,11 +122,13 @@ pub(crate) fn next_argv(stdout: &[u8]) -> Option<Vec<String>> {
 
 /// The value of `--plan-digest` in `argv`, written as two words (`--plan-digest <v>`) or one (`--plan-digest=<v>`, the form of spec 9.12.1).
 pub(crate) fn digest_of(argv: &[String]) -> Option<&str> {
-    argv.iter().enumerate().find_map(|(at, word)| match word.strip_prefix("--plan-digest=") {
-        Some(value) => Some(value),
-        None if word == "--plan-digest" => argv.get(at + 1).map(String::as_str),
-        None => None,
-    })
+    argv.iter()
+        .enumerate()
+        .find_map(|(at, word)| match word.strip_prefix("--plan-digest=") {
+            Some(value) => Some(value),
+            None if word == "--plan-digest" => argv.get(at + 1).map(String::as_str),
+            None => None,
+        })
 }
 
 /// The digest with one character changed: another character of the same kind, so that it is still well-formed.
@@ -138,7 +140,13 @@ fn altered(digest: &str) -> String {
             'a' => 'b',
             '9' => '8',
             other if other.is_ascii_digit() => '0',
-            other if other.is_ascii_alphabetic() => if other == 'z' { 'y' } else { 'a' },
+            other if other.is_ascii_alphabetic() => {
+                if other == 'z' {
+                    'y'
+                } else {
+                    'a'
+                }
+            }
             _ => 'x',
         };
     }
@@ -146,34 +154,84 @@ fn altered(digest: &str) -> String {
 }
 
 impl Run<'_> {
-    pub(crate) fn plan_safety(&mut self, calls: &Invocations, l1: &L1Run) -> Result<SafetyRun, RunError> {
+    pub(crate) fn plan_safety(
+        &mut self,
+        calls: &Invocations,
+        l1: &L1Run,
+    ) -> Result<SafetyRun, RunError> {
         let mut out = SafetyRun::default();
-        let docs: Vec<CommandDoc> = l1.docs.commands.iter().map(|(id, doc)| CommandDoc { command: id.clone(), ..doc.clone() }).collect();
-        let with_timeout: Vec<Vec<String>> = docs.iter().filter(|doc| doc.option("timeout").is_some()).map(|doc| doc.path.clone()).collect();
+        let docs: Vec<CommandDoc> = l1
+            .docs
+            .commands
+            .iter()
+            .map(|(id, doc)| CommandDoc {
+                command: id.clone(),
+                ..doc.clone()
+            })
+            .collect();
+        let with_timeout: Vec<Vec<String>> = docs
+            .iter()
+            .filter(|doc| doc.option("timeout").is_some())
+            .map(|doc| doc.path.clone())
+            .collect();
         for doc in &docs {
             if self.not_run(&doc.command) {
                 continue;
             }
-            let raw_idempotency = doc.raw.get("idempotency").and_then(Value::as_str).unwrap_or_default().to_string();
-            if doc.effect == "write" && matches!(raw_idempotency.as_str(), "replay-safe" | "once" | "content-keyed") {
+            let raw_idempotency = doc
+                .raw
+                .get("idempotency")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            if doc.effect == "write"
+                && matches!(
+                    raw_idempotency.as_str(),
+                    "replay-safe" | "once" | "content-keyed"
+                )
+            {
                 let bases = self.ok_bases(calls, doc);
                 if bases.is_empty() {
                     out.unlisted_writes.push(doc.command.clone());
                 }
-                let allowed: Vec<String> = self.fixture.commands.as_ref().and_then(|commands| commands.get(&doc.command)).map(|entry| entry.allowed_effects.clone()).unwrap_or_default();
-                let note = doc.raw.get("effectNote").and_then(Value::as_str).unwrap_or_default().to_string();
+                let allowed: Vec<String> = self
+                    .fixture
+                    .commands
+                    .as_ref()
+                    .and_then(|commands| commands.get(&doc.command))
+                    .map(|entry| entry.allowed_effects.clone())
+                    .unwrap_or_default();
+                let note = doc
+                    .raw
+                    .get("effectNote")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
                 for (_, first) in bases {
                     let sequence = self.log[first].sequence;
                     let argv = self.log[first].call.argv.clone();
                     let second = self.invoke_after(sequence, Call::new(argv).measured())?;
-                    out.idempotency.push(IdempotencyRun { command: doc.command.clone(), idempotency: raw_idempotency.clone(), first, second, allowed: allowed.clone(), note: note.clone() });
+                    out.idempotency.push(IdempotencyRun {
+                        command: doc.command.clone(),
+                        idempotency: raw_idempotency.clone(),
+                        first,
+                        second,
+                        allowed: allowed.clone(),
+                        note: note.clone(),
+                    });
                 }
             }
             if doc.effect == "destructive" {
                 self.plan_destructive(&mut out, doc)?;
             }
             let declared = doc.raw.get("async").and_then(Value::as_bool) == Some(true);
-            if self.fixture.commands.as_ref().and_then(|commands| commands.get(&doc.command)).is_some_and(|entry| entry.async_entry.is_some()) {
+            if self
+                .fixture
+                .commands
+                .as_ref()
+                .and_then(|commands| commands.get(&doc.command))
+                .is_some_and(|entry| entry.async_entry.is_some())
+            {
                 out.fixture_async.push((doc.command.clone(), declared));
             }
             if declared {
@@ -184,32 +242,51 @@ impl Run<'_> {
     }
 
     fn plan_destructive(&mut self, out: &mut SafetyRun, doc: &CommandDoc) -> Result<(), RunError> {
-        let previews = self.fixture.commands.as_ref().and_then(|commands| commands.get(&doc.command)).map(|entry| entry.preview.clone()).unwrap_or_default();
+        let previews = self
+            .fixture
+            .commands
+            .as_ref()
+            .and_then(|commands| commands.get(&doc.command))
+            .map(|entry| entry.preview.clone())
+            .unwrap_or_default();
         let Some(preview) = previews.first() else {
             out.missing_preview.push(doc.command.clone());
             return Ok(());
         };
         let argv = in_json_mode(preview);
         let preview_call = |this: &mut Self| this.invoke(Call::new(argv.clone()).measured());
-        let mut run = DestructiveRun { command: doc.command.clone(), preview: preview_call(self)?, ..DestructiveRun::default() };
+        let mut run = DestructiveRun {
+            command: doc.command.clone(),
+            preview: preview_call(self)?,
+            ..DestructiveRun::default()
+        };
         // A stale digest, in the sequence of a preview of its own.
         let stale_preview = preview_call(self)?;
         if let Some(next) = next_argv(&self.log[stale_preview].stdout) {
             if let Some(digest) = digest_of(&next).map(altered) {
                 let mut changed = next.clone();
                 // The digest is altered in the form next[0] has it: one word, or the word after `--plan-digest`.
-                if let Some(at) = changed.iter().position(|word| word.starts_with("--plan-digest=")) {
+                if let Some(at) = changed
+                    .iter()
+                    .position(|word| word.starts_with("--plan-digest="))
+                {
                     changed[at] = format!("--plan-digest={digest}");
                 } else if let Some(at) = changed.iter().position(|word| word == "--plan-digest") {
                     changed[at + 1] = digest;
                 }
                 let sequence = self.log[stale_preview].sequence;
                 let call = self.invoke_after(sequence, Call::new(changed).measured())?;
-                run.stale = Some(StaleRun { preview: stale_preview, call });
+                run.stale = Some(StaleRun {
+                    preview: stale_preview,
+                    call,
+                });
             }
         }
         // Each half alone.
-        for (label, extra) in [("--commit alone", vec!["--commit"]), ("--plan-digest x alone", vec!["--plan-digest", "x"])] {
+        for (label, extra) in [
+            ("--commit alone", vec!["--commit"]),
+            ("--plan-digest x alone", vec!["--plan-digest", "x"]),
+        ] {
             let mut half = argv.clone();
             half.extend(extra.into_iter().map(str::to_string));
             let call = self.invoke(Call::new(half).measured())?;
@@ -220,15 +297,24 @@ impl Run<'_> {
         if let Some(next) = next_argv(&self.log[commit_preview].stdout) {
             let sequence = self.log[commit_preview].sequence;
             let call = self.invoke_after(sequence, Call::new(next).measured())?;
-            run.commit = Some(CommitRun { preview: commit_preview, call });
+            run.commit = Some(CommitRun {
+                preview: commit_preview,
+                call,
+            });
         }
         // The same preview with its arguments on stdin.
         if let Ok(base) = invocation::parse(doc, &argv) {
-            let spec = Spec { operands: true, options: Which::All, ..Spec::default() };
+            let spec = Spec {
+                operands: true,
+                options: Which::All,
+                ..Spec::default()
+            };
             if let Some(split) = document::split(doc, &base, &spec) {
                 if !split.document.is_empty() {
                     let stdin = split.text();
-                    let call = Call::new(split.argv_with("-")).with_stdin(stdin.into_bytes()).measured();
+                    let call = Call::new(split.argv_with("-"))
+                        .with_stdin(stdin.into_bytes())
+                        .measured();
                     let stdin_preview = self.invoke(call)?;
                     let replay = match next_argv(&self.log[stdin_preview].stdout) {
                         Some(next) => {
@@ -237,7 +323,10 @@ impl Run<'_> {
                         }
                         None => None,
                     };
-                    run.stdin = Some(StdinRun { preview: stdin_preview, replay });
+                    run.stdin = Some(StdinRun {
+                        preview: stdin_preview,
+                        replay,
+                    });
                 }
             }
         }
@@ -245,31 +334,61 @@ impl Run<'_> {
         Ok(())
     }
 
-    fn plan_async(&mut self, out: &mut SafetyRun, doc: &CommandDoc, with_timeout: &[Vec<String>]) -> Result<(), RunError> {
-        let Some(entry) = self.fixture.commands.as_ref().and_then(|commands| commands.get(&doc.command)).and_then(|entry| entry.async_entry.clone()) else {
+    fn plan_async(
+        &mut self,
+        out: &mut SafetyRun,
+        doc: &CommandDoc,
+        with_timeout: &[Vec<String>],
+    ) -> Result<(), RunError> {
+        let Some(entry) = self
+            .fixture
+            .commands
+            .as_ref()
+            .and_then(|commands| commands.get(&doc.command))
+            .and_then(|entry| entry.async_entry.clone())
+        else {
             out.missing_async.push(doc.command.clone());
             return Ok(());
         };
         let start_argv = in_json_mode(&entry.start);
-        let mut run = AsyncRun { command: doc.command.clone(), outcomes: Vec::new() };
+        let mut run = AsyncRun {
+            command: doc.command.clone(),
+            outcomes: Vec::new(),
+        };
         // The fixture lists what its fake worker supports: an outcome it leaves out is not driven, and the row cannot tell without it.
-        let absent: Vec<String> = ["done", "failed", "timeout"].into_iter().filter(|outcome| !entry.outcomes.iter().any(|listed| listed == outcome)).map(str::to_string).collect();
+        let absent: Vec<String> = ["done", "failed", "timeout"]
+            .into_iter()
+            .filter(|outcome| !entry.outcomes.iter().any(|listed| listed == outcome))
+            .map(str::to_string)
+            .collect();
         if !absent.is_empty() {
             out.missing_outcomes.push((doc.command.clone(), absent));
         }
         for outcome in &entry.outcomes {
-            let start = self.invoke(Call::new(start_argv.clone()).with_env(&entry.worker, outcome))?;
+            let start =
+                self.invoke(Call::new(start_argv.clone()).with_env(&entry.worker, outcome))?;
             let mut wait = None;
             if let Some(mut argv) = next_argv(&self.log[start].stdout) {
                 // A wait that hangs is given a short time to hang: the worker of `timeout` never ends.
-                let has_timeout = argv.iter().any(|word| word == "--timeout" || word.starts_with("--timeout="));
-                if outcome == "timeout" && !has_timeout && with_timeout.iter().any(|path| argv.starts_with(path)) {
+                let has_timeout = argv
+                    .iter()
+                    .any(|word| word == "--timeout" || word.starts_with("--timeout="));
+                if outcome == "timeout"
+                    && !has_timeout
+                    && with_timeout.iter().any(|path| argv.starts_with(path))
+                {
                     argv.extend(["--timeout".to_string(), "1s".to_string()]);
                 }
                 let sequence = self.log[start].sequence;
-                wait = Some(self.invoke_after(sequence, Call::new(argv).with_env(&entry.worker, outcome))?);
+                wait = Some(
+                    self.invoke_after(sequence, Call::new(argv).with_env(&entry.worker, outcome))?,
+                );
             }
-            run.outcomes.push(OutcomeRun { outcome: outcome.clone(), start, wait });
+            run.outcomes.push(OutcomeRun {
+                outcome: outcome.clone(),
+                start,
+                wait,
+            });
         }
         out.asyncs.push(run);
         if let Some(operation) = self.plan_operation(doc, &start_argv)? {
@@ -278,7 +397,11 @@ impl Run<'_> {
         Ok(())
     }
 
-    fn plan_operation(&mut self, doc: &CommandDoc, start_argv: &[String]) -> Result<Option<OperationRun>, RunError> {
+    fn plan_operation(
+        &mut self,
+        doc: &CommandDoc,
+        start_argv: &[String],
+    ) -> Result<Option<OperationRun>, RunError> {
         if doc.option("operation").is_none() {
             return Ok(None);
         }
@@ -289,10 +412,15 @@ impl Run<'_> {
         };
         let first = self.invoke(Call::new(with_key("chk-one", start_argv)).measured())?;
         let sequence = self.log[first].sequence;
-        let repeat = self.invoke_after(sequence, Call::new(with_key("chk-one", start_argv)).measured())?;
+        let repeat = self.invoke_after(
+            sequence,
+            Call::new(with_key("chk-one", start_argv)).measured(),
+        )?;
         // Another payload under the key the first request holds, run in the sequence where it was held.
         let other = match invocation::parse(doc, start_argv) {
-            Ok(base) => self.other_payload(doc, &base).map(|argv| with_key("chk-one", &argv)),
+            Ok(base) => self
+                .other_payload(doc, &base)
+                .map(|argv| with_key("chk-one", &argv)),
             Err(_) => None,
         };
         let other = match other {
@@ -300,7 +428,10 @@ impl Run<'_> {
             None => None,
         };
         // Two requests with a fresh key at once, and one alone: the worker sees one start in both.
-        let calls = [Call::new(with_key("chk-two", start_argv)), Call::new(with_key("chk-two", start_argv))];
+        let calls = [
+            Call::new(with_key("chk-two", start_argv)),
+            Call::new(with_key("chk-two", start_argv)),
+        ];
         let (pair_sequence, outcomes) = self.runner.run_concurrently(&calls)?;
         let pair_state = self.runner.fingerprint(pair_sequence)?;
         let mut pair = [0, 0];
@@ -310,7 +441,16 @@ impl Run<'_> {
         }
         let lone = self.invoke(Call::new(with_key("chk-two", start_argv)))?;
         let lone_state = self.runner.fingerprint(self.log[lone].sequence)?;
-        Ok(Some(OperationRun { command: doc.command.clone(), first, repeat, pair, pair_state, lone, lone_state, other }))
+        Ok(Some(OperationRun {
+            command: doc.command.clone(),
+            first,
+            repeat,
+            pair,
+            pair_state,
+            lone,
+            lone_state,
+            other,
+        }))
     }
 
     /// The argv of `base` with one argument given another valid value: the payload the same key must refuse.
@@ -325,13 +465,18 @@ impl Run<'_> {
             let current = if arg.is_option {
                 args.options.get(&name).cloned()
             } else {
-                doc.operands.iter().position(|operand| operand.name == name).and_then(|index| args.operands.get(index).cloned())
+                doc.operands
+                    .iter()
+                    .position(|operand| operand.name == name)
+                    .and_then(|index| args.operands.get(index).cloned())
             }?;
             let avoid = match &current {
                 Value::Array(values) => values.clone(),
                 other => vec![other.clone()],
             };
-            let Some(word) = witness::generate(arg, &avoid) else { continue };
+            let Some(word) = witness::generate(arg, &avoid) else {
+                continue;
+            };
             if let Some(changed) = Self::carrying(doc, std::slice::from_ref(base), arg, &word) {
                 return Some(invocation::render(&changed));
             }

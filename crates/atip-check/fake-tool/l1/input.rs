@@ -14,7 +14,9 @@ use serde_json::{json, Map, Value};
 
 use super::doc::Model;
 use super::inputdoc::{camel, MAX_BYTES, MAX_ITEMS};
-use super::parse::{check_domains, check_rules, check_validators, field_of, read_words, typed, Failure, Parsed};
+use super::parse::{
+    check_domains, check_rules, check_validators, field_of, read_words, typed, Failure, Parsed,
+};
 use super::run::{path_words, refuse_failure};
 use super::spec::{Arg, Command, Kind};
 use crate::Tool;
@@ -49,15 +51,39 @@ enum Source {
     File,
 }
 
-fn refuse(tool: &Tool, command: &str, code: &str, reason: &'static str, message: &str, field: &str, details: &[Problem]) -> ExitCode {
+fn refuse(
+    tool: &Tool,
+    command: &str,
+    code: &str,
+    reason: &'static str,
+    message: &str,
+    field: &str,
+    details: &[Problem],
+) -> ExitCode {
     let seeded_field = tool.text("inputField", "");
-    let in_batch_item = field.chars().nth(1).is_some_and(|character| character.is_ascii_digit());
-    let field = if !seeded_field.is_empty() && code != "INPUT_CONFLICT" && reason != "STDIN_TTY" && !in_batch_item { seeded_field.as_str() } else { field };
+    let in_batch_item = field
+        .chars()
+        .nth(1)
+        .is_some_and(|character| character.is_ascii_digit());
+    let field = if !seeded_field.is_empty()
+        && code != "INPUT_CONFLICT"
+        && reason != "STDIN_TTY"
+        && !in_batch_item
+    {
+        seeded_field.as_str()
+    } else {
+        field
+    };
     // Seeded: the size of the document is refused on a pointer into it, not on `--input`.
     let too_large_field = tool.text("tooLargeField", "");
-    let field = if code == "INPUT_TOO_LARGE" && !too_large_field.is_empty() { too_large_field.as_str() } else { field };
+    let field = if code == "INPUT_TOO_LARGE" && !too_large_field.is_empty() {
+        too_large_field.as_str()
+    } else {
+        field
+    };
     let mut extras: Vec<(&str, Value)> = vec![("field", json!(field))];
-    let reason_value = (!tool.flag("inputNoReason") && tool.is_1_1() && code.starts_with("INPUT_")).then_some(reason);
+    let reason_value = (!tool.flag("inputNoReason") && tool.is_1_1() && code.starts_with("INPUT_"))
+        .then_some(reason);
     if let Some(reason) = reason_value.filter(|reason| !reason.is_empty()) {
         extras.push(("reason", json!(reason)));
     }
@@ -74,14 +100,21 @@ fn refuse(tool: &Tool, command: &str, code: &str, reason: &'static str, message:
 fn usage(tool: &Tool, command: &str, message: &str, code_knob: &str) -> ExitCode {
     // Seeded: a registered code of exit 2 that is not USAGE answers (a finer replacement of USAGE, spec 7.2.2).
     let replacement = tool.text("inputUsageCode", "USAGE");
-    let code = if tool.flag(code_knob) { "INPUT_INVALID" } else { replacement.as_str() };
+    let code = if tool.flag(code_knob) {
+        "INPUT_INVALID"
+    } else {
+        replacement.as_str()
+    };
     let field = tool.text("inputUsageField", "--input");
     tool.refuse(code, message, command, &[("field", json!(field))])
 }
 
 /// Whether `value` is a JSON integer in the safe range, as a number or as a numeric string (spec 11.5).
 /// A float that is a whole number below 2^53, as the integer it is.
-#[expect(clippy::cast_possible_truncation, reason = "the caller checked that the float is whole and below 9e15")]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the caller checked that the float is whole and below 9e15"
+)]
 fn whole_of(float: f64) -> i64 {
     float as i64
 }
@@ -89,13 +122,23 @@ fn whole_of(float: f64) -> i64 {
 fn integer_of(value: &Value, strings: bool) -> Option<i64> {
     match value {
         Value::Number(number) => {
-            let whole = number.as_i64().or_else(|| number.as_f64().filter(|float| float.fract() == 0.0 && float.abs() <= 9.0e15).map(whole_of))?;
+            let whole = number.as_i64().or_else(|| {
+                number
+                    .as_f64()
+                    .filter(|float| float.fract() == 0.0 && float.abs() <= 9.0e15)
+                    .map(whole_of)
+            })?;
             (whole.abs() <= SAFE).then_some(whole)
         }
         Value::String(text) if strings => {
             let digits = text.strip_prefix('-').unwrap_or(text);
-            let plain = !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()) && (digits == "0" || !digits.starts_with('0'));
-            plain.then(|| text.parse::<i64>().ok()).flatten().filter(|whole| whole.abs() <= SAFE)
+            let plain = !digits.is_empty()
+                && digits.bytes().all(|byte| byte.is_ascii_digit())
+                && (digits == "0" || !digits.starts_with('0'));
+            plain
+                .then(|| text.parse::<i64>().ok())
+                .flatten()
+                .filter(|whole| whole.abs() <= SAFE)
         }
         _ => None,
     }
@@ -105,8 +148,13 @@ fn number_of(value: &Value, strings: bool) -> Option<f64> {
     match value {
         Value::Number(number) => number.as_f64().filter(|float| float.is_finite()),
         Value::String(text) if strings => {
-            let grammar = regex::Regex::new(r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$").ok()?;
-            grammar.is_match(text).then(|| text.parse::<f64>().ok()).flatten().filter(|float| float.is_finite())
+            let grammar =
+                regex::Regex::new(r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$").ok()?;
+            grammar
+                .is_match(text)
+                .then(|| text.parse::<f64>().ok())
+                .flatten()
+                .filter(|float| float.is_finite())
         }
         _ => None,
     }
@@ -116,9 +164,14 @@ fn number_of(value: &Value, strings: bool) -> Option<f64> {
 fn element_ok(tool: &Tool, arg: &Arg, value: &Value) -> bool {
     let strings = !tool.flag("inputNoNumericStrings");
     match arg.value_type {
-        "integer" => integer_of(value, strings).is_some() || (tool.flag("inputRoundsBigIntegers") && number_of(value, strings).is_some()),
+        "integer" => {
+            integer_of(value, strings).is_some()
+                || (tool.flag("inputRoundsBigIntegers") && number_of(value, strings).is_some())
+        }
         "number" => number_of(value, strings).is_some(),
-        "enum" => value.as_str().is_some_and(|text| arg.possible.contains(&text)),
+        "enum" => value
+            .as_str()
+            .is_some_and(|text| arg.possible.contains(&text)),
         "switch" => value.is_boolean(),
         "count" => value.as_u64().is_some(),
         "json" => !value.is_null(),
@@ -133,20 +186,38 @@ fn normalised(arg: &Arg, value: &Value) -> Vec<Value> {
             "integer" => json!(integer_of(element, true)?),
             "number" => json!(number_of(element, true)?),
             "switch" => return element.as_bool().filter(|flag| *flag).map(|_| json!(true)),
-            "count" => return element.as_u64().filter(|count| *count > 0).map(|count| json!(count)),
+            "count" => {
+                return element
+                    .as_u64()
+                    .filter(|count| *count > 0)
+                    .map(|count| json!(count))
+            }
             _ => element.clone(),
         })
     };
     match value {
-        Value::Array(items) if arg.repeatable && arg.value_type != "count" => items.iter().filter_map(one).collect(),
+        Value::Array(items) if arg.repeatable && arg.value_type != "count" => {
+            items.iter().filter_map(one).collect()
+        }
         other => one(other).into_iter().collect(),
     }
 }
 
 /// The problems of one document against the fragment (spec 11.7 step 2): known keys, flag-only keys absent, `null`, types.
-fn fragment_problems(tool: &Tool, command: &Command, document: &Map<String, Value>, prefix: &str) -> Vec<Problem> {
+fn fragment_problems(
+    tool: &Tool,
+    command: &Command,
+    document: &Map<String, Value>,
+    prefix: &str,
+) -> Vec<Problem> {
     let mut problems = Vec::new();
-    let mut found = |reason: &'static str, pointer: String, message: String| problems.push(Problem { reason, pointer: format!("{prefix}{pointer}"), message });
+    let mut found = |reason: &'static str, pointer: String, message: String| {
+        problems.push(Problem {
+            reason,
+            pointer: format!("{prefix}{pointer}"),
+            message,
+        })
+    };
     let operand_slots: Vec<&Arg> = command.operands().collect();
     for (key, value) in document {
         if key == "operands" {
@@ -154,40 +225,81 @@ fn fragment_problems(tool: &Tool, command: &Command, document: &Map<String, Valu
                 continue;
             }
             let Some(items) = value.as_array() else {
-                found("INVALID_VALUE", "/operands".to_string(), "operands must be an array".to_string());
+                found(
+                    "INVALID_VALUE",
+                    "/operands".to_string(),
+                    "operands must be an array".to_string(),
+                );
                 continue;
             };
             if operand_slots.is_empty() {
                 if !tool.lists("inputAccepts", "unknown-key") {
-                    found("UNKNOWN_KEY", "/operands".to_string(), format!("{} takes no operands", command.id));
+                    found(
+                        "UNKNOWN_KEY",
+                        "/operands".to_string(),
+                        format!("{} takes no operands", command.id),
+                    );
                 }
                 continue;
             }
             if items.is_empty() && !tool.lists("inputAccepts", "empty-operands") {
-                found("INVALID_VALUE", "/operands".to_string(), "operands is empty: omit the key".to_string());
+                found(
+                    "INVALID_VALUE",
+                    "/operands".to_string(),
+                    "operands is empty: omit the key".to_string(),
+                );
             }
             let variadic = operand_slots.last().is_some_and(|slot| slot.repeatable);
             if items.len() > operand_slots.len() && !variadic {
-                found("INVALID_VALUE", "/operands".to_string(), format!("{} takes {} operands", command.id, operand_slots.len()));
+                found(
+                    "INVALID_VALUE",
+                    "/operands".to_string(),
+                    format!("{} takes {} operands", command.id, operand_slots.len()),
+                );
             }
             for (index, item) in items.iter().enumerate() {
-                let slot = operand_slots.get(index).copied().or_else(|| operand_slots.last().copied().filter(|slot| slot.repeatable));
-                if item.is_null() && !tool.lists("inputAccepts", "null") || slot.is_some_and(|slot| !item.is_null() && !element_ok(tool, slot, item)) {
-                    found("INVALID_VALUE", format!("/operands/{index}"), format!("operands[{index}] is not a value of {}", slot.map_or("an operand", |slot| slot.name)));
+                let slot = operand_slots
+                    .get(index)
+                    .copied()
+                    .or_else(|| operand_slots.last().copied().filter(|slot| slot.repeatable));
+                if item.is_null() && !tool.lists("inputAccepts", "null")
+                    || slot.is_some_and(|slot| !item.is_null() && !element_ok(tool, slot, item))
+                {
+                    found(
+                        "INVALID_VALUE",
+                        format!("/operands/{index}"),
+                        format!(
+                            "operands[{index}] is not a value of {}",
+                            slot.map_or("an operand", |slot| slot.name)
+                        ),
+                    );
                 }
             }
             continue;
         }
         let Some(arg) = command.flags().find(|arg| camel(arg.name) == *key) else {
-            let situation = if key == "commit" { "commit" } else { "unknown-key" };
-            if !tool.lists("inputAccepts", situation) && !tool.lists("inputAccepts", "unknown-key") {
-                found("UNKNOWN_KEY", format!("/{key}"), format!("{key} is not an option of {}", command.id));
+            let situation = if key == "commit" {
+                "commit"
+            } else {
+                "unknown-key"
+            };
+            if !tool.lists("inputAccepts", situation) && !tool.lists("inputAccepts", "unknown-key")
+            {
+                found(
+                    "UNKNOWN_KEY",
+                    format!("/{key}"),
+                    format!("{key} is not an option of {}", command.id),
+                );
             }
             continue;
         };
         if arg.flag_only {
             if !tool.lists("inputAccepts", key) {
-                found("FLAG_ONLY_KEY", format!("/{key}"), format!("{key} is flag-only and cannot be set by a document"));
+                found(
+                    "FLAG_ONLY_KEY",
+                    format!("/{key}"),
+                    format!("{key} is flag-only and cannot be set by a document"),
+                );
             }
             continue;
         }
@@ -199,29 +311,51 @@ fn fragment_problems(tool: &Tool, command: &Command, document: &Map<String, Valu
         }
         let ok = match value {
             Value::Array(items) if arg.repeatable && arg.value_type != "count" => {
-                !items.is_empty() && items.iter().all(|item| !item.is_null() && element_ok(tool, arg, item))
+                !items.is_empty()
+                    && items
+                        .iter()
+                        .all(|item| !item.is_null() && element_ok(tool, arg, item))
             }
             other => !(arg.repeatable && arg.value_type != "count") && element_ok(tool, arg, other),
         };
         if !ok {
-            found("INVALID_VALUE", format!("/{key}"), format!("{key} is not a value of {}", arg.name));
+            found(
+                "INVALID_VALUE",
+                format!("/{key}"),
+                format!("{key} is not a value of {}", arg.name),
+            );
         }
     }
     problems
 }
 
 /// The values a document gives, by argument name.
-fn document_given(command: &Command, document: &Map<String, Value>) -> BTreeMap<&'static str, Vec<Value>> {
+fn document_given(
+    command: &Command,
+    document: &Map<String, Value>,
+) -> BTreeMap<&'static str, Vec<Value>> {
     let mut given: BTreeMap<&'static str, Vec<Value>> = BTreeMap::new();
     let slots: Vec<&Arg> = command.operands().collect();
     if let Some(items) = document.get("operands").and_then(Value::as_array) {
         for (index, item) in items.iter().enumerate() {
-            let Some(slot) = slots.get(index).copied().or_else(|| slots.last().copied().filter(|slot| slot.repeatable)) else { continue };
-            given.entry(slot.name).or_default().extend(normalised(slot, item));
+            let Some(slot) = slots
+                .get(index)
+                .copied()
+                .or_else(|| slots.last().copied().filter(|slot| slot.repeatable))
+            else {
+                continue;
+            };
+            given
+                .entry(slot.name)
+                .or_default()
+                .extend(normalised(slot, item));
         }
     }
     for (key, value) in document {
-        if let Some(arg) = command.flags().find(|arg| camel(arg.name) == *key && !arg.flag_only) {
+        if let Some(arg) = command
+            .flags()
+            .find(|arg| camel(arg.name) == *key && !arg.flag_only)
+        {
             let values = normalised(arg, value);
             if !values.is_empty() {
                 given.insert(arg.name, values);
@@ -233,7 +367,13 @@ fn document_given(command: &Command, document: &Map<String, Value>) -> BTreeMap<
 
 /// Whether the two values an argument got, from argv and from a document, are one value (spec 11.7 step 3).
 fn same_value(tool: &Tool, arg: &Arg, argv: &[Value], document: &[Value], raw: &Value) -> bool {
-    if tool.flag("conflictJsonObjects") && arg.value_type == "json" && argv.iter().chain(document).any(|value| value.as_object().is_some_and(|members| members.len() > 1)) {
+    if tool.flag("conflictJsonObjects")
+        && arg.value_type == "json"
+        && argv
+            .iter()
+            .chain(document)
+            .any(|value| value.as_object().is_some_and(|members| members.len() > 1))
+    {
         return false;
     }
     if tool.flag("conflictFloatSpelling") && matches!(arg.value_type, "number" | "integer") {
@@ -258,7 +398,9 @@ fn word_of(value: &Value) -> String {
 
 /// Reads the value of `--input`: the document text, and where it came from, or the refusal.
 fn read_source(tool: &Tool, command: &Command, value: &str) -> Result<(String, Source), ExitCode> {
-    let refuse_input = |code: &str, reason: &'static str, message: &str| refuse(tool, command.id, code, reason, message, "--input", &[]);
+    let refuse_input = |code: &str, reason: &'static str, message: &str| {
+        refuse(tool, command.id, code, reason, message, "--input", &[])
+    };
     if value.is_empty() {
         return Err(refuse_input("INPUT_INVALID", "EMPTY", "--input is empty"));
     }
@@ -270,26 +412,52 @@ fn read_source(tool: &Tool, command: &Command, value: &str) -> Result<(String, S
         if std::io::stdin().is_terminal() {
             let code = tool.text("inputTtyCode", "INPUT_INVALID");
             let field = tool.text("inputTtyField", "--input");
-            return Err(refuse(tool, command.id, &code, "STDIN_TTY", "--input - with a terminal on stdin", &field, &[]));
+            return Err(refuse(
+                tool,
+                command.id,
+                &code,
+                "STDIN_TTY",
+                "--input - with a terminal on stdin",
+                &field,
+                &[],
+            ));
         }
         if tool.flag("stdinPreviewRefused") && command.id == "purge" {
-            return Err(refuse_input("INPUT_INVALID", "NOT_JSON", "--input is not JSON"));
+            return Err(refuse_input(
+                "INPUT_INVALID",
+                "NOT_JSON",
+                "--input is not JSON",
+            ));
         }
         // What a handler that writes the argv of a replay needs to know: the arguments came from stdin.
         std::env::set_var("FAKE_INPUT_FROM_STDIN", "1");
         let mut buffer = Vec::new();
-        let _ = std::io::stdin().take(MAX_BYTES as u64 * 4).read_to_end(&mut buffer);
+        let _ = std::io::stdin()
+            .take(MAX_BYTES as u64 * 4)
+            .read_to_end(&mut buffer);
         (String::from_utf8_lossy(&buffer).into_owned(), Source::Stdin)
     } else {
         let path = value.strip_prefix("./").map_or(value, |rest| rest);
         match std::fs::read_to_string(path) {
             Ok(text) => (text, Source::File),
-            Err(_) if tool.lists("inputAccepts", "missing-file") => ("{}".to_string(), Source::File),
-            Err(_) => return Err(refuse_input("INPUT_INVALID", "UNREADABLE", &format!("{value} cannot be read"))),
+            Err(_) if tool.lists("inputAccepts", "missing-file") => {
+                ("{}".to_string(), Source::File)
+            }
+            Err(_) => {
+                return Err(refuse_input(
+                    "INPUT_INVALID",
+                    "UNREADABLE",
+                    &format!("{value} cannot be read"),
+                ))
+            }
         }
     };
     if too_large(text.len()) {
-        return Err(refuse_input("INPUT_TOO_LARGE", "TOO_MANY_BYTES", "--input is larger than the command accepts"));
+        return Err(refuse_input(
+            "INPUT_TOO_LARGE",
+            "TOO_MANY_BYTES",
+            "--input is larger than the command accepts",
+        ));
     }
     if text.trim().is_empty() {
         return Err(refuse_input("INPUT_INVALID", "EMPTY", "--input is empty"));
@@ -298,14 +466,38 @@ fn read_source(tool: &Tool, command: &Command, value: &str) -> Result<(String, S
 }
 
 /// Frames the text: one document, or a batch (an array; NDJSON lines of a file or of stdin).
-fn frame(tool: &Tool, command: &Command, text: &str, source: Source) -> Result<(Vec<Value>, bool), ExitCode> {
-    let refuse_input = |reason: &'static str, message: &str| refuse(tool, command.id, "INPUT_INVALID", reason, message, "--input", &[]);
-    let batch_allowed = command.input.as_ref().and_then(|input| input.get("batch")).and_then(Value::as_bool).unwrap_or(false);
+fn frame(
+    tool: &Tool,
+    command: &Command,
+    text: &str,
+    source: Source,
+) -> Result<(Vec<Value>, bool), ExitCode> {
+    let refuse_input = |reason: &'static str, message: &str| {
+        refuse(
+            tool,
+            command.id,
+            "INPUT_INVALID",
+            reason,
+            message,
+            "--input",
+            &[],
+        )
+    };
+    let batch_allowed = command
+        .input
+        .as_ref()
+        .and_then(|input| input.get("batch"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let (documents, batch) = match serde_json::from_str::<Value>(text) {
         Ok(Value::Array(items)) => (items, true),
         Ok(other) => (vec![other], false),
         Err(_) if source != Source::Inline => {
-            let lines: Result<Vec<Value>, _> = text.lines().filter(|line| !line.trim().is_empty()).map(serde_json::from_str::<Value>).collect();
+            let lines: Result<Vec<Value>, _> = text
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(serde_json::from_str::<Value>)
+                .collect();
             match lines {
                 Ok(items) if !items.is_empty() => (items, true),
                 _ => return Err(refuse_input("NOT_JSON", "--input is not JSON")),
@@ -314,33 +506,91 @@ fn frame(tool: &Tool, command: &Command, text: &str, source: Source) -> Result<(
         Err(_) => return Err(refuse_input("NOT_JSON", "--input is not JSON")),
     };
     if batch && !batch_allowed && !tool.lists("inputAccepts", "batch-unsupported") {
-        return Err(refuse_input("BATCH_UNSUPPORTED", &format!("{} takes no batch", command.id)));
+        return Err(refuse_input(
+            "BATCH_UNSUPPORTED",
+            &format!("{} takes no batch", command.id),
+        ));
     }
     if batch && documents.is_empty() {
-        return Err(refuse_input("INVALID_VALUE", "a batch holds at least one document"));
+        return Err(refuse_input(
+            "INVALID_VALUE",
+            "a batch holds at least one document",
+        ));
     }
     if batch && documents.len() > MAX_ITEMS {
-        return Err(refuse(tool, command.id, "INPUT_TOO_LARGE", "TOO_MANY_ITEMS", "the batch holds more documents than the command accepts", "--input", &[]));
+        return Err(refuse(
+            tool,
+            command.id,
+            "INPUT_TOO_LARGE",
+            "TOO_MANY_ITEMS",
+            "the batch holds more documents than the command accepts",
+            "--input",
+            &[],
+        ));
     }
     if let Some(index) = documents.iter().position(|document| !document.is_object()) {
-        let field = if batch { format!("/{index}") } else { "--input".to_string() };
-        return Err(refuse(tool, command.id, "INPUT_INVALID", "NOT_OBJECT", "a document is not a JSON object", &field, &[]));
+        let field = if batch {
+            format!("/{index}")
+        } else {
+            "--input".to_string()
+        };
+        return Err(refuse(
+            tool,
+            command.id,
+            "INPUT_INVALID",
+            "NOT_OBJECT",
+            "a document is not a JSON object",
+            &field,
+            &[],
+        ));
     }
     Ok((documents, batch))
 }
 
 /// Translates the field of a refusal of step 6 into the pointer of the document (spec 11.8) when the value came from it.
-fn translate(tool: &Tool, command: &Command, failure: Failure, from_document: &BTreeSet<&'static str>, prefix: &str) -> Failure {
-    if tool.flag("inputFieldsAsArgv") && prefix.is_empty() && !matches!(&failure, Failure::Refuse { source: "required", .. }) {
+fn translate(
+    tool: &Tool,
+    command: &Command,
+    failure: Failure,
+    from_document: &BTreeSet<&'static str>,
+    prefix: &str,
+) -> Failure {
+    if tool.flag("inputFieldsAsArgv")
+        && prefix.is_empty()
+        && !matches!(
+            &failure,
+            Failure::Refuse {
+                source: "required",
+                ..
+            }
+        )
+    {
         return failure;
     }
-    let Failure::Refuse { code, message, field: Some(field), expected, source } = failure else { return failure };
+    let Failure::Refuse {
+        code,
+        message,
+        field: Some(field),
+        expected,
+        source,
+    } = failure
+    else {
+        return failure;
+    };
     let arg = command.args.iter().find(|arg| arg.field() == field);
     let pointer = arg.and_then(|arg| match arg.kind {
-        Kind::Operand => (source == "required" || from_document.contains(arg.name)).then(|| format!("{prefix}/operands")),
-        Kind::Option => (source == "required" || from_document.contains(arg.name)).then(|| format!("{prefix}/{}", camel(arg.name))),
+        Kind::Operand => (source == "required" || from_document.contains(arg.name))
+            .then(|| format!("{prefix}/operands")),
+        Kind::Option => (source == "required" || from_document.contains(arg.name))
+            .then(|| format!("{prefix}/{}", camel(arg.name))),
     });
-    Failure::Refuse { code, message, field: Some(pointer.unwrap_or(field)), expected, source }
+    Failure::Refuse {
+        code,
+        message,
+        field: Some(pointer.unwrap_or(field)),
+        expected,
+        source,
+    }
 }
 
 /// What `prepare` needs of the call: the command, the argv without its `--input` words, and the value.
@@ -351,7 +601,11 @@ struct Call<'a> {
 }
 
 /// Splits `--input <value>` (or `--input=<value>`) out of `args`; a second one, or one with no value, is refused as a malformed command line.
-fn take_input(tool: &Tool, command: &Command, args: &[String]) -> Result<Option<(Vec<String>, String)>, ExitCode> {
+fn take_input(
+    tool: &Tool,
+    command: &Command,
+    args: &[String],
+) -> Result<Option<(Vec<String>, String)>, ExitCode> {
     let mut rest: Vec<String> = Vec::new();
     let mut values: Vec<String> = Vec::new();
     let mut index = 0;
@@ -371,14 +625,26 @@ fn take_input(tool: &Tool, command: &Command, args: &[String]) -> Result<Option<
                     index += 1;
                 }
                 _ if tool.flag("inputUsageAccepted") => {}
-                _ => return Err(usage(tool, command.id, "--input needs a value", "inputLastWordInvalid")),
+                _ => {
+                    return Err(usage(
+                        tool,
+                        command.id,
+                        "--input needs a value",
+                        "inputLastWordInvalid",
+                    ))
+                }
             }
         } else {
             rest.push(word.clone());
         }
     }
     if values.len() > 1 && !tool.flag("inputUsageAccepted") {
-        return Err(usage(tool, command.id, "--input was given twice", "inputTwiceInvalid"));
+        return Err(usage(
+            tool,
+            command.id,
+            "--input was given twice",
+            "inputTwiceInvalid",
+        ));
     }
     Ok(values.pop().map(|value| (rest, value)))
 }
@@ -386,11 +652,19 @@ fn take_input(tool: &Tool, command: &Command, args: &[String]) -> Result<Option<
 /// Prepares a call whose command takes `--input`: everything of spec 11.7 before execution.
 pub fn prepare(tool: &Tool, args: &[String]) -> Prepared {
     let words = path_words(args);
-    if args.iter().take_while(|arg| arg.as_str() != "--").any(|arg| arg == "--help" || arg == "-h") {
+    if args
+        .iter()
+        .take_while(|arg| arg.as_str() != "--")
+        .any(|arg| arg == "--help" || arg == "-h")
+    {
         return Prepared::Unchanged;
     }
     let model = Model::of(tool);
-    let Some(command) = (1..=words.len()).rev().find_map(|length| model.command(&words[..length].join(" "))).filter(|command| command.input.is_some()) else {
+    let Some(command) = (1..=words.len())
+        .rev()
+        .find_map(|length| model.command(&words[..length].join(" ")))
+        .filter(|command| command.input.is_some())
+    else {
         return Prepared::Unchanged;
     };
     let (rest, value) = match take_input(tool, command, args) {
@@ -398,7 +672,11 @@ pub fn prepare(tool: &Tool, args: &[String]) -> Prepared {
         Ok(None) => return Prepared::Unchanged,
         Err(code) => return Prepared::Done(code),
     };
-    let call = Call { command, rest, value };
+    let call = Call {
+        command,
+        rest,
+        value,
+    };
     match prepare_call(tool, &call) {
         Ok(prepared) => prepared,
         Err(code) => Prepared::Done(code),
@@ -412,15 +690,35 @@ fn prepare_call(tool: &Tool, call: &Call<'_>) -> Result<Prepared, ExitCode> {
     // Step 2: every document against the fragment; every problem is reported, the first as the error.
     let mut problems: Vec<Problem> = Vec::new();
     for (index, document) in documents.iter().enumerate() {
-        let prefix = if batch { format!("/{index}") } else { String::new() };
+        let prefix = if batch {
+            format!("/{index}")
+        } else {
+            String::new()
+        };
         if let Some(object) = document.as_object() {
             problems.extend(fragment_problems(tool, command, object, &prefix));
         }
     }
     if let Some(first) = problems.first() {
-        let field = if first.pointer.is_empty() { "--input" } else { first.pointer.as_str() };
-        let message = if problems.len() > 1 { format!("the --input document has {} problems", problems.len()) } else { first.message.clone() };
-        return Err(refuse(tool, command.id, "INPUT_INVALID", first.reason, &message, field, &problems));
+        let field = if first.pointer.is_empty() {
+            "--input"
+        } else {
+            first.pointer.as_str()
+        };
+        let message = if problems.len() > 1 {
+            format!("the --input document has {} problems", problems.len())
+        } else {
+            first.message.clone()
+        };
+        return Err(refuse(
+            tool,
+            command.id,
+            "INPUT_INVALID",
+            first.reason,
+            &message,
+            field,
+            &problems,
+        ));
     }
     // Step 3: argv read without enforcing anything, and the conflicts with each document.
     let argv = match read_words(tool, command, &call.rest) {
@@ -429,16 +727,27 @@ fn prepare_call(tool: &Tool, call: &Call<'_>) -> Result<Prepared, ExitCode> {
     };
     let mut merged: Vec<(Parsed, BTreeSet<&'static str>)> = Vec::new();
     for (index, document) in documents.iter().enumerate() {
-        let prefix = if batch { format!("/{index}") } else { String::new() };
-        let Some(object) = document.as_object() else { continue };
+        let prefix = if batch {
+            format!("/{index}")
+        } else {
+            String::new()
+        };
+        let Some(object) = document.as_object() else {
+            continue;
+        };
         let given = document_given(command, object);
         let mut from_document: BTreeSet<&'static str> = BTreeSet::new();
-        let mut explicit = Parsed { deferred_unknown: argv.deferred_unknown.clone(), ..Parsed::default() };
+        let mut explicit = Parsed {
+            deferred_unknown: argv.deferred_unknown.clone(),
+            ..Parsed::default()
+        };
         for (name, values) in &argv.given {
             explicit.given.insert(name, values.clone());
         }
         for (name, values) in given {
-            let Some(arg) = command.arg(name) else { continue };
+            let Some(arg) = command.arg(name) else {
+                continue;
+            };
             match explicit.given.get(name) {
                 Some(on_argv) if !on_argv.is_empty() => {
                     let raw = match arg.kind {
@@ -449,13 +758,23 @@ fn prepare_call(tool: &Tool, call: &Call<'_>) -> Result<Prepared, ExitCode> {
                         Value::Array(items) if items.len() == 1 => items[0].clone(),
                         other => other.clone(),
                     };
-                    if !tool.flag("inputNoConflict") && !same_value(tool, arg, on_argv, &values, &raw_one) {
+                    if !tool.flag("inputNoConflict")
+                        && !same_value(tool, arg, on_argv, &values, &raw_one)
+                    {
                         let pointer = match arg.kind {
                             Kind::Operand => format!("{prefix}/operands"),
                             Kind::Option => format!("{prefix}/{}", camel(name)),
                         };
                         let field = tool.text("inputConflictField", &pointer);
-                        return Err(refuse(tool, command.id, "INPUT_CONFLICT", "", &format!("{} differs between argv and the document", arg.field()), &field, &[]));
+                        return Err(refuse(
+                            tool,
+                            command.id,
+                            "INPUT_CONFLICT",
+                            "",
+                            &format!("{} differs between argv and the document", arg.field()),
+                            &field,
+                            &[],
+                        ));
                     }
                 }
                 _ => {
@@ -471,7 +790,10 @@ fn prepare_call(tool: &Tool, call: &Call<'_>) -> Result<Prepared, ExitCode> {
             if let Some(text) = arg.env.and_then(|variable| std::env::var(variable).ok()) {
                 let failure = typed(tool, arg, &text).err().or_else(|| {
                     let mut probe = Parsed::default();
-                    probe.given.insert(arg.name, vec![typed(tool, arg, &text).unwrap_or(Value::Null)]);
+                    probe.given.insert(
+                        arg.name,
+                        vec![typed(tool, arg, &text).unwrap_or(Value::Null)],
+                    );
                     check_domains(tool, command, &probe, false).err()
                 });
                 if let Some(failure) = failure {
@@ -483,29 +805,54 @@ fn prepare_call(tool: &Tool, call: &Call<'_>) -> Result<Prepared, ExitCode> {
     // Steps 5 and 6, for each document: `env` for what is absent, then requirements, domains, constraints, validators.
     let mut effective_items: Vec<Parsed> = Vec::new();
     for (index, (explicit, from_document)) in merged.iter().enumerate() {
-        let prefix = if batch && !tool.flag("batchNoPrefix") { format!("/{index}") } else { String::new() };
+        let prefix = if batch && !tool.flag("batchNoPrefix") {
+            format!("/{index}")
+        } else {
+            String::new()
+        };
         let lazily = batch && tool.flag("batchLatePreflight") && index + 1 == merged.len();
         match enforce_item(tool, command, explicit, from_document, &prefix, batch) {
             Ok(effective) => effective_items.push(effective),
             Err(failure) if lazily => {
                 let _ = failure;
                 effective_items.push(explicit_clone(explicit));
-                return Ok(Prepared::Batch(command.id, mark_late(effective_items, index)));
+                return Ok(Prepared::Batch(
+                    command.id,
+                    mark_late(effective_items, index),
+                ));
             }
-            Err(failure) => return Err(refuse_failure(tool, command.id, translate(tool, command, failure, from_document, &prefix))),
+            Err(failure) => {
+                return Err(refuse_failure(
+                    tool,
+                    command.id,
+                    translate(tool, command, failure, from_document, &prefix),
+                ))
+            }
         }
     }
     if batch {
         return Ok(Prepared::Batch(command.id, effective_items));
     }
-    let (Some((explicit, from_document)), Some(effective)) = (merged.first(), effective_items.first()) else {
+    let (Some((explicit, from_document)), Some(effective)) =
+        (merged.first(), effective_items.first())
+    else {
         return Ok(Prepared::Unchanged);
     };
-    Ok(Prepared::Argv(synthesize(tool, command, &call.rest, explicit, effective, from_document)))
+    Ok(Prepared::Argv(synthesize(
+        tool,
+        command,
+        &call.rest,
+        explicit,
+        effective,
+        from_document,
+    )))
 }
 
 fn explicit_clone(parsed: &Parsed) -> Parsed {
-    let mut clone = Parsed { deferred_unknown: parsed.deferred_unknown.clone(), ..Parsed::default() };
+    let mut clone = Parsed {
+        deferred_unknown: parsed.deferred_unknown.clone(),
+        ..Parsed::default()
+    };
     for (name, values) in &parsed.given {
         clone.given.insert(name, values.clone());
     }
@@ -521,41 +868,105 @@ fn mark_late(mut items: Vec<Parsed>, index: usize) -> Vec<Parsed> {
 }
 
 /// Steps 5 and 6 for one document: what `env` adds, then the stages in the order of the contract. The values the item executes with.
-fn enforce_item(tool: &Tool, command: &Command, explicit: &Parsed, from_document: &BTreeSet<&'static str>, prefix: &str, batch: bool) -> Result<Parsed, Failure> {
+fn enforce_item(
+    tool: &Tool,
+    command: &Command,
+    explicit: &Parsed,
+    from_document: &BTreeSet<&'static str>,
+    prefix: &str,
+    batch: bool,
+) -> Result<Parsed, Failure> {
     let _ = prefix;
     let mut effective = explicit_clone(explicit);
-    for arg in command.flags().filter(|arg| arg.env.is_some() && !arg.flag_only) {
+    for arg in command
+        .flags()
+        .filter(|arg| arg.env.is_some() && !arg.flag_only)
+    {
         if explicit.has(arg.name) {
             continue;
         }
         if let Some(text) = arg.env.and_then(|variable| std::env::var(variable).ok()) {
-            effective.given.insert(arg.name, vec![typed(tool, arg, &text)?]);
+            effective
+                .given
+                .insert(arg.name, vec![typed(tool, arg, &text)?]);
         }
     }
     // The seeded violation: a document that carries every argument, with none on argv, is refused as missing them.
-    let complete = !batch && command.args.iter().filter(|arg| arg.required).all(|arg| effective.has(arg.name));
-    let carried = command.args.iter().filter(|arg| !arg.flag_only && from_document.contains(arg.name)).count();
-    let argv_gives_nothing = complete && carried >= 2 && std::env::var_os("FAKE_INPUT_FROM_STDIN").is_none() && !command.args.iter().any(|arg| !arg.flag_only && explicit.has(arg.name) && !from_document.contains(arg.name));
-    let requirements = if tool.flag("inputRequiresArgv") && argv_gives_nothing { &Parsed::default() } else { &effective };
+    let complete = !batch
+        && command
+            .args
+            .iter()
+            .filter(|arg| arg.required)
+            .all(|arg| effective.has(arg.name));
+    let carried = command
+        .args
+        .iter()
+        .filter(|arg| !arg.flag_only && from_document.contains(arg.name))
+        .count();
+    let argv_gives_nothing = complete
+        && carried >= 2
+        && std::env::var_os("FAKE_INPUT_FROM_STDIN").is_none()
+        && !command.args.iter().any(|arg| {
+            !arg.flag_only && explicit.has(arg.name) && !from_document.contains(arg.name)
+        });
+    let requirements = if tool.flag("inputRequiresArgv") && argv_gives_nothing {
+        &Parsed::default()
+    } else {
+        &effective
+    };
     for arg in command.args.iter().filter(|arg| arg.required) {
         if !requirements.has(arg.name) {
             let message = format!("{} is required", arg.field());
-            let code = if tool.flag("inputRequiredInvalid") { "INPUT_INVALID" } else { "USAGE" };
-            let source = if tool.flag("inputRequiredFieldAsArgv") { "required-as-argv" } else { "required" };
-            return Err(Failure::Refuse { code: code.to_string(), message, field: Some(field_of(command, arg.name)), expected: None, source });
+            let code = if tool.flag("inputRequiredInvalid") {
+                "INPUT_INVALID"
+            } else {
+                "USAGE"
+            };
+            let source = if tool.flag("inputRequiredFieldAsArgv") {
+                "required-as-argv"
+            } else {
+                "required"
+            };
+            return Err(Failure::Refuse {
+                code: code.to_string(),
+                message,
+                field: Some(field_of(command, arg.name)),
+                expected: None,
+                source,
+            });
         }
     }
     check_domains(tool, command, &effective, false)?;
-    if let Err(Failure::Refuse { code, message, field, expected, source }) = check_rules(tool, command, explicit) {
+    if let Err(Failure::Refuse {
+        code,
+        message,
+        field,
+        expected,
+        source,
+    }) = check_rules(tool, command, explicit)
+    {
         let code = tool.text("inputConstraintCode", &code);
-        return Err(Failure::Refuse { code, message, field, expected, source });
+        return Err(Failure::Refuse {
+            code,
+            message,
+            field,
+            expected,
+            source,
+        });
     }
     check_validators(tool, command, &effective)?;
     Ok(effective)
 }
 
 /// The argv that says what the merged document and argv say (spec 11.9): options as `--name=value`, operands after one `--`.
-fn synthesize(tool: &Tool, command: &Command, rest: &[String], explicit: &Parsed, effective: &Parsed, from_document: &BTreeSet<&'static str>) -> Vec<String> {
+fn synthesize(
+    tool: &Tool,
+    command: &Command,
+    rest: &[String],
+    explicit: &Parsed,
+    effective: &Parsed,
+    from_document: &BTreeSet<&'static str>,
+) -> Vec<String> {
     let mut before: Vec<String> = Vec::new();
     let mut after: Vec<String> = Vec::new();
     match rest.iter().position(|word| word == "--") {

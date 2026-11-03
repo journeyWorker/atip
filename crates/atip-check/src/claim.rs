@@ -71,10 +71,7 @@ pub fn later_members(document: &Value) -> Vec<String> {
     if document.pointer("/error/reason").is_some() {
         found.push("error.reason".to_string());
     }
-    if let Some(details) = document
-        .pointer("/error/details")
-        .and_then(Value::as_array)
-    {
+    if let Some(details) = document.pointer("/error/details").and_then(Value::as_array) {
         if details.iter().any(|detail| detail.get("reason").is_some()) {
             found.push("error.details[].reason".to_string());
         }
@@ -95,7 +92,10 @@ pub fn later_members(document: &Value) -> Vec<String> {
         .flatten()
         .chain(document.pointer("/data/error"))
         .filter(|_| document.pointer("/meta/command").and_then(Value::as_str) == Some("schema"));
-    if registry_rows.into_iter().any(|row| row.get("reasons").is_some()) {
+    if registry_rows
+        .into_iter()
+        .any(|row| row.get("reasons").is_some())
+    {
         found.push("reasons in a registry entry".to_string());
     }
     found
@@ -107,10 +107,13 @@ pub fn without_later_members(document: &Value) -> Value {
     let mut copy = document.clone();
     if let Some(meta) = copy.get_mut("meta").and_then(Value::as_object_mut) {
         meta.remove("contractVersion");
-        let emptied = meta.get_mut("fields").and_then(Value::as_array_mut).is_some_and(|fields| {
-            fields.retain(|path| !path.as_str().is_some_and(is_bracketed));
-            fields.is_empty()
-        });
+        let emptied = meta
+            .get_mut("fields")
+            .and_then(Value::as_array_mut)
+            .is_some_and(|fields| {
+                fields.retain(|path| !path.as_str().is_some_and(is_bracketed));
+                fields.is_empty()
+            });
         if emptied {
             meta.remove("fields");
         }
@@ -145,8 +148,13 @@ pub fn for_envelope_schema(document: &Value, claim: Claim) -> Value {
         if meta.contains_key("contractVersion") && !meta.contains_key("contract") {
             meta.insert("contract".to_string(), Value::String("atip/1".to_string()));
         }
-        if claim.at_least(Claim::V1_1) && meta.get("contractVersion").and_then(Value::as_str) == Some("1.0") {
-            meta.insert("contractVersion".to_string(), Value::String(claim.as_str().to_string()));
+        if claim.at_least(Claim::V1_1)
+            && meta.get("contractVersion").and_then(Value::as_str) == Some("1.0")
+        {
+            meta.insert(
+                "contractVersion".to_string(),
+                Value::String(claim.as_str().to_string()),
+            );
         }
     }
     copy
@@ -176,7 +184,11 @@ pub fn null_paths(value: &Value, at: &str, found: &mut Vec<String>) {
         Value::Null => found.push(at.to_string()),
         Value::Object(object) => {
             for (key, member) in object {
-                null_paths(member, &format!("{at}/{}", key.replace('~', "~0").replace('/', "~1")), found);
+                null_paths(
+                    member,
+                    &format!("{at}/{}", key.replace('~', "~0").replace('/', "~1")),
+                    found,
+                );
             }
         }
         Value::Array(items) => {
@@ -230,11 +242,18 @@ pub fn command_line_problem(hint: &str) -> Option<String> {
                 '<' => {
                     let close = chars[at + 1..].iter().position(|mark| *mark == '>');
                     let placeholder = close.is_some_and(|len| {
-                        len > 0 && chars[at + 1..at + 1 + len].iter().all(|name| name.is_ascii_uppercase() || name.is_ascii_digit() || *name == '_')
+                        len > 0
+                            && chars[at + 1..at + 1 + len].iter().all(|name| {
+                                name.is_ascii_uppercase() || name.is_ascii_digit() || *name == '_'
+                            })
                     });
                     match close {
                         Some(len) if placeholder => at += len + 1,
-                        _ => return Some("an unquoted `<` is a redirection, not a placeholder".to_string()),
+                        _ => {
+                            return Some(
+                                "an unquoted `<` is a redirection, not a placeholder".to_string(),
+                            )
+                        }
                     }
                 }
                 '>' => return Some("an unquoted `>` is a redirection".to_string()),
@@ -272,13 +291,21 @@ mod tests {
         });
         assert_eq!(
             later_members(&document),
-            ["meta.contractVersion", "a bracketed key in meta.fields", "error.reason", "error.details[].reason"]
+            [
+                "meta.contractVersion",
+                "a bracketed key in meta.fields",
+                "error.reason",
+                "error.details[].reason"
+            ]
         );
         let stripped = without_later_members(&document);
         assert!(later_members(&stripped).is_empty(), "{stripped}");
         assert_eq!(stripped["meta"]["fields"], json!(["a.b"]));
         let schema = json!({"ok": true, "data": {"kind": "warnings", "warnings": []}, "meta": {"command": "schema"}});
-        assert_eq!(later_members(&schema), ["the schema document kind warnings"]);
+        assert_eq!(
+            later_members(&schema),
+            ["the schema document kind warnings"]
+        );
         let errors = json!({"ok": true, "data": {"kind": "errors", "errors": [{"code": "X", "reasons": []}]}, "meta": {"command": "schema"}});
         assert_eq!(later_members(&errors), ["reasons in a registry entry"]);
     }
@@ -293,9 +320,16 @@ mod tests {
         assert_eq!(found, ["/meta/context/repo", "/error/hint"]);
         let copy = for_envelope_schema(&document, Claim::V1_1);
         assert_eq!(copy["error"], json!({"code": "X"}));
-        assert_eq!(copy["data"], json!({"keep": null}), "data is the report's, not the envelope's");
+        assert_eq!(
+            copy["data"],
+            json!({"keep": null}),
+            "data is the report's, not the envelope's"
+        );
         let lone = json!({"ok": true, "data": {}, "meta": {"contractVersion": "1.1"}});
-        assert_eq!(for_envelope_schema(&lone, Claim::V1_1)["meta"]["contract"], "atip/1");
+        assert_eq!(
+            for_envelope_schema(&lone, Claim::V1_1)["meta"]["contract"],
+            "atip/1"
+        );
     }
 
     #[test]

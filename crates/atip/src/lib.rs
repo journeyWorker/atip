@@ -43,9 +43,9 @@
 
 pub mod argv;
 pub mod constraint;
+pub mod cursor;
 pub mod doc;
 pub mod domain;
-pub mod cursor;
 pub mod envelope;
 pub mod error;
 pub mod fields;
@@ -60,15 +60,25 @@ pub mod schema;
 pub mod shell;
 
 pub use argv::{argv_wants_json, json_mode, set_json_mode, wants_json};
-pub use envelope::{line, print_line};
 pub use cursor::{next_page_argv, Binding, CursorInvalid, Cursors, CURSOR_INVALID_REASONS};
-pub use error::{count_with_exit, find_code, find_warning, reason_of_code, reasons_with_exit, redact, with_row, CliError, CodeInfo, ErrorBody, ReasonInfo, WarningInfo, EXIT_FAILED, EXIT_REFUSED};
+pub use envelope::{line, print_line};
+pub use error::{
+    count_with_exit, find_code, find_warning, reason_of_code, reasons_with_exit, redact, with_row,
+    CliError, CodeInfo, ErrorBody, ReasonInfo, WarningInfo, EXIT_FAILED, EXIT_REFUSED,
+};
 pub use given::{write_argv, Given};
 pub use minor::{Minor, UnknownMinor};
 pub use plan::{Effect, Plan, PlanDigest, Preview};
 pub use project::{flag_only_options, flag_only_problems};
 pub use reserved::{registration_problem, reserved_code, ReservedCode, RESERVED_CODES};
-pub use schema::{BATCH_REPORT_SCHEMA, CONTRACT, CONTRACT_VERSION, ENVELOPE_SCHEMA, ERROR_SCHEMA, GUIDE_SCHEMA, INPUT_DOCUMENT_SCHEMA, REGISTRY_ENTRY_SCHEMA, SCHEMA_DOC_SCHEMA, STREAM_LINE_SCHEMA, WARNING_ENTRY_SCHEMA};
 #[cfg(feature = "validate")]
-pub use schema::{envelope_problems, error_problems, guide_problems, registry_entry_problems, schema_doc_problems, warning_entry_problems};
+pub use schema::{
+    envelope_problems, error_problems, guide_problems, registry_entry_problems,
+    schema_doc_problems, warning_entry_problems,
+};
+pub use schema::{
+    BATCH_REPORT_SCHEMA, CONTRACT, CONTRACT_VERSION, ENVELOPE_SCHEMA, ERROR_SCHEMA, GUIDE_SCHEMA,
+    INPUT_DOCUMENT_SCHEMA, REGISTRY_ENTRY_SCHEMA, SCHEMA_DOC_SCHEMA, STREAM_LINE_SCHEMA,
+    WARNING_ENTRY_SCHEMA,
+};
 pub use shell::{has_placeholder, quote, split_argv};

@@ -298,16 +298,29 @@ pub fn render(invocation: &Invocation) -> Vec<String> {
         .position(|item| matches!(item, Item::Operand(value) if !plain(value)));
     let word = |item: &Item| match item {
         Item::Operand(value) => value.clone(),
-        Item::Option { name, value: Some(value) } => format!("--{name}={value}"),
+        Item::Option {
+            name,
+            value: Some(value),
+        } => format!("--{name}={value}"),
         Item::Option { name, value: None } => format!("--{name}"),
     };
     match ends_at {
         None => argv.extend(invocation.items.iter().map(word)),
         Some(at) => {
             argv.extend(invocation.items[..at].iter().map(word));
-            argv.extend(invocation.items[at..].iter().filter(|item| matches!(item, Item::Option { .. })).map(word));
+            argv.extend(
+                invocation.items[at..]
+                    .iter()
+                    .filter(|item| matches!(item, Item::Option { .. }))
+                    .map(word),
+            );
             argv.push("--".to_string());
-            argv.extend(invocation.items[at..].iter().filter(|item| matches!(item, Item::Operand(_))).map(word));
+            argv.extend(
+                invocation.items[at..]
+                    .iter()
+                    .filter(|item| matches!(item, Item::Operand(_)))
+                    .map(word),
+            );
         }
     }
     argv
@@ -434,7 +447,9 @@ fn strip_patterns(value: &mut Value, only_bad: bool) {
         Value::Object(members) => {
             let bad = match members.get("pattern") {
                 Some(Value::String(pattern)) => {
-                    !only_bad || super::regex::form_problem(pattern).is_some() || super::regex::rust_problem(pattern).is_some()
+                    !only_bad
+                        || super::regex::form_problem(pattern).is_some()
+                        || super::regex::rust_problem(pattern).is_some()
                 }
                 Some(_) => true,
                 None => false,
@@ -475,15 +490,18 @@ fn domain_validator(domain: &Value) -> Result<Arc<Validator>, String> {
             // A `pattern` that is not of the form, or that Rust refuses, is `L1.patterns`' to report: the value is judged against the rest.
             let mut judged = domain.clone();
             strip_patterns(&mut judged, true);
-            schemas().validator(&judged).or_else(|first| {
-                let mut stripped = domain.clone();
-                strip_patterns(&mut stripped, false);
-                if stripped == judged {
-                    Err(first)
-                } else {
-                    schemas().validator(&stripped)
-                }
-            }).map(Arc::new)
+            schemas()
+                .validator(&judged)
+                .or_else(|first| {
+                    let mut stripped = domain.clone();
+                    strip_patterns(&mut stripped, false);
+                    if stripped == judged {
+                        Err(first)
+                    } else {
+                        schemas().validator(&stripped)
+                    }
+                })
+                .map(Arc::new)
         })
         .clone()
 }
@@ -1059,7 +1077,8 @@ pub fn broken_arguments(doc: &CommandDoc, invocation: &Invocation) -> Vec<String
     }
     for (name, count) in counts {
         if let Some(option) = doc.option(name) {
-            if value_problem(option, &Value::from(count)).is_some() && !names.contains(&option.name) {
+            if value_problem(option, &Value::from(count)).is_some() && !names.contains(&option.name)
+            {
                 names.push(option.name.clone());
             }
         }

@@ -50,7 +50,13 @@ pub struct Given {
 
 impl Given {
     fn new(name: &str, kind: Kind, value: Value) -> Self {
-        Given { name: name.to_string(), kind, value, source: Source::Explicit, flag_only: false }
+        Given {
+            name: name.to_string(),
+            kind,
+            value,
+            source: Source::Explicit,
+            flag_only: false,
+        }
     }
 
     /// An option with a value.
@@ -169,7 +175,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn atip_cratecursor_09_arguments_are_written_as_argv_options_and_operands_after_one_double_dash() {
+    fn atip_cratecursor_09_arguments_are_written_as_argv_options_and_operands_after_one_double_dash(
+    ) {
         let given = vec![
             Given::option("status", "active"),
             Given::switch("verbose", true),
@@ -182,10 +189,29 @@ mod tests {
         ];
         assert_eq!(
             write_argv(&["acme", "member", "list"], &given),
-            ["acme", "member", "list", "--status=active", "--verbose", "--level", "--level", "--label=a", "--label=b c", "--round=1", "--filter={\"a\":[1,2]}", "--after=x", "--", "one", "-two"]
+            [
+                "acme",
+                "member",
+                "list",
+                "--status=active",
+                "--verbose",
+                "--level",
+                "--level",
+                "--label=a",
+                "--label=b c",
+                "--round=1",
+                "--filter={\"a\":[1,2]}",
+                "--after=x",
+                "--",
+                "one",
+                "-two"
+            ]
         );
         // No operand: no `--`.
-        assert_eq!(write_argv(&["acme", "ls"], &[Given::option("a", "b")]), ["acme", "ls", "--a=b"]);
+        assert_eq!(
+            write_argv(&["acme", "ls"], &[Given::option("a", "b")]),
+            ["acme", "ls", "--a=b"]
+        );
     }
 
     #[test]
@@ -200,13 +226,37 @@ mod tests {
             Given::option("input", "-"),
             Given::option("nothing", Value::Null),
         ];
-        assert_eq!(write_argv(&["acme", "ls"], &given), ["acme", "ls", "--kept=yes"]);
+        assert_eq!(
+            write_argv(&["acme", "ls"], &given),
+            ["acme", "ls", "--kept=yes"]
+        );
     }
 
     #[test]
-    fn atip_cratecursor_10_a_value_that_is_empty_or_starts_with_a_dash_is_written_joined_like_every_other() {
-        let given = vec![Given::option("name", "-x"), Given::option("empty", ""), Given::option("dashes", "--"), Given::option("stdin", "-"), Given::option("neg", -5), Given::repeated("label", vec![json!("-a"), json!("b")])];
-        assert_eq!(write_argv(&["acme", "ls"], &given), ["acme", "ls", "--name=-x", "--empty=", "--dashes=--", "--stdin=-", "--neg=-5", "--label=-a", "--label=b"]);
+    fn atip_cratecursor_10_a_value_that_is_empty_or_starts_with_a_dash_is_written_joined_like_every_other(
+    ) {
+        let given = vec![
+            Given::option("name", "-x"),
+            Given::option("empty", ""),
+            Given::option("dashes", "--"),
+            Given::option("stdin", "-"),
+            Given::option("neg", -5),
+            Given::repeated("label", vec![json!("-a"), json!("b")]),
+        ];
+        assert_eq!(
+            write_argv(&["acme", "ls"], &given),
+            [
+                "acme",
+                "ls",
+                "--name=-x",
+                "--empty=",
+                "--dashes=--",
+                "--stdin=-",
+                "--neg=-5",
+                "--label=-a",
+                "--label=b"
+            ]
+        );
     }
 
     #[test]
@@ -214,7 +264,13 @@ mod tests {
         assert!(Given::switch("a", false).is_absent() && !Given::switch("a", true).is_absent());
         assert!(Given::count("a", 0).is_absent() && !Given::count("a", 1).is_absent());
         assert!(Given::repeated("a", vec![]).is_absent() && Given::operands(vec![]).is_absent());
-        assert!(!Given::option("a", "").is_absent(), "an empty value is a value");
-        assert!(!Given::option("a", 0).is_absent(), "an integer option given 0 is given (spec 10.8.1)");
+        assert!(
+            !Given::option("a", "").is_absent(),
+            "an empty value is a value"
+        );
+        assert!(
+            !Given::option("a", 0).is_absent(),
+            "an integer option given 0 is given (spec 10.8.1)"
+        );
     }
 }

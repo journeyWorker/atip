@@ -19,7 +19,15 @@ use crate::Tool;
 
 /// The commands, groups aside, in the order of the tree.
 pub fn commands(pair_code: bool) -> Vec<Command> {
-    vec![purge(pair_code), deploy_start(), deploy_status(), seal(), stamp(), log(), peek()]
+    vec![
+        purge(pair_code),
+        deploy_start(),
+        deploy_status(),
+        seal(),
+        stamp(),
+        log(),
+        peek(),
+    ]
 }
 
 fn purge(pair_code: bool) -> Command {
@@ -94,23 +102,42 @@ fn deploy_start() -> Command {
 }
 
 fn deploy_status() -> Command {
-    Command::new("deploy status", "Show a deployment's state, or wait until it ends")
-        .operand(Arg::operand("deployment", "string", "The deployment, as deploy start reported it").value("DEPLOYMENT").required())
-        .options(vec![
-            Arg::option("wait", "switch", "Wait until the deployment ends"),
-            Arg::option("timeout", "string", "How long --wait waits (90s, 10m)").value("DURATION").default(json!("10m")).domain(json!({"maxLength": 6})),
-        ])
-        .errors(&["DEPLOY_FAILED", "DEPLOYMENT_NOT_FOUND", "USAGE", "WAIT_TIMEOUT"])
-        .output(
-            "DeployStatusReport",
-            json!({
-                "type": "object",
-                "required": ["deployment", "state"],
-                "properties": {"deployment": {"type": "string"}, "state": {"type": "string"}},
-                "additionalProperties": false
-            }),
+    Command::new(
+        "deploy status",
+        "Show a deployment's state, or wait until it ends",
+    )
+    .operand(
+        Arg::operand(
+            "deployment",
+            "string",
+            "The deployment, as deploy start reported it",
         )
-        .examples(&["{tool} deploy status d-1 --wait --json"])
+        .value("DEPLOYMENT")
+        .required(),
+    )
+    .options(vec![
+        Arg::option("wait", "switch", "Wait until the deployment ends"),
+        Arg::option("timeout", "string", "How long --wait waits (90s, 10m)")
+            .value("DURATION")
+            .default(json!("10m"))
+            .domain(json!({"maxLength": 6})),
+    ])
+    .errors(&[
+        "DEPLOY_FAILED",
+        "DEPLOYMENT_NOT_FOUND",
+        "USAGE",
+        "WAIT_TIMEOUT",
+    ])
+    .output(
+        "DeployStatusReport",
+        json!({
+            "type": "object",
+            "required": ["deployment", "state"],
+            "properties": {"deployment": {"type": "string"}, "state": {"type": "string"}},
+            "additionalProperties": false
+        }),
+    )
+    .examples(&["{tool} deploy status d-1 --wait --json"])
 }
 
 fn seal() -> Command {
@@ -187,7 +214,14 @@ fn digest(text: &str) -> String {
 }
 
 /// Prints a failure with its own `meta.next` and retryability (a refusal of the plan, a wait that timed out).
-fn fail_with(tool: &Tool, code: &str, message: &str, command: &str, extras: &[(&str, Value)], how: (u8, bool, Option<Value>)) -> ExitCode {
+fn fail_with(
+    tool: &Tool,
+    code: &str,
+    message: &str,
+    command: &str,
+    extras: &[(&str, Value)],
+    how: (u8, bool, Option<Value>),
+) -> ExitCode {
     let (exit, retryable, next) = how;
     let mut error = Map::new();
     error.insert("code".into(), json!(code));
@@ -226,7 +260,12 @@ pub fn handle(tool: &Tool, args: &[String], words: &[String]) -> Option<ExitCode
     }
 }
 
-fn run(tool: &Tool, id: &'static str, args: &[String], handler: fn(&Tool, &[String], &Parsed) -> ExitCode) -> ExitCode {
+fn run(
+    tool: &Tool,
+    id: &'static str,
+    args: &[String],
+    handler: fn(&Tool, &[String], &Parsed) -> ExitCode,
+) -> ExitCode {
     let model = Model::of(tool);
     let Some(command) = model.command(id) else {
         return tool.unknown_command(id, &[], None);
@@ -253,7 +292,12 @@ fn purge_set(kind: &str) -> Vec<(String, u64)> {
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            name.starts_with(&format!("{kind}-")).then(|| (format!("logs/{name}"), entry.metadata().map_or(0, |meta| meta.len())))
+            name.starts_with(&format!("{kind}-")).then(|| {
+                (
+                    format!("logs/{name}"),
+                    entry.metadata().map_or(0, |meta| meta.len()),
+                )
+            })
         })
         .collect();
     files.sort();
@@ -261,7 +305,10 @@ fn purge_set(kind: &str) -> Vec<(String, u64)> {
 }
 
 fn plan_digest(kind: &str, before: &str, files: &[(String, u64)]) -> String {
-    let listing: Vec<String> = files.iter().map(|(name, size)| format!("{name}:{size}")).collect();
+    let listing: Vec<String> = files
+        .iter()
+        .map(|(name, size)| format!("{name}:{size}"))
+        .collect();
     digest(&format!("{kind}|{before}|{}", listing.join(",")))
 }
 
@@ -271,7 +318,10 @@ fn purge_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
     let files = purge_set(&kind);
     let digest = plan_digest(&kind, &before, &files);
     let effects: Vec<Value> = files.iter().map(|(path, size)| json!({"action": "delete", "path": path, "detail": format!("{size} bytes")})).collect();
-    let preview_argv: Vec<String> = ["purge", "--kind", &kind, "--before", &before, "--json"].iter().map(ToString::to_string).collect();
+    let preview_argv: Vec<String> = ["purge", "--kind", &kind, "--before", &before, "--json"]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
     let mut commit_argv: Vec<String> = ["purge"].iter().map(ToString::to_string).collect();
     if tool.flag("previewNextInput") && std::env::var_os("FAKE_INPUT_FROM_STDIN").is_some() {
         commit_argv.extend(["--input", "-"].map(String::from));
@@ -280,25 +330,45 @@ fn purge_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
     }
     if tool.flag("digestOneWord") {
         // The form of spec 9.12.1: every valued option as `--name=value`.
-        commit_argv.extend(["--commit".to_string(), format!("--plan-digest={digest}"), "--json".to_string()]);
+        commit_argv.extend([
+            "--commit".to_string(),
+            format!("--plan-digest={digest}"),
+            "--json".to_string(),
+        ]);
     } else {
         commit_argv.extend(["--commit", "--plan-digest", &digest, "--json"].map(String::from));
     }
     let data = |committed: bool| json!({"kind": kind, "before": before, "planDigest": digest, "effects": effects, "committed": committed});
     if !parsed.has("commit") {
         if tool.flag("previewFails") && std::env::var_os("FAKE_INPUT_FROM_STDIN").is_none() {
-            return fail_with(tool, "PURGE_FAILED", "the plan could not be made", "purge", &[], (1, false, None));
+            return fail_with(
+                tool,
+                "PURGE_FAILED",
+                "the plan could not be made",
+                "purge",
+                &[],
+                (1, false, None),
+            );
         }
         if tool.flag("previewWrites") {
             std::fs::write(".purge-preview-cache", "written by a preview").unwrap_or_default();
         }
         let mut extra = Map::new();
         if !tool.flag("previewNoNext") {
-            extra.insert("next".into(), json!([next_entry(tool, &commit_argv, "carry out exactly this plan")]));
+            extra.insert(
+                "next".into(),
+                json!([next_entry(
+                    tool,
+                    &commit_argv,
+                    "carry out exactly this plan"
+                )]),
+            );
         }
         let mut shown = data(false);
         if tool.flag("previewNoDigest") {
-            shown.as_object_mut().map(|object| object.remove("planDigest"));
+            shown
+                .as_object_mut()
+                .map(|object| object.remove("planDigest"));
         }
         if tool.flag("previewNoEffects") {
             shown.as_object_mut().map(|object| object.remove("effects"));
@@ -311,8 +381,16 @@ fn purge_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
     let given = parsed.text("plan-digest");
     if let Some(given) = given {
         if given != digest && !tool.flag("staleAccepted") {
-            let next = (!tool.flag("staleNoNext")).then(|| next_entry(tool, &preview_argv, "plan again"));
-            return fail_with(tool, "PLAN_STALE", "the state changed since the plan was made", "purge", &[("field", json!("--plan-digest"))], (2, false, next));
+            let next =
+                (!tool.flag("staleNoNext")).then(|| next_entry(tool, &preview_argv, "plan again"));
+            return fail_with(
+                tool,
+                "PLAN_STALE",
+                "the state changed since the plan was made",
+                "purge",
+                &[("field", json!("--plan-digest"))],
+                (2, false, next),
+            );
         }
     }
     if !tool.flag("commitNoEffect") {
@@ -320,7 +398,11 @@ fn purge_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
             std::fs::remove_file(path).unwrap_or_default();
         }
         if !files.is_empty() {
-            let mut audit = std::fs::OpenOptions::new().create(true).append(true).open(".purge-audit.log").unwrap_or_else(|_| std::process::exit(70));
+            let mut audit = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(".purge-audit.log")
+                .unwrap_or_else(|_| std::process::exit(70));
             writeln!(audit, "purged {} {}", kind, files.len()).unwrap_or_default();
         }
     }
@@ -339,7 +421,12 @@ fn purge_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
 fn seal_run(tool: &Tool, _args: &[String], _parsed: &Parsed) -> ExitCode {
     let sealed = std::path::Path::new(".sealed").exists();
     if sealed && !tool.flag("onceTwice") {
-        return tool.refuse("ALREADY_SEALED", "the directory is sealed already", "seal", &[]);
+        return tool.refuse(
+            "ALREADY_SEALED",
+            "the directory is sealed already",
+            "seal",
+            &[],
+        );
     }
     if !sealed {
         std::fs::write(".sealed", "sealed").unwrap_or_default();
@@ -354,12 +441,21 @@ fn stamp_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
     let kept = path.exists();
     // Seeded: every run appends an audit line, a named side effect that is not a new effect of the stamp.
     if tool.flag("stampAudit") && !parsed.has("dry-run") {
-        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(".stamp-audit.log").unwrap_or_else(|_| std::process::exit(70));
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(".stamp-audit.log")
+            .unwrap_or_else(|_| std::process::exit(70));
         writeln!(file, "stamped").unwrap_or_default();
     }
     // Seeded: every run also makes a directory of its own that holds nothing (`bare-0`, `bare-1`, ...): a directory is no effect.
     if tool.flag("stampBareDir") {
-        let made = std::fs::read_dir(".").map_or(0, |entries| entries.flatten().filter(|entry| entry.file_name().to_string_lossy().starts_with("bare-")).count());
+        let made = std::fs::read_dir(".").map_or(0, |entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.file_name().to_string_lossy().starts_with("bare-"))
+                .count()
+        });
         std::fs::create_dir(format!("bare-{made}")).unwrap_or_default();
     }
     if parsed.has("dry-run") {
@@ -370,7 +466,11 @@ fn stamp_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
     }
     if !kept || tool.flag("stampDuplicates") {
         std::fs::create_dir_all("stamps").unwrap_or_default();
-        let target = if kept { std::path::Path::new("stamps").join(format!("{}-again.txt", &key[..16])) } else { path };
+        let target = if kept {
+            std::path::Path::new("stamps").join(format!("{}-again.txt", &key[..16]))
+        } else {
+            path
+        };
         std::fs::write(target, text).unwrap_or_default();
         return tool.success("stamp", json!({"stamp": text, "status": "written"}));
     }
@@ -378,7 +478,11 @@ fn stamp_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
 }
 
 fn log_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
-    let mut file = std::fs::OpenOptions::new().create(true).append(true).open("log.txt").unwrap_or_else(|_| std::process::exit(70));
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("log.txt")
+        .unwrap_or_else(|_| std::process::exit(70));
     writeln!(file, "{}", parsed.text("text").unwrap_or_default()).unwrap_or_default();
     let lines = std::fs::read_to_string("log.txt").map_or(0, |text| text.lines().count());
     tool.success("log", json!({"lines": lines}))
@@ -396,7 +500,11 @@ fn peek_run(tool: &Tool, _args: &[String], _parsed: &Parsed) -> ExitCode {
     if tool.flag("peekBareDir") {
         std::fs::create_dir_all(".peek-empty").unwrap_or_else(|_| std::process::exit(70));
     }
-    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap_or_else(|_| std::process::exit(70));
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .unwrap_or_else(|_| std::process::exit(70));
     writeln!(file, "peeked").unwrap_or_default();
     if tool.flag("peekWritesOther") {
         std::fs::write("peek-cache.txt", "written by a read").unwrap_or_default();
@@ -410,7 +518,14 @@ fn peek_run(tool: &Tool, _args: &[String], _parsed: &Parsed) -> ExitCode {
 fn deploy(tool: &Tool, args: &[String], words: &[String]) -> ExitCode {
     let verbs = ["start", "status"];
     let Some(verb) = words.get(1).map(String::as_str) else {
-        return tool.fail("group", "COMMAND_REQUIRED", "deploy needs a command", Some("deploy"), &[("expected", json!(verbs))], 2);
+        return tool.fail(
+            "group",
+            "COMMAND_REQUIRED",
+            "deploy needs a command",
+            Some("deploy"),
+            &[("expected", json!(verbs))],
+            2,
+        );
     };
     if !verbs.contains(&verb) {
         return tool.unknown_command(verb, &verbs, Some("deploy"));
@@ -439,42 +554,77 @@ const DEPLOY_DIR: &str = ".deploy";
 
 /// A small number made of `text`: the same text, the same number.
 fn hash_of(text: &str) -> u32 {
-    text.bytes().fold(7u32, |sum, byte| sum.wrapping_mul(31).wrapping_add(u32::from(byte)))
+    text.bytes().fold(7u32, |sum, byte| {
+        sum.wrapping_mul(31).wrapping_add(u32::from(byte))
+    })
 }
 
 fn worker_start(deployment: &str) {
     std::fs::create_dir_all(DEPLOY_DIR).unwrap_or_default();
-    let mut log = std::fs::OpenOptions::new().create(true).append(true).open(format!("{DEPLOY_DIR}/worker.log")).unwrap_or_else(|_| std::process::exit(70));
+    let mut log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(format!("{DEPLOY_DIR}/worker.log"))
+        .unwrap_or_else(|_| std::process::exit(70));
     writeln!(log, "start {deployment}").unwrap_or_default();
 }
 
 fn wait_argv(deployment: &str) -> Vec<String> {
-    ["deploy", "status", deployment, "--wait", "--json"].map(String::from).to_vec()
+    ["deploy", "status", deployment, "--wait", "--json"]
+        .map(String::from)
+        .to_vec()
 }
 
 fn accepted(tool: &Tool, deployment: &str, environment: &str) -> ExitCode {
-    let state = if tool.flag("startClaimsDone") { "done" } else { "accepted" };
+    let state = if tool.flag("startClaimsDone") {
+        "done"
+    } else {
+        "accepted"
+    };
     let mut extra = Map::new();
     if !tool.flag("startNoWait") {
-        let followed = if tool.flag("startIdentifierMismatch") { deployment.to_uppercase() } else { deployment.to_string() };
+        let followed = if tool.flag("startIdentifierMismatch") {
+            deployment.to_uppercase()
+        } else {
+            deployment.to_string()
+        };
         let argv = if tool.flag("startNextWrites") {
             // Seeded: next[0] starts more work instead of reading the outcome.
-            ["stamp", followed.as_str(), "--json"].map(String::from).to_vec()
+            ["stamp", followed.as_str(), "--json"]
+                .map(String::from)
+                .to_vec()
         } else if tool.flag("startStatusOnly") {
             // A correct tool whose next[0] only reads the status: no `--wait`, so the outcomes are not driven.
-            ["deploy", "status", followed.as_str(), "--json"].map(String::from).to_vec()
+            ["deploy", "status", followed.as_str(), "--json"]
+                .map(String::from)
+                .to_vec()
         } else {
             wait_argv(&followed)
         };
-        extra.insert("next".into(), json!([next_entry(tool, &argv, "wait for the deployment to end")]));
+        extra.insert(
+            "next".into(),
+            json!([next_entry(tool, &argv, "wait for the deployment to end")]),
+        );
     }
-    tool.success_with("deploy start", json!({"deployment": deployment, "environment": environment, "state": state}), extra)
+    tool.success_with(
+        "deploy start",
+        json!({"deployment": deployment, "environment": environment, "state": state}),
+        extra,
+    )
 }
 
 fn deploy_start_run(tool: &Tool, parsed: &Parsed) -> ExitCode {
     // The seeded violation: a start that fails when the worker is controlled (the fixture's `async` runs set it).
-    if tool.flag("startFails") && std::env::var_os(tool.text("workerEnv", "FAKE_WORKER")).is_some() {
-        return fail_with(tool, "DEPLOY_FAILED", "the deployment could not be queued", "deploy start", &[], (1, false, None));
+    if tool.flag("startFails") && std::env::var_os(tool.text("workerEnv", "FAKE_WORKER")).is_some()
+    {
+        return fail_with(
+            tool,
+            "DEPLOY_FAILED",
+            "the deployment could not be queued",
+            "deploy start",
+            &[],
+            (1, false, None),
+        );
     }
     let environment = parsed.text("environment").unwrap_or_default().to_string();
     std::fs::create_dir_all(DEPLOY_DIR).unwrap_or_default();
@@ -483,7 +633,8 @@ fn deploy_start_run(tool: &Tool, parsed: &Parsed) -> ExitCode {
         let deployment = format!("d-{}", 1000 + hash_of(&environment) % 9000);
         let record = format!("{DEPLOY_DIR}/{deployment}.json");
         if !std::path::Path::new(&record).exists() {
-            std::fs::write(&record, json!({"environment": environment}).to_string()).unwrap_or_default();
+            std::fs::write(&record, json!({"environment": environment}).to_string())
+                .unwrap_or_default();
             worker_start(&deployment);
         }
         return accepted(tool, &deployment, &environment);
@@ -500,7 +651,11 @@ fn deploy_start_run(tool: &Tool, parsed: &Parsed) -> ExitCode {
         }
         !exists
     } else {
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&claim) {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&claim)
+        {
             Ok(mut file) => {
                 file.write_all(body.as_bytes()).unwrap_or_default();
                 true
@@ -509,7 +664,11 @@ fn deploy_start_run(tool: &Tool, parsed: &Parsed) -> ExitCode {
         }
     };
     if created {
-        std::fs::write(format!("{DEPLOY_DIR}/{deployment}.json"), json!({"environment": environment}).to_string()).unwrap_or_default();
+        std::fs::write(
+            format!("{DEPLOY_DIR}/{deployment}.json"),
+            json!({"environment": environment}).to_string(),
+        )
+        .unwrap_or_default();
         worker_start(&deployment);
         return accepted(tool, &deployment, &environment);
     }
@@ -523,7 +682,10 @@ fn deploy_start_run(tool: &Tool, parsed: &Parsed) -> ExitCode {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     let mut lines = held.lines();
-    let (first_environment, first_deployment) = (lines.next().unwrap_or_default().to_string(), lines.next().unwrap_or_default().to_string());
+    let (first_environment, first_deployment) = (
+        lines.next().unwrap_or_default().to_string(),
+        lines.next().unwrap_or_default().to_string(),
+    );
     if first_environment != environment && !tool.flag("operationReusedAccepted") {
         let hint = format!("{} deploy status {first_deployment} --json", tool.name());
         return fail_with(
@@ -531,12 +693,29 @@ fn deploy_start_run(tool: &Tool, parsed: &Parsed) -> ExitCode {
             "OPERATION_REUSED",
             "that --operation key names another request",
             "deploy start",
-            &[("field", json!(if tool.flag("reusedFieldWrong") { "ENVIRONMENT" } else { "--operation" })), ("hint", json!(hint))],
+            &[
+                (
+                    "field",
+                    json!(if tool.flag("reusedFieldWrong") {
+                        "ENVIRONMENT"
+                    } else {
+                        "--operation"
+                    }),
+                ),
+                ("hint", json!(hint)),
+            ],
             (2, false, None),
         );
     }
     if tool.flag("operationRepeatRefused") {
-        return fail_with(tool, "OPERATION_REUSED", "that --operation key is taken", "deploy start", &[("field", json!("--operation"))], (2, false, None));
+        return fail_with(
+            tool,
+            "OPERATION_REUSED",
+            "that --operation key is taken",
+            "deploy start",
+            &[("field", json!("--operation"))],
+            (2, false, None),
+        );
     }
     if tool.flag("operationRestarts") {
         worker_start(&first_deployment);
@@ -551,28 +730,73 @@ fn deploy_status_run(tool: &Tool, parsed: &Parsed) -> ExitCode {
     let asked = parsed.text("deployment").unwrap_or_default().to_string();
     let deployment = asked.to_lowercase();
     if !std::path::Path::new(&format!("{DEPLOY_DIR}/{deployment}.json")).exists() {
-        return tool.refuse("DEPLOYMENT_NOT_FOUND", "there is no such deployment", "deploy status", &[("field", json!("DEPLOYMENT"))]);
+        return tool.refuse(
+            "DEPLOYMENT_NOT_FOUND",
+            "there is no such deployment",
+            "deploy status",
+            &[("field", json!("DEPLOYMENT"))],
+        );
     }
     if !parsed.has("wait") {
-        return tool.success("deploy status", json!({"deployment": deployment, "state": "accepted"}));
+        return tool.success(
+            "deploy status",
+            json!({"deployment": deployment, "state": "accepted"}),
+        );
     }
     let worker = tool.text("workerEnv", "FAKE_WORKER");
     let outcome = std::env::var(&worker).unwrap_or_else(|_| "done".to_string());
     match outcome.as_str() {
-        "failed" if tool.flag("failedExits0") => tool.success("deploy status", json!({"deployment": deployment, "state": "failed"})),
-        "failed" => fail_with(tool, "DEPLOY_FAILED", "the deployment failed", "deploy status", &[], (1, false, None)),
-        "timeout" if tool.flag("timeoutExits0") => tool.success("deploy status", json!({"deployment": deployment, "state": "accepted"})),
+        "failed" if tool.flag("failedExits0") => tool.success(
+            "deploy status",
+            json!({"deployment": deployment, "state": "failed"}),
+        ),
+        "failed" => fail_with(
+            tool,
+            "DEPLOY_FAILED",
+            "the deployment failed",
+            "deploy status",
+            &[],
+            (1, false, None),
+        ),
+        "timeout" if tool.flag("timeoutExits0") => tool.success(
+            "deploy status",
+            json!({"deployment": deployment, "state": "accepted"}),
+        ),
         "timeout" => {
             std::thread::sleep(std::time::Duration::from_millis(50));
             let mut argv = wait_argv(&asked);
             if let Some(timeout) = parsed.text("timeout") {
-                argv.splice(argv.len() - 1..argv.len() - 1, ["--timeout".to_string(), timeout.to_string()]);
+                argv.splice(
+                    argv.len() - 1..argv.len() - 1,
+                    ["--timeout".to_string(), timeout.to_string()],
+                );
             }
             let next = (!tool.flag("timeoutNoNext")).then(|| next_entry(tool, &argv, "wait again"));
-            let retryable = tool.config.get("retryableCodes").and_then(Value::as_array).is_some_and(|codes| codes.iter().any(|code| code == "WAIT_TIMEOUT"));
-            fail_with(tool, "WAIT_TIMEOUT", "the deployment did not end in time", "deploy status", &[], (1, retryable, next))
+            let retryable = tool
+                .config
+                .get("retryableCodes")
+                .and_then(Value::as_array)
+                .is_some_and(|codes| codes.iter().any(|code| code == "WAIT_TIMEOUT"));
+            fail_with(
+                tool,
+                "WAIT_TIMEOUT",
+                "the deployment did not end in time",
+                "deploy status",
+                &[],
+                (1, retryable, next),
+            )
         }
-        _ if tool.flag("waitDoneExits1") => fail_with(tool, "DEPLOY_FAILED", "the deployment failed", "deploy status", &[], (1, false, None)),
-        _ => tool.success("deploy status", json!({"deployment": deployment, "state": "done"})),
+        _ if tool.flag("waitDoneExits1") => fail_with(
+            tool,
+            "DEPLOY_FAILED",
+            "the deployment failed",
+            "deploy status",
+            &[],
+            (1, false, None),
+        ),
+        _ => tool.success(
+            "deploy status",
+            json!({"deployment": deployment, "state": "done"}),
+        ),
     }
 }

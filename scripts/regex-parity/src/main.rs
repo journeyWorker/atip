@@ -17,7 +17,10 @@ fn difference_problem(case: &Value, value: &str) -> Option<String> {
     if difference["kind"] != "unicode-version" {
         return Some(format!("unknown difference kind {}", difference["kind"]));
     }
-    let (Some(ours), Some(theirs)) = (difference["rust"].as_str(), difference["ecmascript"].as_str()) else {
+    let (Some(ours), Some(theirs)) = (
+        difference["rust"].as_str(),
+        difference["ecmascript"].as_str(),
+    ) else {
         return Some("difference without both categories".into());
     };
     let code_point = value.chars().next().map(|c| format!("U+{:04X}", c as u32));
@@ -28,13 +31,17 @@ fn difference_problem(case: &Value, value: &str) -> Option<String> {
         return Some(format!("its category in Rust's tables is not {ours}"));
     }
     if has_category(value, theirs) {
-        return Some(format!("Rust's tables also give it {theirs}, so the categories do not differ"));
+        return Some(format!(
+            "Rust's tables also give it {theirs}, so the categories do not differ"
+        ));
     }
     None
 }
 
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: regex-parity <regex-cases.json>");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: regex-parity <regex-cases.json>");
     let text = std::fs::read_to_string(&path).expect("cannot read the cases file");
     let doc: Value = serde_json::from_str(&text).expect("the cases file is not JSON");
     let cases = doc["cases"].as_array().expect("no cases array");
@@ -58,7 +65,9 @@ fn main() {
             value,
             observed,
             case["rust"],
-            difference.map(|p| format!("; difference: {p}")).unwrap_or_default()
+            difference
+                .map(|p| format!("; difference: {p}"))
+                .unwrap_or_default()
         );
     }
     println!("{} rust cases, {} failed", cases.len(), failed);

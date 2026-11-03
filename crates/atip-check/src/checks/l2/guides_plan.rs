@@ -49,7 +49,11 @@ pub(crate) struct StreamOutput {
 }
 
 impl Run<'_> {
-    pub(crate) fn plan_guides(&mut self, calls: &Invocations, l1: &L1Run) -> Result<GuidesRun, RunError> {
+    pub(crate) fn plan_guides(
+        &mut self,
+        calls: &Invocations,
+        l1: &L1Run,
+    ) -> Result<GuidesRun, RunError> {
         let mut out = GuidesRun::default();
         let default = self.invoke(Call::new(["skills", "show", "--json"]).in_empty_state())?;
         out.skills.default = Some(default);
@@ -62,29 +66,53 @@ impl Run<'_> {
             .filter_map(|name| name.as_str().map(str::to_string))
             .collect();
         for name in names.iter().take(16) {
-            let call = self.invoke(Call::new(["skills", "show", name.as_str(), "--json"]).in_empty_state())?;
+            let call = self
+                .invoke(Call::new(["skills", "show", name.as_str(), "--json"]).in_empty_state())?;
             out.skills.guides.push((name.clone(), call));
         }
-        out.skills.unknown = Some(self.invoke(Call::new(["skills", "show", "nosuch-xyz", "--json"]).in_empty_state())?);
+        out.skills.unknown = Some(
+            self.invoke(Call::new(["skills", "show", "nosuch-xyz", "--json"]).in_empty_state())?,
+        );
         // The fixture's own `skills show` invocations, which run with the fixture's environment: what they write is this row's, never `L2.effects`'.
-        let listed: Vec<Vec<String>> = self.fixture.commands.as_ref().and_then(|commands| commands.get("skills show")).map(|entry| entry.ok.clone()).unwrap_or_default();
+        let listed: Vec<Vec<String>> = self
+            .fixture
+            .commands
+            .as_ref()
+            .and_then(|commands| commands.get("skills show"))
+            .map(|entry| entry.ok.clone())
+            .unwrap_or_default();
         for argv in listed {
             let call = self.invoke(Call::new(in_json_mode(&argv)).measured())?;
             out.skills.listed.push((argv.join(" "), call));
         }
 
-        let docs: Vec<CommandDoc> = l1.docs.commands.iter().map(|(id, doc)| CommandDoc { command: id.clone(), ..doc.clone() }).collect();
+        let docs: Vec<CommandDoc> = l1
+            .docs
+            .commands
+            .iter()
+            .map(|(id, doc)| CommandDoc {
+                command: id.clone(),
+                ..doc.clone()
+            })
+            .collect();
         for doc in &docs {
             let outputs: Vec<StreamOutput> = doc
                 .outputs
                 .iter()
                 .filter(|output| output.kind == "stream")
-                .map(|output| StreamOutput { name: output.name().to_string(), event_ref: output.event_ref.clone() })
+                .map(|output| StreamOutput {
+                    name: output.name().to_string(),
+                    event_ref: output.event_ref.clone(),
+                })
                 .collect();
             if outputs.is_empty() || self.not_run(&doc.command) {
                 continue;
             }
-            let mut runs: Vec<usize> = self.ok_bases(calls, doc).into_iter().map(|(_, index)| index).collect();
+            let mut runs: Vec<usize> = self
+                .ok_bases(calls, doc)
+                .into_iter()
+                .map(|(_, index)| index)
+                .collect();
             let has_ok = !runs.is_empty();
             // A refused invocation that began the stream before it failed is a stream that ended in a failure: the end line is judged too.
             let refused: Vec<usize> = self
@@ -98,7 +126,8 @@ impl Run<'_> {
                 .map(|(_, command)| command.refused.clone())
                 .unwrap_or_default();
             runs.extend(refused.into_iter().filter(|index| {
-                first_document(&self.log[*index].stdout).is_some_and(|line| line.get("type").and_then(Value::as_str) == Some("start"))
+                first_document(&self.log[*index].stdout)
+                    .is_some_and(|line| line.get("type").and_then(Value::as_str) == Some("start"))
             }));
             if !has_ok {
                 out.missing_stream.push(doc.command.clone());
@@ -107,12 +136,25 @@ impl Run<'_> {
             let mut refusal_argv = doc.path.clone();
             refusal_argv.extend(["--nosuch-xyz-option".to_string(), "--json".to_string()]);
             let refusal = self.invoke(Call::new(refusal_argv))?;
-            out.streams.push(StreamRun { command: doc.command.clone(), runs, refusal, outputs });
+            out.streams.push(StreamRun {
+                command: doc.command.clone(),
+                runs,
+                refusal,
+                outputs,
+            });
         }
-        out.search_offered = l1.docs.command("schema").is_some_and(|schema| schema.option("search").is_some());
+        out.search_offered = l1
+            .docs
+            .command("schema")
+            .is_some_and(|schema| schema.option("search").is_some());
         if out.search_offered {
             for query in self.fixture.search.clone() {
-                let call = self.invoke(Call::new(["schema".to_string(), "--search".to_string(), query.query.clone(), "--json".to_string()]))?;
+                let call = self.invoke(Call::new([
+                    "schema".to_string(),
+                    "--search".to_string(),
+                    query.query.clone(),
+                    "--json".to_string(),
+                ]))?;
                 out.searches.push((query, call));
             }
         }

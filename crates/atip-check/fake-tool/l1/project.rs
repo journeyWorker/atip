@@ -72,7 +72,11 @@ pub fn parse_path(path: &str) -> Option<Vec<Step>> {
         if array {
             i += 2;
         }
-        steps.push(Step { name, array, bracket });
+        steps.push(Step {
+            name,
+            array,
+            bracket,
+        });
     }
     (!steps.is_empty()).then_some(steps)
 }

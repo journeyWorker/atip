@@ -91,7 +91,11 @@ impl Tool {
     /// 1.2 by default, so that the runs that get no configuration (`L1.no-state` runs in an empty directory) say what the configured ones say.
     fn minor(&self) -> String {
         let alias = std::env::args().next().unwrap_or_default();
-        let default = if alias.contains("claims12") { "1.2" } else { "1.1" };
+        let default = if alias.contains("claims12") {
+            "1.2"
+        } else {
+            "1.1"
+        };
         self.text("claims", default)
     }
 
@@ -106,10 +110,14 @@ impl Tool {
     }
 
     fn commands(&self) -> Vec<&'static str> {
-        let mut commands = vec!["init", "items", "member", "reject", "status", "team", "touch"];
+        let mut commands = vec![
+            "init", "items", "member", "reject", "status", "team", "touch",
+        ];
         if self.flag("l2") {
             commands.retain(|command| *command != "touch");
-            commands.extend(["build", "deploy", "log", "peek", "purge", "record", "seal", "skills", "stamp"]);
+            commands.extend([
+                "build", "deploy", "log", "peek", "purge", "record", "seal", "skills", "stamp",
+            ]);
         }
         if !self.flag("noSchema") {
             commands.push("schema");
@@ -145,12 +153,22 @@ impl Tool {
     /// environment does not hold the variable `unlessEnv` (always, when the knob names none). A refusal of state or environment, not of the arguments.
     fn seeded_refusal(&self, id: &str) -> Option<ExitCode> {
         let knob = self.config.get("refuseWith")?;
-        let listed = knob.get("commands").and_then(Value::as_array)?.iter().any(|command| command == id);
-        let given = knob.get("unlessEnv").and_then(Value::as_str).is_some_and(|name| std::env::var_os(name).is_some());
+        let listed = knob
+            .get("commands")
+            .and_then(Value::as_array)?
+            .iter()
+            .any(|command| command == id);
+        let given = knob
+            .get("unlessEnv")
+            .and_then(Value::as_str)
+            .is_some_and(|name| std::env::var_os(name).is_some());
         if !listed || given {
             return None;
         }
-        let code = knob.get("code").and_then(Value::as_str).unwrap_or("NEEDS_TOKEN");
+        let code = knob
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or("NEEDS_TOKEN");
         Some(self.refuse(code, "the backend needs a credential", id, &[]))
     }
 
@@ -160,7 +178,11 @@ impl Tool {
         let version = if schema_answer {
             self.text(
                 "schemaAnswerVersion",
-                &if self.is_1_1() { self.minor() } else { "1.0".to_string() },
+                &if self.is_1_1() {
+                    self.minor()
+                } else {
+                    "1.0".to_string()
+                },
             )
         } else {
             "1.0".to_string()
@@ -298,7 +320,10 @@ impl Tool {
             if kind == "unknown-command" && self.flag("textErrorOnStdout") {
                 println!("{line}");
             }
-            if kind == "unknown-option" && (self.flag("unknownOptionAfterJsonIsText") || self.flag("unknownOptionBeforeJsonIsText")) {
+            if kind == "unknown-option"
+                && (self.flag("unknownOptionAfterJsonIsText")
+                    || self.flag("unknownOptionBeforeJsonIsText"))
+            {
                 println!("{line}");
             } else if !(kind == "unknown-command" && self.flag("textErrorSilent")) {
                 eprintln!("{line}");
@@ -384,7 +409,14 @@ impl Tool {
         if !self.flag("unknownOptionOmitsField") {
             extras.push(("field", json!(option)));
         } else {
-            extras.push(("hint", json!(format!("{} schema {} --json", self.name(), command.unwrap_or_default()))));
+            extras.push((
+                "hint",
+                json!(format!(
+                    "{} schema {} --json",
+                    self.name(),
+                    command.unwrap_or_default()
+                )),
+            ));
         }
         let command = if self.flag("unknownOptionOmitsCommand") {
             None
@@ -402,9 +434,19 @@ impl Tool {
     }
 
     /// A refusal with a code, a field and the hint a seeded violation may change.
-    fn refuse(&self, code: &str, message: &str, command: &str, extras: &[(&str, Value)]) -> ExitCode {
+    fn refuse(
+        &self,
+        code: &str,
+        message: &str,
+        command: &str,
+        extras: &[(&str, Value)],
+    ) -> ExitCode {
         // Seeded: INPUT_INVALID exits 1 where the registry says 2 (the code and the envelope are right).
-        let exit = if code == "INPUT_INVALID" && self.flag("inputInvalidExit1") { 1 } else { Self::registered_exit(code) };
+        let exit = if code == "INPUT_INVALID" && self.flag("inputInvalidExit1") {
+            1
+        } else {
+            Self::registered_exit(code)
+        };
         self.fail("usage", code, message, Some(command), extras, exit)
     }
 
@@ -458,7 +500,13 @@ impl Tool {
     }
 
     /// The probe's answer: a `next` entry, a warning and a page with a cursor, and the knobs that break them or make them depend on the environment.
-    fn shape_status(&self, command: &str, data: &mut Value, meta: &mut Map<String, Value>, ci: bool) {
+    fn shape_status(
+        &self,
+        command: &str,
+        data: &mut Value,
+        meta: &mut Map<String, Value>,
+        ci: bool,
+    ) {
         data["remote"] = json!(self.remote_count());
         if !self.flag("noNextNoPage") {
             let tool = self.name();
@@ -542,7 +590,10 @@ impl Tool {
                 print!("Name: ");
                 std::io::stdout().flush().unwrap_or_default();
                 let mut line = String::new();
-                std::io::stdin().lock().read_line(&mut line).unwrap_or_default();
+                std::io::stdin()
+                    .lock()
+                    .read_line(&mut line)
+                    .unwrap_or_default();
             }
             if let Some(seconds) = self.number("sleepOnMissing") {
                 std::thread::sleep(Duration::from_secs(seconds));
@@ -559,7 +610,10 @@ impl Tool {
         );
         if on_terminal {
             if let Some(length) = self.number("chatterOnTerminal") {
-                println!("{}END-OF-CHATTER", "x".repeat(usize::try_from(length).unwrap_or(0)));
+                println!(
+                    "{}END-OF-CHATTER",
+                    "x".repeat(usize::try_from(length).unwrap_or(0))
+                );
             }
         }
         refusal
@@ -595,9 +649,19 @@ impl Tool {
                     row["meaning"] = json!("another meaning");
                 }
             }
-            let warning_only = self.warning_rows().iter().any(|row| row["code"] == code.as_str());
+            let warning_only = self
+                .warning_rows()
+                .iter()
+                .any(|row| row["code"] == code.as_str());
             if let Some(row) = rows.into_iter().find(|row| row["code"] == code.as_str()) {
-                return self.success("schema", l1::patched(self, &format!("--error {code}"), with_kind("error", json!({"error": row}))));
+                return self.success(
+                    "schema",
+                    l1::patched(
+                        self,
+                        &format!("--error {code}"),
+                        with_kind("error", json!({"error": row})),
+                    ),
+                );
             }
             if is_1_1 && warning_only && !self.flag("warningOnlyErrorAnswers") {
                 let tool = self.name();
@@ -607,12 +671,27 @@ impl Tool {
                 let mut extras = vec![("field", json!(field))];
                 extras.push(("received", json!(code)));
                 if !self.flag("warningOnlyErrorNoHint") {
-                    extras.push(("hint", json!(format!("{tool} schema --warning {} --json", value("--error").unwrap_or_default()))));
+                    extras.push((
+                        "hint",
+                        json!(format!(
+                            "{tool} schema --warning {} --json",
+                            value("--error").unwrap_or_default()
+                        )),
+                    ));
                 }
                 let exit = self
                     .number("warningOnlyErrorExit")
-                    .map_or(Self::registered_exit(&refusal_code), |exit| u8::try_from(exit).unwrap_or(2));
-                return self.fail("usage", &refusal_code, "that is a warning code, not an error code", Some("schema"), &extras, exit);
+                    .map_or(Self::registered_exit(&refusal_code), |exit| {
+                        u8::try_from(exit).unwrap_or(2)
+                    });
+                return self.fail(
+                    "usage",
+                    &refusal_code,
+                    "that is a warning code, not an error code",
+                    Some("schema"),
+                    &extras,
+                    exit,
+                );
             }
             if is_1_1 && warning_only {
                 return self.success("schema", with_kind("error", json!({"error": {"code": code, "meaning": "m", "exit": 1, "retryable": false, "fix": "f"}})));
@@ -629,7 +708,10 @@ impl Tool {
         if is_1_1 && has("--warnings") {
             let rows = self.warning_rows();
             let kind = self.text("warningsKind", "warnings");
-            return self.success("schema", l1::patched(self, "--warnings", json!({"kind": kind, "warnings": rows})));
+            return self.success(
+                "schema",
+                l1::patched(self, "--warnings", json!({"kind": kind, "warnings": rows})),
+            );
         }
         if is_1_1 && has("--warning") {
             let code = value("--warning").unwrap_or_default();
@@ -638,22 +720,40 @@ impl Tool {
                 rows[0]["meaning"] = json!("another meaning");
             }
             if let Some(row) = rows.into_iter().find(|row| row["code"] == code.as_str()) {
-                return self.success("schema", l1::patched(self, &format!("--warning {code}"), with_kind("warning", json!({"warning": row}))));
+                return self.success(
+                    "schema",
+                    l1::patched(
+                        self,
+                        &format!("--warning {code}"),
+                        with_kind("warning", json!({"warning": row})),
+                    ),
+                );
             }
             return self.refuse(
                 "USAGE",
                 "not a warning code",
                 "schema",
-                &[("field", json!(self.text("schemaWarningUnknownField", "--warning"))), ("received", json!(code))],
+                &[
+                    (
+                        "field",
+                        json!(self.text("schemaWarningUnknownField", "--warning")),
+                    ),
+                    ("received", json!(code)),
+                ],
             );
         }
         if is_1_1 && options.is_empty() {
             if let Some(shape) = self.config.get("schemaTree").and_then(Value::as_str) {
-                let mut commands = vec![json!({"command": "items", "path": ["items"], "kind": "command", "summary": "items", "effect": "read"})];
+                let mut commands = vec![
+                    json!({"command": "items", "path": ["items"], "kind": "command", "summary": "items", "effect": "read"}),
+                ];
                 if shape == "groups" {
                     commands.push(json!({"command": "team", "path": ["team"], "kind": "group", "summary": "teams"}));
                 }
-                return self.success("schema", json!({"kind": "tree", "level": "L1", "commands": commands}));
+                return self.success(
+                    "schema",
+                    json!({"kind": "tree", "level": "L1", "commands": commands}),
+                );
             }
         }
         self.refuse(
@@ -671,21 +771,55 @@ impl Tool {
         let tool = self.name();
         let mut table: Vec<(String, i64, &[&str], String, String)> = REGISTRY
             .iter()
-            .map(|(code, exit, reasons)| ((*code).to_string(), *exit, *reasons, "m".to_string(), "f".to_string()))
+            .map(|(code, exit, reasons)| {
+                (
+                    (*code).to_string(),
+                    *exit,
+                    *reasons,
+                    "m".to_string(),
+                    "f".to_string(),
+                )
+            })
             .collect();
         if self.flag("l1Registry") {
             table.extend(l1::EXTRA_ERRORS.iter().map(|(code, exit, meaning, fix)| {
-                ((*code).to_string(), *exit, &[][..], (*meaning).to_string(), fix.replace("{tool}", &tool))
+                (
+                    (*code).to_string(),
+                    *exit,
+                    &[][..],
+                    (*meaning).to_string(),
+                    fix.replace("{tool}", &tool),
+                )
             }));
         }
         // `stoppedMidway` registers the code `STOPPED_MIDWAY` (spec 8.3.2): exit 1 and not retryable (`reservedExit` and
         // `stoppedMidwayRetryable` seed it wrong; below 1.2 it is a code of the tool's own).
         if self.flag("stoppedMidway") {
-            let exit = if self.flag("stoppedMidwayExit2") { 2 } else { 1 };
-            table.push(("STOPPED_MIDWAY".to_string(), exit, &[][..], "m".to_string(), "f".to_string()));
+            let exit = if self.flag("stoppedMidwayExit2") {
+                2
+            } else {
+                1
+            };
+            table.push((
+                "STOPPED_MIDWAY".to_string(),
+                exit,
+                &[][..],
+                "m".to_string(),
+                "f".to_string(),
+            ));
         }
         if self.flag("l2") {
-            const INPUT_INVALID: &[&str] = &["BATCH_UNSUPPORTED", "EMPTY", "FLAG_ONLY_KEY", "INVALID_VALUE", "NOT_JSON", "NOT_OBJECT", "STDIN_TTY", "UNKNOWN_KEY", "UNREADABLE"];
+            const INPUT_INVALID: &[&str] = &[
+                "BATCH_UNSUPPORTED",
+                "EMPTY",
+                "FLAG_ONLY_KEY",
+                "INVALID_VALUE",
+                "NOT_JSON",
+                "NOT_OBJECT",
+                "STDIN_TTY",
+                "UNKNOWN_KEY",
+                "UNREADABLE",
+            ];
             const TOO_LARGE: &[&str] = &["TOO_MANY_BYTES", "TOO_MANY_ITEMS"];
             for row in &mut table {
                 match row.0.as_str() {
@@ -695,7 +829,13 @@ impl Tool {
                 }
             }
         }
-        for row in self.config.get("extraCodes").and_then(Value::as_array).into_iter().flatten() {
+        for row in self
+            .config
+            .get("extraCodes")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             table.push((
                 row["code"].as_str().unwrap_or_default().to_string(),
                 row["exit"].as_i64().unwrap_or(2),
@@ -797,7 +937,14 @@ fn main() -> ExitCode {
     // An executable named `...claims12...` is a tool that claims 1.2 when no configuration says otherwise (the run in an empty directory has no environment).
     if config.is_empty() {
         // The name of the executable alone: the directory it is in says nothing.
-        let name = std::env::args().next().and_then(|path| std::path::Path::new(&path).file_name().map(|file| file.to_string_lossy().into_owned())).unwrap_or_default();
+        let name = std::env::args()
+            .next()
+            .and_then(|path| {
+                std::path::Path::new(&path)
+                    .file_name()
+                    .map(|file| file.to_string_lossy().into_owned())
+            })
+            .unwrap_or_default();
         if name.contains("claims12") {
             config.insert("claims".to_string(), json!("1.2"));
         }
@@ -807,8 +954,17 @@ fn main() -> ExitCode {
             config.insert("l1Registry".to_string(), json!(true));
             // The seeded violations of what that run answers are named in the executable's name, after `-l2`: `...-l2-skillswrites`.
             const KNOBS: [&str; 11] = [
-                "skillsPutsFile", "skillsNeedsState", "skillsBadSchema", "skillsDefaultNotListed", "skillsGuideBadSchema", "skillsWrongName", "skillsGuidesDiffer", "skillsUnknownOk",
-                "skillsUnknownNoExpected", "skillsMissingName", "guideBadOption",
+                "skillsPutsFile",
+                "skillsNeedsState",
+                "skillsBadSchema",
+                "skillsDefaultNotListed",
+                "skillsGuideBadSchema",
+                "skillsWrongName",
+                "skillsGuidesDiffer",
+                "skillsUnknownOk",
+                "skillsUnknownNoExpected",
+                "skillsMissingName",
+                "guideBadOption",
             ];
             let file = name.to_lowercase();
             for knob in KNOBS {
@@ -834,12 +990,22 @@ fn main() -> ExitCode {
         return ExitCode::from(70);
     }
     if let Some(log) = tool.config.get("invocationLog").and_then(Value::as_str) {
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(log) {
-            let _ = std::io::Write::write_all(&mut file, format!("{}\n", args.join(" ")).as_bytes());
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log)
+        {
+            let _ =
+                std::io::Write::write_all(&mut file, format!("{}\n", args.join(" ")).as_bytes());
         }
     }
     if let Some(command) = tool.config.get("hangCommand").and_then(Value::as_str) {
-        let words: Vec<&str> = args.iter().take_while(|arg| arg.as_str() != "--").filter(|arg| !arg.starts_with('-')).map(String::as_str).collect();
+        let words: Vec<&str> = args
+            .iter()
+            .take_while(|arg| arg.as_str() != "--")
+            .filter(|arg| !arg.starts_with('-'))
+            .map(String::as_str)
+            .collect();
         let asks_help = args.iter().any(|arg| arg == "--help" || arg == "-h");
         if !asks_help && words.join(" ").starts_with(command) {
             std::thread::sleep(Duration::from_secs(600));
@@ -943,10 +1109,23 @@ fn serve(tool: &Tool) -> ExitCode {
         "refuseStart" => {
             let code = tool.text("serveRefuseCode", "CURSOR_INVALID");
             let field = tool.text("serveRefuseField", "");
-            let extras: Vec<(&str, Value)> = if field.is_empty() { Vec::new() } else { vec![("field", json!(field))] };
+            let extras: Vec<(&str, Value)> = if field.is_empty() {
+                Vec::new()
+            } else {
+                vec![("field", json!(field))]
+            };
             // `serveRefuseExit` seeds the exit of the refusal (default 2): with 1 it is not a refusal of the kind the contract knows.
-            let exit = tool.number("serveRefuseExit").map_or(2, |exit| u8::try_from(exit).unwrap_or(2));
-            return tool.fail("usage", &code, "serve cannot start here", Some("serve"), &extras, exit);
+            let exit = tool
+                .number("serveRefuseExit")
+                .map_or(2, |exit| u8::try_from(exit).unwrap_or(2));
+            return tool.fail(
+                "usage",
+                &code,
+                "serve cannot start here",
+                Some("serve"),
+                &extras,
+                exit,
+            );
         }
         "silent" => {}
         _ => {
@@ -1018,12 +1197,19 @@ fn run(tool: &Tool, args: &[String]) -> ExitCode {
                 rest.next();
             }
             option if option.starts_with("--") => {
-                let command = words.first().map(String::as_str).filter(|word| tool.commands().contains(word));
+                let command = words
+                    .first()
+                    .map(String::as_str)
+                    .filter(|word| tool.commands().contains(word));
                 let takes = command
                     .map(command_options)
                     .unwrap_or_default()
                     .iter()
-                    .find(|(name, _)| *name == option && !(*name == "--cursor" && (tool.flag("noPaging") || tool.flag("l1Registry"))));
+                    .find(|(name, _)| {
+                        *name == option
+                            && !(*name == "--cursor"
+                                && (tool.flag("noPaging") || tool.flag("l1Registry")))
+                    });
                 match takes {
                     Some((_, true)) => options.push((option.to_string(), rest.next().cloned())),
                     Some((_, false)) => options.push((option.to_string(), None)),
@@ -1084,7 +1270,8 @@ fn run(tool: &Tool, args: &[String]) -> ExitCode {
                 // The logs `purge` removes.
                 std::fs::create_dir_all("logs").unwrap_or_default();
                 for name in ["run-a", "session-a", "session-b"] {
-                    std::fs::write(format!("logs/{name}.log"), format!("{name}\n")).unwrap_or_default();
+                    std::fs::write(format!("logs/{name}.log"), format!("{name}\n"))
+                        .unwrap_or_default();
                 }
             }
             if let Some(log) = tool.config.get("initLog").and_then(Value::as_str) {
@@ -1101,23 +1288,39 @@ fn run(tool: &Tool, args: &[String]) -> ExitCode {
         "reject" => {
             let mut extras: Vec<(&str, Value)> = Vec::new();
             if !tool.flag("usageNoHint") {
-                extras.push(("hint", json!(format!("{} schema reject --json", tool.name()))));
+                extras.push((
+                    "hint",
+                    json!(format!("{} schema reject --json", tool.name())),
+                ));
             }
-            tool.refuse("USAGE", "the backend rejected the request", "reject", &extras)
+            tool.refuse(
+                "USAGE",
+                "the backend rejected the request",
+                "reject",
+                &extras,
+            )
         }
-        _ if has("--cursor") && tool.flag("cursorNeedsName") && value("--cursor").as_deref() == Some("x") => tool.refuse(
-            "USAGE",
-            "--name is required",
-            command,
-            &[("field", json!("--name"))],
-        ),
+        _ if has("--cursor")
+            && tool.flag("cursorNeedsName")
+            && value("--cursor").as_deref() == Some("x") =>
+        {
+            tool.refuse(
+                "USAGE",
+                "--name is required",
+                command,
+                &[("field", json!("--name"))],
+            )
+        }
         _ if has("--cursor") => match value("--cursor").as_deref() {
             Some("c1") => tool.success(command, json!({"items": 0, "state": "second page"})),
             other => tool.refuse(
                 "CURSOR_INVALID",
                 "that is not a cursor of this command",
                 command,
-                &[("field", json!("--cursor")), ("received", json!(other.unwrap_or_default()))],
+                &[
+                    ("field", json!("--cursor")),
+                    ("received", json!(other.unwrap_or_default())),
+                ],
             ),
         },
         _ if tool.json && tool.flag("envChangesResult") && std::env::var_os("CI").is_some() => {
@@ -1136,7 +1339,9 @@ fn team(tool: &Tool, words: &[String], repo_given: bool) -> ExitCode {
             "team",
             &[("field", json!("--repo"))],
         ),
-        None if tool.flag("groupRunnable") && !repo_given => tool.success("team", json!({"team": true})),
+        None if tool.flag("groupRunnable") && !repo_given => {
+            tool.success("team", json!({"team": true}))
+        }
         None => tool.fail(
             "group",
             "COMMAND_REQUIRED",
@@ -1170,13 +1375,17 @@ fn team(tool: &Tool, words: &[String], repo_given: bool) -> ExitCode {
             }
             println!("{start}");
             println!("{}", json!({"type": "event", "data": {"step": "add"}}));
-            let result = json!({"ok": true, "data": {"added": true}, "meta": tool.meta(Some("team add"))});
+            let result =
+                json!({"ok": true, "data": {"added": true}, "meta": tool.meta(Some("team add"))});
             println!("{}", json!({"type": "end", "result": result}));
             ExitCode::SUCCESS
         }
         // A document that is no envelope but carries an error code no registry has: only L0.envelope may judge it.
         Some("add") if tool.flag("teamAddNoEnvelopeCode") && tool.json => {
-            println!("{}", json!({"ok": false, "error": {"code": "NOT_REGISTERED", "reason": "NOT_A_REASON", "message": "m", "retryable": false}}));
+            println!(
+                "{}",
+                json!({"ok": false, "error": {"code": "NOT_REGISTERED", "reason": "NOT_A_REASON", "message": "m", "retryable": false}})
+            );
             ExitCode::SUCCESS
         }
         Some("add") => {
@@ -1218,15 +1427,31 @@ fn touch(tool: &Tool, name: &Option<String>, input: &Option<String>) -> ExitCode
                 extras.push(("reason", json!(reason)));
             }
             if tool.flag("proseHintStartsWithTool") && situation == Some("NOT_JSON") {
-                extras.push(("hint", json!(format!("{} can't read this document; quote it in single quotes.", tool.name()))));
+                extras.push((
+                    "hint",
+                    json!(format!(
+                        "{} can't read this document; quote it in single quotes.",
+                        tool.name()
+                    )),
+                ));
             }
             tool.refuse(code, message, "touch", &extras)
         };
         if text.len() > l1::MAX_INPUT_BYTES {
-            return refuse_input("INPUT_TOO_LARGE", None, "--input is larger than the command accepts", "--input");
+            return refuse_input(
+                "INPUT_TOO_LARGE",
+                None,
+                "--input is larger than the command accepts",
+                "--input",
+            );
         }
         let Ok(parsed) = serde_json::from_str::<Value>(text) else {
-            return refuse_input("INPUT_INVALID", Some("NOT_JSON"), "--input is not JSON", "--input");
+            return refuse_input(
+                "INPUT_INVALID",
+                Some("NOT_JSON"),
+                "--input is not JSON",
+                "--input",
+            );
         };
         let batch = parsed.is_array();
         let documents = match parsed {
@@ -1234,41 +1459,94 @@ fn touch(tool: &Tool, name: &Option<String>, input: &Option<String>) -> ExitCode
             other => vec![other],
         };
         if batch && documents.is_empty() {
-            return refuse_input("INPUT_INVALID", None, "a batch holds at least one document", "--input");
+            return refuse_input(
+                "INPUT_INVALID",
+                None,
+                "a batch holds at least one document",
+                "--input",
+            );
         }
         if documents.len() > l1::MAX_BATCH_ITEMS {
-            return refuse_input("INPUT_TOO_LARGE", None, "the batch holds more documents than the command accepts", "--input");
+            return refuse_input(
+                "INPUT_TOO_LARGE",
+                None,
+                "the batch holds more documents than the command accepts",
+                "--input",
+            );
         }
         let mut names: Vec<Option<String>> = Vec::new();
         for (index, item) in documents.iter().enumerate() {
-            let prefix = if batch { format!("/{index}") } else { String::new() };
+            let prefix = if batch {
+                format!("/{index}")
+            } else {
+                String::new()
+            };
             let Some(document) = item.as_object() else {
-                let field = if batch { prefix.clone() } else { "--input".to_string() };
-                return refuse_input("INPUT_INVALID", Some("NOT_JSON"), "--input is not a JSON object", &field);
+                let field = if batch {
+                    prefix.clone()
+                } else {
+                    "--input".to_string()
+                };
+                return refuse_input(
+                    "INPUT_INVALID",
+                    Some("NOT_JSON"),
+                    "--input is not a JSON object",
+                    &field,
+                );
             };
             if let Some(key) = document.keys().find(|key| key.as_str() != "name") {
-                return refuse_input("INPUT_INVALID", Some("UNKNOWN_KEY"), "the document has a key the command does not take", &format!("{prefix}/{key}"));
+                return refuse_input(
+                    "INPUT_INVALID",
+                    Some("UNKNOWN_KEY"),
+                    "the document has a key the command does not take",
+                    &format!("{prefix}/{key}"),
+                );
             }
             let mut item_name = name.clone();
             match document.get("name") {
                 Some(Value::String(from_document)) => {
-                    if name.as_ref().is_some_and(|from_argv| from_argv != from_document) {
-                        return refuse_input("INPUT_CONFLICT", None, "--name and the document differ", &format!("{prefix}/name"));
+                    if name
+                        .as_ref()
+                        .is_some_and(|from_argv| from_argv != from_document)
+                    {
+                        return refuse_input(
+                            "INPUT_CONFLICT",
+                            None,
+                            "--name and the document differ",
+                            &format!("{prefix}/name"),
+                        );
                     }
                     item_name = Some(from_document.clone());
                 }
-                Some(_) => return refuse_input("INPUT_INVALID", None, "name is not a string", &format!("{prefix}/name")),
+                Some(_) => {
+                    return refuse_input(
+                        "INPUT_INVALID",
+                        None,
+                        "name is not a string",
+                        &format!("{prefix}/name"),
+                    )
+                }
                 None => {}
             }
             names.push(item_name);
         }
         if batch {
             if let Some(index) = names.iter().position(Option::is_none) {
-                return tool.refuse("USAGE", "--name is required", "touch", &[("field", json!(format!("/{index}/name")))]);
+                return tool.refuse(
+                    "USAGE",
+                    "--name is required",
+                    "touch",
+                    &[("field", json!(format!("/{index}/name")))],
+                );
             }
             let mut items = Vec::new();
             for index in 0..names.len() {
-                let status = if std::fs::read_to_string("touched.txt").is_ok_and(|text| text == "x") { "unchanged" } else { "written" };
+                let status = if std::fs::read_to_string("touched.txt").is_ok_and(|text| text == "x")
+                {
+                    "unchanged"
+                } else {
+                    "written"
+                };
                 std::fs::write("touched.txt", "x").unwrap_or_default();
                 items.push(json!({"index": index, "status": status, "data": {"touched": true}}));
             }

@@ -19,7 +19,12 @@ pub struct ReservedCode {
 }
 
 const fn row(name: &'static str, exit: u8, since: Minor) -> ReservedCode {
-    ReservedCode { name, exit, retryable: false, since }
+    ReservedCode {
+        name,
+        exit,
+        retryable: false,
+        since,
+    }
 }
 
 /// The twelve reserved codes of 1.0 and `STOPPED_MIDWAY` since 1.2, in the order of spec 7.2.1. None is retryable.
@@ -41,13 +46,20 @@ pub const RESERVED_CODES: [ReservedCode; 13] = [
 
 /// The reserved row named `name` in a document that declares `minor`: none when the name is not reserved there.
 pub fn reserved_code(name: &str, minor: Minor) -> Option<&'static ReservedCode> {
-    RESERVED_CODES.iter().find(|reserved| reserved.name == name && minor.at_least(reserved.since))
+    RESERVED_CODES
+        .iter()
+        .find(|reserved| reserved.name == name && minor.at_least(reserved.since))
 }
 
 /// What is wrong with a tool registering `code` with `exit` and `retryable` in a document that declares `minor`: `None`
 /// when the code is not reserved there, or is registered as reserved. A value the registry does not state is `None` in
 /// the arguments and always a problem, so a row that lacks `exit` or `retryable` is not read as right.
-pub fn registration_problem(minor: Minor, code: &str, exit: Option<i64>, retryable: Option<bool>) -> Option<String> {
+pub fn registration_problem(
+    minor: Minor,
+    code: &str,
+    exit: Option<i64>,
+    retryable: Option<bool>,
+) -> Option<String> {
     let reserved = reserved_code(code, minor)?;
     let exit_wrong = exit != Some(i64::from(reserved.exit));
     let retryable_wrong = retryable != Some(reserved.retryable);
@@ -67,16 +79,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn atip_crate12_04_the_table_has_thirteen_codes_and_stopped_midway_is_exit_1_not_retryable_since_1_2() {
+    fn atip_crate12_04_the_table_has_thirteen_codes_and_stopped_midway_is_exit_1_not_retryable_since_1_2(
+    ) {
         assert_eq!(RESERVED_CODES.len(), 13);
-        let stopped = RESERVED_CODES.iter().find(|reserved| reserved.name == "STOPPED_MIDWAY").expect("a row");
-        assert_eq!((stopped.exit, stopped.retryable, stopped.since), (1, false, Minor::V1_2));
-        assert!(RESERVED_CODES.iter().all(|reserved| !reserved.retryable && (reserved.exit == 1 || reserved.exit == 2)));
-        let mut names: Vec<&str> = RESERVED_CODES.iter().map(|reserved| reserved.name).collect();
+        let stopped = RESERVED_CODES
+            .iter()
+            .find(|reserved| reserved.name == "STOPPED_MIDWAY")
+            .expect("a row");
+        assert_eq!(
+            (stopped.exit, stopped.retryable, stopped.since),
+            (1, false, Minor::V1_2)
+        );
+        assert!(RESERVED_CODES
+            .iter()
+            .all(|reserved| !reserved.retryable && (reserved.exit == 1 || reserved.exit == 2)));
+        let mut names: Vec<&str> = RESERVED_CODES
+            .iter()
+            .map(|reserved| reserved.name)
+            .collect();
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), 13, "one row per name");
-        let exits: Vec<(&str, u8)> = RESERVED_CODES.iter().map(|reserved| (reserved.name, reserved.exit)).collect();
+        let exits: Vec<(&str, u8)> = RESERVED_CODES
+            .iter()
+            .map(|reserved| (reserved.name, reserved.exit))
+            .collect();
         assert_eq!(
             exits,
             [
@@ -108,14 +135,34 @@ mod tests {
     }
 
     #[test]
-    fn atip_crate12_05_a_stopped_midway_registered_with_exit_2_fails_in_a_1_2_document_and_not_in_a_1_1_one() {
-        let at_12 = registration_problem(Minor::V1_2, "STOPPED_MIDWAY", Some(2), Some(false)).expect("a problem in 1.2");
-        assert!(at_12.contains("STOPPED_MIDWAY") && at_12.contains("exit 2") && at_12.contains("reserved is exit 1"), "{at_12}");
-        assert_eq!(registration_problem(Minor::V1_1, "STOPPED_MIDWAY", Some(2), Some(false)), None, "a 1.1 document reads it as the tool's own");
-        assert_eq!(registration_problem(Minor::V1_0, "STOPPED_MIDWAY", Some(2), Some(true)), None);
+    fn atip_crate12_05_a_stopped_midway_registered_with_exit_2_fails_in_a_1_2_document_and_not_in_a_1_1_one(
+    ) {
+        let at_12 = registration_problem(Minor::V1_2, "STOPPED_MIDWAY", Some(2), Some(false))
+            .expect("a problem in 1.2");
+        assert!(
+            at_12.contains("STOPPED_MIDWAY")
+                && at_12.contains("exit 2")
+                && at_12.contains("reserved is exit 1"),
+            "{at_12}"
+        );
+        assert_eq!(
+            registration_problem(Minor::V1_1, "STOPPED_MIDWAY", Some(2), Some(false)),
+            None,
+            "a 1.1 document reads it as the tool's own"
+        );
+        assert_eq!(
+            registration_problem(Minor::V1_0, "STOPPED_MIDWAY", Some(2), Some(true)),
+            None
+        );
         // The code as the contract reserves it passes, and so does a code that is not reserved.
-        assert_eq!(registration_problem(Minor::V1_2, "STOPPED_MIDWAY", Some(1), Some(false)), None);
-        assert_eq!(registration_problem(Minor::V1_2, "WRITE_FAILED", Some(2), Some(true)), None);
+        assert_eq!(
+            registration_problem(Minor::V1_2, "STOPPED_MIDWAY", Some(1), Some(false)),
+            None
+        );
+        assert_eq!(
+            registration_problem(Minor::V1_2, "WRITE_FAILED", Some(2), Some(true)),
+            None
+        );
         // A wrong retryability, and a member the registry does not state, are problems.
         assert!(registration_problem(Minor::V1_2, "STOPPED_MIDWAY", Some(1), Some(true)).is_some());
         assert!(registration_problem(Minor::V1_1, "USAGE", Some(2), None).is_some());

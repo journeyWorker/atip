@@ -26,7 +26,15 @@ pub(crate) enum Refused {
 }
 
 /// Keywords the member of a schema may carry that say nothing about a value.
-const ANNOTATIONS: [&str; 7] = ["title", "description", "$comment", "format", "default", "examples", "deprecated"];
+const ANNOTATIONS: [&str; 7] = [
+    "title",
+    "description",
+    "$comment",
+    "format",
+    "default",
+    "examples",
+    "deprecated",
+];
 /// `readOnly` and `writeOnly` annotate too; a separate list keeps each line short.
 const MORE_ANNOTATIONS: [&str; 2] = ["readOnly", "writeOnly"];
 /// Keywords of JSON Schema that this module does not judge (the profile has none of them).
@@ -96,7 +104,12 @@ impl Kind {
 
     fn holds(self, value: &Value) -> bool {
         match (self, value) {
-            (Kind::Null, Value::Null) | (Kind::Boolean, Value::Bool(_)) | (Kind::Object, Value::Object(_)) | (Kind::Array, Value::Array(_)) | (Kind::Number, Value::Number(_)) | (Kind::String, Value::String(_)) => true,
+            (Kind::Null, Value::Null)
+            | (Kind::Boolean, Value::Bool(_))
+            | (Kind::Object, Value::Object(_))
+            | (Kind::Array, Value::Array(_))
+            | (Kind::Number, Value::Number(_))
+            | (Kind::String, Value::String(_)) => true,
             (Kind::Integer, Value::Number(number)) => is_integer(number),
             _ => false,
         }
@@ -136,11 +149,17 @@ impl Node {
         let map = match schema {
             Value::Bool(flag) => return Ok(Node::Bool(*flag)),
             Value::Object(map) => map,
-            other => return Err(Refused::Invalid(format!("a schema is an object or a boolean, not {other}"))),
+            other => {
+                return Err(Refused::Invalid(format!(
+                    "a schema is an object or a boolean, not {other}"
+                )))
+            }
         };
         let mut rules = Vec::new();
         for (keyword, value) in map {
-            if ANNOTATIONS.contains(&keyword.as_str()) || MORE_ANNOTATIONS.contains(&keyword.as_str()) {
+            if ANNOTATIONS.contains(&keyword.as_str())
+                || MORE_ANNOTATIONS.contains(&keyword.as_str())
+            {
                 continue;
             }
             if BEYOND_THE_PROFILE.contains(&keyword.as_str()) {
@@ -166,7 +185,11 @@ fn invalid<T>(keyword: &str, why: &str) -> Result<T, Refused> {
     Err(Refused::Invalid(format!("{keyword} {why}")))
 }
 
-fn rule(keyword: &str, value: &Value, siblings: &Map<String, Value>) -> Result<Option<Rule>, Refused> {
+fn rule(
+    keyword: &str,
+    value: &Value,
+    siblings: &Map<String, Value>,
+) -> Result<Option<Rule>, Refused> {
     Ok(Some(match keyword {
         "type" => {
             let names: Vec<&Value> = match value {
@@ -188,7 +211,9 @@ fn rule(keyword: &str, value: &Value, siblings: &Map<String, Value>) -> Result<O
         },
         "const" => Rule::Const(value.clone()),
         "minimum" | "maximum" | "exclusiveMinimum" | "exclusiveMaximum" => {
-            let Value::Number(bound) = value else { return invalid(keyword, "is a number") };
+            let Value::Number(bound) = value else {
+                return invalid(keyword, "is a number");
+            };
             let bound = bound.clone();
             match keyword {
                 "minimum" => Rule::Minimum(bound),
@@ -198,11 +223,15 @@ fn rule(keyword: &str, value: &Value, siblings: &Map<String, Value>) -> Result<O
             }
         }
         "multipleOf" => match value {
-            Value::Number(multiple) if multiple.as_f64().is_some_and(|multiple| multiple > 0.0) => Rule::MultipleOf(multiple.clone()),
+            Value::Number(multiple) if multiple.as_f64().is_some_and(|multiple| multiple > 0.0) => {
+                Rule::MultipleOf(multiple.clone())
+            }
             _ => return invalid("multipleOf", "is a number above zero"),
         },
         "minLength" | "maxLength" => {
-            let Some(length) = length_of(value) else { return invalid(keyword, "is a non-negative integer") };
+            let Some(length) = length_of(value) else {
+                return invalid(keyword, "is a non-negative integer");
+            };
             if keyword == "minLength" {
                 Rule::MinLength(length)
             } else {
@@ -217,11 +246,19 @@ fn rule(keyword: &str, value: &Value, siblings: &Map<String, Value>) -> Result<O
             _ => return invalid("pattern", "is a string"),
         },
         "required" => match value {
-            Value::Array(items) if items.iter().all(Value::is_string) => Rule::Required(items.iter().filter_map(Value::as_str).map(str::to_string).collect()),
+            Value::Array(items) if items.iter().all(Value::is_string) => Rule::Required(
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect(),
+            ),
             _ => return invalid("required", "is an array of strings"),
         },
         "properties" => {
-            let Value::Object(members) = value else { return invalid("properties", "is an object") };
+            let Value::Object(members) = value else {
+                return invalid("properties", "is an object");
+            };
             let mut compiled = Vec::new();
             for (name, schema) in members {
                 compiled.push((name.clone(), Node::compile(schema)?));
@@ -229,7 +266,11 @@ fn rule(keyword: &str, value: &Value, siblings: &Map<String, Value>) -> Result<O
             Rule::Properties(compiled)
         }
         "additionalProperties" => {
-            let declared = siblings.get("properties").and_then(Value::as_object).map(|members| members.keys().cloned().collect()).unwrap_or_default();
+            let declared = siblings
+                .get("properties")
+                .and_then(Value::as_object)
+                .map(|members| members.keys().cloned().collect())
+                .unwrap_or_default();
             Rule::AdditionalProperties(Box::new(Node::compile(value)?), declared)
         }
         "items" => match value {
@@ -242,9 +283,15 @@ fn rule(keyword: &str, value: &Value, siblings: &Map<String, Value>) -> Result<O
 }
 
 /// A non-negative integer written as a JSON number (`3` and `3.0`).
-#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "the float is checked to be a whole number between zero and 2^64 first")]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the float is checked to be a whole number between zero and 2^64 first"
+)]
 fn length_of(value: &Value) -> Option<u64> {
-    let Value::Number(number) = value else { return None };
+    let Value::Number(number) = value else {
+        return None;
+    };
     if let Some(unsigned) = number.as_u64() {
         return Some(unsigned);
     }
@@ -258,18 +305,38 @@ impl Rule {
             (Rule::Type(kinds), value) => kinds.iter().any(|kind| kind.holds(value)),
             (Rule::Enum(items), value) => items.iter().any(|item| equal(item, value)),
             (Rule::Const(expected), value) => equal(expected, value),
-            (Rule::Minimum(bound), Value::Number(number)) => compare(number, bound) != Ordering::Less,
-            (Rule::Maximum(bound), Value::Number(number)) => compare(number, bound) != Ordering::Greater,
-            (Rule::ExclusiveMinimum(bound), Value::Number(number)) => compare(number, bound) == Ordering::Greater,
-            (Rule::ExclusiveMaximum(bound), Value::Number(number)) => compare(number, bound) == Ordering::Less,
+            (Rule::Minimum(bound), Value::Number(number)) => {
+                compare(number, bound) != Ordering::Less
+            }
+            (Rule::Maximum(bound), Value::Number(number)) => {
+                compare(number, bound) != Ordering::Greater
+            }
+            (Rule::ExclusiveMinimum(bound), Value::Number(number)) => {
+                compare(number, bound) == Ordering::Greater
+            }
+            (Rule::ExclusiveMaximum(bound), Value::Number(number)) => {
+                compare(number, bound) == Ordering::Less
+            }
             (Rule::MultipleOf(multiple), Value::Number(number)) => is_multiple_of(number, multiple),
-            (Rule::MinLength(least), Value::String(text)) => u64::try_from(text.chars().count()).unwrap_or(u64::MAX) >= *least,
-            (Rule::MaxLength(most), Value::String(text)) => u64::try_from(text.chars().count()).unwrap_or(u64::MAX) <= *most,
+            (Rule::MinLength(least), Value::String(text)) => {
+                u64::try_from(text.chars().count()).unwrap_or(u64::MAX) >= *least
+            }
+            (Rule::MaxLength(most), Value::String(text)) => {
+                u64::try_from(text.chars().count()).unwrap_or(u64::MAX) <= *most
+            }
             (Rule::Pattern(pattern), Value::String(text)) => pattern.is_match(text),
-            (Rule::Required(names), Value::Object(members)) => names.iter().all(|name| members.contains_key(name)),
-            (Rule::Properties(declared), Value::Object(members)) => declared.iter().all(|(name, node)| members.get(name).is_none_or(|member| node.is_valid(member))),
-            (Rule::AdditionalProperties(node, declared), Value::Object(members)) => members.iter().all(|(name, member)| declared.contains(name) || node.is_valid(member)),
-            (Rule::Items(node), Value::Array(items)) => items.iter().all(|item| node.is_valid(item)),
+            (Rule::Required(names), Value::Object(members)) => {
+                names.iter().all(|name| members.contains_key(name))
+            }
+            (Rule::Properties(declared), Value::Object(members)) => declared
+                .iter()
+                .all(|(name, node)| members.get(name).is_none_or(|member| node.is_valid(member))),
+            (Rule::AdditionalProperties(node, declared), Value::Object(members)) => members
+                .iter()
+                .all(|(name, member)| declared.contains(name) || node.is_valid(member)),
+            (Rule::Items(node), Value::Array(items)) => {
+                items.iter().all(|item| node.is_valid(item))
+            }
             // A keyword is about one kind of value and says nothing of the others.
             _ => true,
         }
@@ -284,14 +351,23 @@ fn is_integer(number: &Number) -> bool {
 fn equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(x), Value::Number(y)) => compare(x, y) == Ordering::Equal,
-        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(x, y)| equal(x, y)),
-        (Value::Object(x), Value::Object(y)) => x.len() == y.len() && x.iter().all(|(key, x)| y.get(key).is_some_and(|y| equal(x, y))),
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(x, y)| equal(x, y))
+        }
+        (Value::Object(x), Value::Object(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .all(|(key, x)| y.get(key).is_some_and(|y| equal(x, y)))
+        }
         (x, y) => x == y,
     }
 }
 
 fn as_integer(number: &Number) -> Option<i128> {
-    number.as_i64().map(i128::from).or_else(|| number.as_u64().map(i128::from))
+    number
+        .as_i64()
+        .map(i128::from)
+        .or_else(|| number.as_u64().map(i128::from))
 }
 
 /// The order of two numbers, exactly: two integers by value, a float and an integer without rounding the integer.
@@ -300,12 +376,19 @@ fn compare(a: &Number, b: &Number) -> Ordering {
         (Some(x), Some(y)) => x.cmp(&y),
         (Some(x), None) => compare_integer_to_float(x, b.as_f64().unwrap_or(f64::NAN)),
         (None, Some(y)) => compare_integer_to_float(y, a.as_f64().unwrap_or(f64::NAN)).reverse(),
-        (None, None) => a.as_f64().unwrap_or(f64::NAN).partial_cmp(&b.as_f64().unwrap_or(f64::NAN)).unwrap_or(Ordering::Equal),
+        (None, None) => a
+            .as_f64()
+            .unwrap_or(f64::NAN)
+            .partial_cmp(&b.as_f64().unwrap_or(f64::NAN))
+            .unwrap_or(Ordering::Equal),
     }
 }
 
 /// `integer` against `float`, as the integer's order to the float.
-#[expect(clippy::cast_possible_truncation, reason = "the float is checked to lie within the range of an i128 first, and only its whole part is kept")]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the float is checked to lie within the range of an i128 first, and only its whole part is kept"
+)]
 fn compare_integer_to_float(integer: i128, float: f64) -> Ordering {
     if float.is_nan() {
         return Ordering::Equal;
@@ -327,16 +410,22 @@ fn compare_integer_to_float(integer: i128, float: f64) -> Ordering {
 
 /// `value` is a multiple of `multiple` (above zero): exactly, so `0.3` is no multiple of `0.1` and `1e22` is one of `1e10`.
 fn is_multiple_of(value: &Number, multiple: &Number) -> bool {
-    let Some(multiple_float) = multiple.as_f64() else { return false };
+    let Some(multiple_float) = multiple.as_f64() else {
+        return false;
+    };
     if multiple_float.fract() == 0.0 {
         // An integer multiple: integers by remainder, a float that is whole by the float remainder.
         if let (Some(whole), Some(step)) = (as_integer(value), as_integer(multiple)) {
             return step > 0 && whole % step == 0;
         }
-        let Some(value_float) = value.as_f64() else { return false };
+        let Some(value_float) = value.as_f64() else {
+            return false;
+        };
         return value_float.fract() == 0.0 && value_float % multiple_float == 0.0;
     }
-    let Some(value_float) = value.as_f64() else { return false };
+    let Some(value_float) = value.as_f64() else {
+        return false;
+    };
     if value_float == 0.0 {
         return true;
     }
@@ -357,7 +446,9 @@ fn is_multiple_of(value: &Number, multiple: &Number) -> bool {
         return rest == 1 && twos <= shift && fives <= shift;
     }
     // Otherwise the numerator must be a whole multiple of the denominator (1, in lowest terms) and of 10^-shift.
-    denominator == 1 && split_prime(numerator, 2).0 >= -shift && split_prime(numerator, 5).0 >= -shift
+    denominator == 1
+        && split_prime(numerator, 2).0 >= -shift
+        && split_prime(numerator, 5).0 >= -shift
 }
 
 /// `x` (finite, above zero) as `digits * 10^exponent`, from its shortest decimal form.
@@ -367,7 +458,10 @@ fn decimal(x: f64) -> (u64, i32) {
     let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
     let digits: u64 = format!("{whole}{fraction}").parse().unwrap_or(1);
     let exponent: i32 = exponent.parse().unwrap_or_default();
-    (digits, exponent - i32::try_from(fraction.len()).unwrap_or_default())
+    (
+        digits,
+        exponent - i32::try_from(fraction.len()).unwrap_or_default(),
+    )
 }
 
 fn gcd(a: u64, b: u64) -> u64 {
@@ -395,7 +489,9 @@ mod tests {
     use super::*;
 
     fn native(schema: &Value, instance: &Value) -> bool {
-        Node::compile(schema).unwrap_or_else(|why| panic!("{schema}: {why:?}")).is_valid(instance)
+        Node::compile(schema)
+            .unwrap_or_else(|why| panic!("{schema}: {why:?}"))
+            .is_valid(instance)
     }
 
     fn schemas() -> Vec<Value> {
@@ -451,11 +547,85 @@ mod tests {
     }
 
     fn instances() -> Vec<Value> {
-        let mut all: Vec<Value> = vec![json!(null), json!(true), json!(false), json!([]), json!([1]), json!(["a"]), json!([""]), json!(["a", ""]), json!({}), json!({ "a": 1 }), json!({ "a": 0 }), json!({ "a": "x" }), json!({ "b": 1 }), json!({ "a": 1, "b": "x" }), json!({ "a": 1, "b": 2 }), json!({ "a": 1.0 }), json!({ "x": [1, 2] }), json!({ "x": [1.0, 2] })];
-        for number in [json!(0), json!(1), json!(2), json!(3), json!(5), json!(9), json!(10), json!(11), json!(-1), json!(21), json!(14), json!(7.0), json!(6.0), json!(1.0), json!(3.0), json!(0.1), json!(0.2), json!(0.3), json!(0.25), json!(0.5), json!(0.75), json!(2.5), json!(0.001), json!(0.003), json!(1e10), json!(3e10), json!(1e22), json!(9_007_199_254_740_991_i64), json!(9_007_199_254_740_992_u64), json!(-9_007_199_254_740_991_i64), json!(18_446_744_073_709_551_615_u64), json!(1e300)] {
+        let mut all: Vec<Value> = vec![
+            json!(null),
+            json!(true),
+            json!(false),
+            json!([]),
+            json!([1]),
+            json!(["a"]),
+            json!([""]),
+            json!(["a", ""]),
+            json!({}),
+            json!({ "a": 1 }),
+            json!({ "a": 0 }),
+            json!({ "a": "x" }),
+            json!({ "b": 1 }),
+            json!({ "a": 1, "b": "x" }),
+            json!({ "a": 1, "b": 2 }),
+            json!({ "a": 1.0 }),
+            json!({ "x": [1, 2] }),
+            json!({ "x": [1.0, 2] }),
+        ];
+        for number in [
+            json!(0),
+            json!(1),
+            json!(2),
+            json!(3),
+            json!(5),
+            json!(9),
+            json!(10),
+            json!(11),
+            json!(-1),
+            json!(21),
+            json!(14),
+            json!(7.0),
+            json!(6.0),
+            json!(1.0),
+            json!(3.0),
+            json!(0.1),
+            json!(0.2),
+            json!(0.3),
+            json!(0.25),
+            json!(0.5),
+            json!(0.75),
+            json!(2.5),
+            json!(0.001),
+            json!(0.003),
+            json!(1e10),
+            json!(3e10),
+            json!(1e22),
+            json!(9_007_199_254_740_991_i64),
+            json!(9_007_199_254_740_992_u64),
+            json!(-9_007_199_254_740_991_i64),
+            json!(18_446_744_073_709_551_615_u64),
+            json!(1e300),
+        ] {
             all.push(number);
         }
-        for text in ["", "a", "ab", "abc", "abcd", "abcde", "ABC", "12", "123", "12345", "é", "日本語", "😀😀", "a\n", "ac", "bc", "abd", "b", "x b y", "x\ny", "\u{663}\u{664}"] {
+        for text in [
+            "",
+            "a",
+            "ab",
+            "abc",
+            "abcd",
+            "abcde",
+            "ABC",
+            "12",
+            "123",
+            "12345",
+            "é",
+            "日本語",
+            "😀😀",
+            "a\n",
+            "ac",
+            "bc",
+            "abd",
+            "b",
+            "x b y",
+            "x\ny",
+            "\u{663}\u{664}",
+        ] {
             all.push(json!(text));
         }
         all
@@ -466,10 +636,15 @@ mod tests {
     fn every_keyword_of_the_profile_answers_as_the_validator_does() {
         let mut checked = 0;
         for schema in schemas() {
-            let validator = jsonschema::validator_for(&schema).unwrap_or_else(|error| panic!("{schema}: {error}"));
+            let validator = jsonschema::validator_for(&schema)
+                .unwrap_or_else(|error| panic!("{schema}: {error}"));
             let node = Node::compile(&schema).unwrap_or_else(|why| panic!("{schema}: {why:?}"));
             for instance in instances() {
-                assert_eq!(node.is_valid(&instance), validator.is_valid(&instance), "{schema} against {instance}");
+                assert_eq!(
+                    node.is_valid(&instance),
+                    validator.is_valid(&instance),
+                    "{schema} against {instance}"
+                );
                 checked += 1;
             }
         }
@@ -478,26 +653,57 @@ mod tests {
 
     #[test]
     fn a_keyword_applies_to_its_own_kind_of_value_only() {
-        assert!(native(&json!({ "minimum": 5 }), &json!("a")), "a number keyword says nothing of a string");
+        assert!(
+            native(&json!({ "minimum": 5 }), &json!("a")),
+            "a number keyword says nothing of a string"
+        );
         assert!(native(&json!({ "minLength": 5 }), &json!(1)));
         assert!(native(&json!({ "required": ["a"] }), &json!([])));
         assert!(native(&json!({ "items": false }), &json!({})));
-        assert!(!native(&json!({ "type": "integer", "minimum": 5 }), &json!(4)));
-        assert!(native(&json!({ "type": "integer" }), &json!(2.0)), "2.0 is an integer");
+        assert!(!native(
+            &json!({ "type": "integer", "minimum": 5 }),
+            &json!(4)
+        ));
+        assert!(
+            native(&json!({ "type": "integer" }), &json!(2.0)),
+            "2.0 is an integer"
+        );
         assert!(!native(&json!({ "type": "integer" }), &json!(2.5)));
-        assert!(native(&json!({ "const": 1 }), &json!(1.0)) && native(&json!({ "enum": [1] }), &json!(1.0)), "1 and 1.0 are one value");
-        assert!(native(&json!({ "minLength": 2, "maxLength": 2 }), &json!("😀😀")), "a length counts characters, not bytes");
-        assert!(native(&json!({ "pattern": "b" }), &json!("abc")), "a pattern searches; the profile anchors it");
+        assert!(
+            native(&json!({ "const": 1 }), &json!(1.0))
+                && native(&json!({ "enum": [1] }), &json!(1.0)),
+            "1 and 1.0 are one value"
+        );
+        assert!(
+            native(&json!({ "minLength": 2, "maxLength": 2 }), &json!("😀😀")),
+            "a length counts characters, not bytes"
+        );
+        assert!(
+            native(&json!({ "pattern": "b" }), &json!("abc")),
+            "a pattern searches; the profile anchors it"
+        );
         assert!(!native(&json!({ "pattern": "^b$" }), &json!("abc")));
-        assert!(!native(&json!({ "pattern": "^abc$" }), &json!("abc\n")), "`$` is the end of the text");
+        assert!(
+            !native(&json!({ "pattern": "^abc$" }), &json!("abc\n")),
+            "`$` is the end of the text"
+        );
     }
 
     #[test]
     fn a_number_is_compared_without_rounding() {
         let beyond = json!(9_007_199_254_740_993_u64);
-        assert!(!native(&json!({ "maximum": 9_007_199_254_740_992_u64 }), &beyond));
-        assert!(native(&json!({ "minimum": 9_007_199_254_740_992_u64 }), &beyond));
-        assert!(native(&json!({ "multipleOf": 0.1 }), &json!(0.3)), "0.3 is three tenths: a multiple of 0.1, as the validator reads decimals");
+        assert!(!native(
+            &json!({ "maximum": 9_007_199_254_740_992_u64 }),
+            &beyond
+        ));
+        assert!(native(
+            &json!({ "minimum": 9_007_199_254_740_992_u64 }),
+            &beyond
+        ));
+        assert!(
+            native(&json!({ "multipleOf": 0.1 }), &json!(0.3)),
+            "0.3 is three tenths: a multiple of 0.1, as the validator reads decimals"
+        );
         assert!(!native(&json!({ "multipleOf": 0.1 }), &json!(0.35)));
         assert!(native(&json!({ "multipleOf": 0.001 }), &json!(12.345)));
         assert!(!native(&json!({ "multipleOf": 0.01 }), &json!(12.345)));
@@ -507,13 +713,59 @@ mod tests {
 
     #[test]
     fn a_schema_that_is_not_one_is_invalid_and_a_keyword_outside_the_profile_is_unsupported() {
-        for schema in [json!({ "minimum": "x" }), json!({ "multipleOf": 0 }), json!({ "multipleOf": -1 }), json!({ "minLength": -1 }), json!({ "minLength": 1.5 }), json!({ "pattern": "(" }), json!({ "pattern": 1 }), json!({ "type": "foo" }), json!({ "type": 1 }), json!({ "required": "a" }), json!({ "required": [1] }), json!({ "enum": 1 }), json!({ "properties": [] }), json!({ "properties": { "a": 1 } }), json!({ "items": [] }), json!(1), json!("x"), json!(null)] {
-            assert!(matches!(Node::compile(&schema), Err(Refused::Invalid(_))), "{schema}");
-            assert!(jsonschema::validator_for(&schema).is_err(), "{schema}: the validator refuses it too");
+        for schema in [
+            json!({ "minimum": "x" }),
+            json!({ "multipleOf": 0 }),
+            json!({ "multipleOf": -1 }),
+            json!({ "minLength": -1 }),
+            json!({ "minLength": 1.5 }),
+            json!({ "pattern": "(" }),
+            json!({ "pattern": 1 }),
+            json!({ "type": "foo" }),
+            json!({ "type": 1 }),
+            json!({ "required": "a" }),
+            json!({ "required": [1] }),
+            json!({ "enum": 1 }),
+            json!({ "properties": [] }),
+            json!({ "properties": { "a": 1 } }),
+            json!({ "items": [] }),
+            json!(1),
+            json!("x"),
+            json!(null),
+        ] {
+            assert!(
+                matches!(Node::compile(&schema), Err(Refused::Invalid(_))),
+                "{schema}"
+            );
+            assert!(
+                jsonschema::validator_for(&schema).is_err(),
+                "{schema}: the validator refuses it too"
+            );
         }
-        for keyword in ["anyOf", "allOf", "oneOf", "not", "$ref", "patternProperties", "propertyNames", "minItems", "maxItems", "uniqueItems", "minProperties", "contains", "if", "dependentRequired", "prefixItems", "unevaluatedProperties"] {
+        for keyword in [
+            "anyOf",
+            "allOf",
+            "oneOf",
+            "not",
+            "$ref",
+            "patternProperties",
+            "propertyNames",
+            "minItems",
+            "maxItems",
+            "uniqueItems",
+            "minProperties",
+            "contains",
+            "if",
+            "dependentRequired",
+            "prefixItems",
+            "unevaluatedProperties",
+        ] {
             let schema = json!({ keyword: [] });
-            assert_eq!(Node::compile(&schema).err(), Some(Refused::Unsupported(keyword.to_string())), "{keyword}");
+            assert_eq!(
+                Node::compile(&schema).err(),
+                Some(Refused::Unsupported(keyword.to_string())),
+                "{keyword}"
+            );
         }
     }
 }

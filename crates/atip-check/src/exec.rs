@@ -245,7 +245,9 @@ impl Runner {
         };
         for command in &fixture.prepare {
             let template = runner.template.clone();
-            let Some((program, args)) = command.split_first() else { continue };
+            let Some((program, args)) = command.split_first() else {
+                continue;
+            };
             if resolves_to(program, &template, &runner.bin) {
                 return Err(RunError::Prepare(format!(
                     "the prepare command `{}` runs the binary under test: the state the tool keeps is built by `setup`, through the tool's own argv",
@@ -254,14 +256,19 @@ impl Runner {
             }
             let mut call = Call::new(args.iter().cloned());
             call.program = Some(program.clone());
-            let outcome = runner
-                .execute(&call, &template)
-                .map_err(|error| RunError::Prepare(format!("the prepare command `{}` cannot be started: {error}", command.join(" "))))?;
+            let outcome = runner.execute(&call, &template).map_err(|error| {
+                RunError::Prepare(format!(
+                    "the prepare command `{}` cannot be started: {error}",
+                    command.join(" ")
+                ))
+            })?;
             if outcome.exit != Exit::Code(0) {
                 let detail = match outcome.exit {
                     Exit::Code(code) => format!("exited {code}"),
                     Exit::Signal(signal) => format!("was killed by signal {signal}"),
-                    Exit::TimedOut => format!("ran over the {} second limit", runner.timeout.as_secs_f64()),
+                    Exit::TimedOut => {
+                        format!("ran over the {} second limit", runner.timeout.as_secs_f64())
+                    }
                 };
                 return Err(RunError::Prepare(format!(
                     "the prepare command `{}` {detail}: {}",
@@ -355,7 +362,12 @@ impl Runner {
     }
 
     /// What a call left behind: the changed paths of the directory and `HOME` since `before` (measured for a refusal and for a call that asks), and, after a refusal, the probe's answer.
-    fn after_call(&self, outcome: &mut Outcome, sequence: &Path, before: &Snapshot) -> Result<(), RunError> {
+    fn after_call(
+        &self,
+        outcome: &mut Outcome,
+        sequence: &Path,
+        before: &Snapshot,
+    ) -> Result<(), RunError> {
         if outcome.exit != Exit::Code(2) && !outcome.call.measure {
             return Ok(());
         }
@@ -375,10 +387,18 @@ impl Runner {
     /// Runs `call` once in its own fresh copy of the template (an empty one for a call in the empty state).
     pub fn run(&mut self, call: &Call) -> Result<Outcome, RunError> {
         let (number, sequence) = self.sequence(call.empty || call.without_setup)?;
-        let mut outcome = (if call.served { self.execute_served(call, &sequence) } else { self.execute(call, &sequence) })
-            .map_err(|error| RunError::Spawn(format!("{}: {error}", self.bin.display())))?;
+        let mut outcome = (if call.served {
+            self.execute_served(call, &sequence)
+        } else {
+            self.execute(call, &sequence)
+        })
+        .map_err(|error| RunError::Spawn(format!("{}: {error}", self.bin.display())))?;
         outcome.sequence = number;
-        let before = if call.empty || call.without_setup { Snapshot::new() } else { self.template_files.clone() };
+        let before = if call.empty || call.without_setup {
+            Snapshot::new()
+        } else {
+            self.template_files.clone()
+        };
         self.after_call(&mut outcome, &sequence, &before)?;
         Ok(outcome)
     }
@@ -403,15 +423,23 @@ impl Runner {
         let (number, sequence) = self.sequence(false)?;
         let runner = &*self;
         let results: Vec<std::io::Result<Outcome>> = thread::scope(|scope| {
-            let handles: Vec<_> = calls.iter().map(|call| scope.spawn(|| runner.execute(call, &sequence))).collect();
+            let handles: Vec<_> = calls
+                .iter()
+                .map(|call| scope.spawn(|| runner.execute(call, &sequence)))
+                .collect();
             handles
                 .into_iter()
-                .map(|handle| handle.join().unwrap_or_else(|_| Err(std::io::Error::other("an invocation thread panicked"))))
+                .map(|handle| {
+                    handle.join().unwrap_or_else(|_| {
+                        Err(std::io::Error::other("an invocation thread panicked"))
+                    })
+                })
                 .collect()
         });
         let mut outcomes = Vec::with_capacity(results.len());
         for result in results {
-            let mut outcome = result.map_err(|error| RunError::Spawn(format!("{}: {error}", self.bin.display())))?;
+            let mut outcome = result
+                .map_err(|error| RunError::Spawn(format!("{}: {error}", self.bin.display())))?;
             outcome.sequence = number;
             outcomes.push(outcome);
         }
@@ -420,14 +448,19 @@ impl Runner {
 
     /// The state of sequence `number` as text: two sequences with the same files, sizes and contents give the same text.
     pub fn fingerprint(&self, number: usize) -> Result<String, RunError> {
-        let state = Self::both(&self.sequence_dir(number)).map_err(|error| RunError::Scratch(error.to_string()))?;
+        let state = Self::both(&self.sequence_dir(number))
+            .map_err(|error| RunError::Scratch(error.to_string()))?;
         Ok(format!("{state:?}"))
     }
 
     /// Runs `call` with stdin and stdout on one terminal (canonical input, no echo, output untranslated), in its
     /// own fresh copy. A process still running after `deadline` gets the end-of-file character at the start of a
     /// line and two more seconds; [`Outcome::at_deadline`] says what it did.
-    pub fn run_on_terminal(&mut self, call: &Call, deadline: Duration) -> Result<Outcome, RunError> {
+    pub fn run_on_terminal(
+        &mut self,
+        call: &Call,
+        deadline: Duration,
+    ) -> Result<Outcome, RunError> {
         let (number, sequence) = self.sequence(false)?;
         let mut outcome = self
             .execute_terminal(call, &sequence, deadline)
@@ -460,7 +493,11 @@ impl Runner {
                     .map(|(name, value)| (name, value)),
             )
             .envs(call.env.iter().map(|(name, value)| (name, value)))
-            .stdin(if call.stdin.is_some() { Stdio::piped() } else { Stdio::null() })
+            .stdin(if call.stdin.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stderr(Stdio::piped())
             .process_group(0);
         command
@@ -543,11 +580,15 @@ impl Runner {
                 }
             })
         });
-        let stderr = child.stderr.take().map_or_else(|| thread::spawn(Vec::new), reader);
+        let stderr = child
+            .stderr
+            .take()
+            .map_or_else(|| thread::spawn(Vec::new), reader);
         let limit = call.limit.unwrap_or(self.timeout);
         // The end of the first JSON document in what stdout holds so far, with the newline that closes its line when it is there.
         let first_document_end = |bytes: &[u8]| -> Option<usize> {
-            let mut documents = serde_json::Deserializer::from_slice(bytes).into_iter::<serde_json::Value>();
+            let mut documents =
+                serde_json::Deserializer::from_slice(bytes).into_iter::<serde_json::Value>();
             match documents.next() {
                 Some(Ok(_)) => Some(documents.byte_offset()),
                 _ => None,
@@ -558,7 +599,10 @@ impl Runner {
         let mut exit = Exit::TimedOut;
         let mut end: Option<usize> = None;
         loop {
-            let seen = printed.lock().map(|bytes| bytes.clone()).unwrap_or_default();
+            let seen = printed
+                .lock()
+                .map(|bytes| bytes.clone())
+                .unwrap_or_default();
             if let Some(at) = first_document_end(&seen) {
                 end = Some(at);
                 break;
@@ -616,10 +660,17 @@ impl Runner {
         if let Some(reading) = reading {
             let _joined = reading.join();
         }
-        let mut stdout = printed.lock().map(|bytes| bytes.clone()).unwrap_or_default();
+        let mut stdout = printed
+            .lock()
+            .map(|bytes| bytes.clone())
+            .unwrap_or_default();
         if let Some(at) = first_document_end(&stdout) {
             // Up to the end of the first document and the newline that closes its line; what a process printed after it while it was being ended is not read.
-            let line_end = if stdout.get(at) == Some(&b'\n') { at + 1 } else { at };
+            let line_end = if stdout.get(at) == Some(&b'\n') {
+                at + 1
+            } else {
+                at
+            };
             if served {
                 stdout.truncate(line_end);
             }
@@ -640,7 +691,12 @@ impl Runner {
     }
 
     /// The run of [`Runner::run_on_terminal`].
-    fn execute_terminal(&self, call: &Call, root: &Path, deadline: Duration) -> std::io::Result<Outcome> {
+    fn execute_terminal(
+        &self,
+        call: &Call,
+        root: &Path,
+        deadline: Duration,
+    ) -> std::io::Result<Outcome> {
         let started = Instant::now();
         let mut command = self.command(call, root);
         let pty = canonical_terminal()?;
@@ -737,7 +793,9 @@ struct CanonicalTerminal {
 }
 
 fn canonical_terminal() -> std::io::Result<CanonicalTerminal> {
-    use nix::sys::termios::{tcgetattr, tcsetattr, InputFlags, LocalFlags, OutputFlags, SetArg, SpecialCharacterIndices};
+    use nix::sys::termios::{
+        tcgetattr, tcsetattr, InputFlags, LocalFlags, OutputFlags, SetArg, SpecialCharacterIndices,
+    };
     let pty = nix::pty::openpty(None, None).map_err(std::io::Error::from)?;
     let mut settings = tcgetattr(&pty.slave).map_err(std::io::Error::from)?;
     settings.local_flags.insert(LocalFlags::ICANON);
@@ -745,7 +803,9 @@ fn canonical_terminal() -> std::io::Result<CanonicalTerminal> {
         .local_flags
         .remove(LocalFlags::ECHO | LocalFlags::ECHOE | LocalFlags::ECHOK | LocalFlags::ECHONL);
     settings.output_flags.remove(OutputFlags::OPOST);
-    settings.input_flags.remove(InputFlags::ICRNL | InputFlags::INLCR | InputFlags::IGNCR);
+    settings
+        .input_flags
+        .remove(InputFlags::ICRNL | InputFlags::INLCR | InputFlags::IGNCR);
     tcsetattr(&pty.slave, SetArg::TCSANOW, &settings).map_err(std::io::Error::from)?;
     let end_of_file = settings.control_chars[SpecialCharacterIndices::VEOF as usize];
     Ok(CanonicalTerminal {
@@ -850,13 +910,25 @@ fn exit_of(status: ExitStatus) -> Exit {
 /// The last 200 characters of `bytes` as text, for a failure message.
 /// Whether `program` (a path, or a name looked up on `PATH`) is the same file as `bin`.
 fn resolves_to(program: &str, directory: &Path, bin: &Path) -> bool {
-    let Ok(bin) = bin.canonicalize() else { return false };
+    let Ok(bin) = bin.canonicalize() else {
+        return false;
+    };
     let candidates: Vec<PathBuf> = if program.contains('/') {
         vec![directory.join(program)]
     } else {
-        std::env::var_os("PATH").map(|path| std::env::split_paths(&path).map(|dir| dir.join(program)).collect()).unwrap_or_default()
+        std::env::var_os("PATH")
+            .map(|path| {
+                std::env::split_paths(&path)
+                    .map(|dir| dir.join(program))
+                    .collect()
+            })
+            .unwrap_or_default()
     };
-    candidates.iter().any(|candidate| candidate.canonicalize().is_ok_and(|resolved| resolved == bin))
+    candidates.iter().any(|candidate| {
+        candidate
+            .canonicalize()
+            .is_ok_and(|resolved| resolved == bin)
+    })
 }
 
 fn tail(bytes: &[u8]) -> String {
@@ -1074,18 +1146,42 @@ mod tests {
     }
 
     #[test]
-    fn atip_checkl1_prepare_programs_run_before_setup_with_the_fixture_environment_and_are_not_a_change_a_refusal_made() {
-        let mut prepared = fixture(&[&["-c", "cat prepared.txt >&2; echo \"$FIXTURE_VAR\" >&2; exit 2"]], Duration::from_secs(10));
-        prepared.prepare = vec![vec!["/usr/bin/env".to_string(), "sh".to_string(), "-c".to_string(), "echo prepared > prepared.txt".to_string()]];
+    fn atip_checkl1_prepare_programs_run_before_setup_with_the_fixture_environment_and_are_not_a_change_a_refusal_made(
+    ) {
+        let mut prepared = fixture(
+            &[&[
+                "-c",
+                "cat prepared.txt >&2; echo \"$FIXTURE_VAR\" >&2; exit 2",
+            ]],
+            Duration::from_secs(10),
+        );
+        prepared.prepare = vec![vec![
+            "/usr/bin/env".to_string(),
+            "sh".to_string(),
+            "-c".to_string(),
+            "echo prepared > prepared.txt".to_string(),
+        ]];
         let runner = Runner::new("/bin/sh".as_ref(), &prepared);
         let error = runner.expect_err("the setup command exits 2");
-        let super::RunError::Setup(reason) = error else { panic!("a setup error") };
-        assert!(reason.contains("prepared") && reason.contains("yes"), "the program ran first, with the fixture's variable: {reason}");
+        let super::RunError::Setup(reason) = error else {
+            panic!("a setup error")
+        };
+        assert!(
+            reason.contains("prepared") && reason.contains("yes"),
+            "the program ran first, with the fixture's variable: {reason}"
+        );
         // A refusal that changes nothing is not charged with the file the prepare command made.
         let mut quiet = fixture(&[], Duration::from_secs(10));
-        quiet.prepare = vec![vec!["/usr/bin/env".to_string(), "sh".to_string(), "-c".to_string(), "echo prepared > prepared.txt".to_string()]];
+        quiet.prepare = vec![vec![
+            "/usr/bin/env".to_string(),
+            "sh".to_string(),
+            "-c".to_string(),
+            "echo prepared > prepared.txt".to_string(),
+        ]];
         let mut runner = Runner::new("/bin/sh".as_ref(), &quiet).expect("runner");
-        let outcome = runner.run(&sh("test -f prepared.txt; exit 2")).expect("run");
+        let outcome = runner
+            .run(&sh("test -f prepared.txt; exit 2"))
+            .expect("run");
         assert_eq!(outcome.exit, Exit::Code(2));
         assert!(outcome.changes.is_empty(), "{:?}", outcome.changes);
     }
@@ -1093,24 +1189,45 @@ mod tests {
     #[test]
     fn atip_checkl1_a_failing_prepare_command_is_a_defect_of_the_fixture_named_by_its_command() {
         let mut failing = fixture(&[], Duration::from_secs(10));
-        failing.prepare = vec![vec!["/usr/bin/env".to_string(), "sh".to_string(), "-c".to_string(), "echo no git >&2; exit 4".to_string()]];
+        failing.prepare = vec![vec![
+            "/usr/bin/env".to_string(),
+            "sh".to_string(),
+            "-c".to_string(),
+            "echo no git >&2; exit 4".to_string(),
+        ]];
         let error = Runner::new("/bin/sh".as_ref(), &failing).expect_err("prepare fails");
-        let super::RunError::Prepare(reason) = error else { panic!("a prepare error") };
-        assert!(reason.contains("exited 4") && reason.contains("no git"), "{reason}");
+        let super::RunError::Prepare(reason) = error else {
+            panic!("a prepare error")
+        };
+        assert!(
+            reason.contains("exited 4") && reason.contains("no git"),
+            "{reason}"
+        );
         let mut missing = fixture(&[], Duration::from_secs(10));
         missing.prepare = vec![vec!["/nonexistent/atip-prepare".to_string()]];
         let error = Runner::new("/bin/sh".as_ref(), &missing).expect_err("prepare cannot start");
-        assert!(matches!(error, super::RunError::Prepare(reason) if reason.contains("cannot be started")));
+        assert!(
+            matches!(error, super::RunError::Prepare(reason) if reason.contains("cannot be started"))
+        );
     }
 
     #[test]
     fn atip_checkl1_a_prepare_step_that_runs_the_binary_under_test_is_a_fixture_error() {
         let mut fixture = fixture(&[], Duration::from_secs(10));
-        fixture.prepare = vec![vec!["/bin/sh".to_string(), "-c".to_string(), "true".to_string()]];
-        let error = Runner::new("/bin/sh".as_ref(), &fixture).expect_err("the prepare step is the binary");
-        assert!(matches!(error, super::RunError::Prepare(reason) if reason.contains("runs the binary under test")));
+        fixture.prepare = vec![vec![
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            "true".to_string(),
+        ]];
+        let error =
+            Runner::new("/bin/sh".as_ref(), &fixture).expect_err("the prepare step is the binary");
+        assert!(
+            matches!(error, super::RunError::Prepare(reason) if reason.contains("runs the binary under test"))
+        );
         fixture.prepare = vec![vec!["sh".to_string(), "-c".to_string(), "true".to_string()]];
         let error = Runner::new("/bin/sh".as_ref(), &fixture).expect_err("found on PATH");
-        assert!(matches!(error, super::RunError::Prepare(reason) if reason.contains("runs the binary under test")));
+        assert!(
+            matches!(error, super::RunError::Prepare(reason) if reason.contains("runs the binary under test"))
+        );
     }
 }

@@ -63,14 +63,24 @@ pub fn contract_version_findings(document: &Value, claim: Claim) -> Vec<Finding>
                 .collect();
             findings.push((
                 "markers-present",
-                (!missing.is_empty())
-                    .then(|| format!("meta has no {}, a {} tool sets both on every envelope", missing.join(" and "), claim.as_str())),
+                (!missing.is_empty()).then(|| {
+                    format!(
+                        "meta has no {}, a {} tool sets both on every envelope",
+                        missing.join(" and "),
+                        claim.as_str()
+                    )
+                }),
             ));
             findings.push((
                 "version-is-claim",
                 meta("contractVersion")
                     .filter(|version| version.as_str() != Some(claim.as_str()))
-                    .map(|version| format!("meta.contractVersion is {version}, the claim is \"{}\"", claim.as_str())),
+                    .map(|version| {
+                        format!(
+                            "meta.contractVersion is {version}, the claim is \"{}\"",
+                            claim.as_str()
+                        )
+                    }),
             ));
         }
         Claim::V1_0 => {
@@ -85,16 +95,28 @@ pub fn contract_version_findings(document: &Value, claim: Claim) -> Vec<Finding>
                 .collect();
             findings.push((
                 "no-later-members",
-                (!later.is_empty()).then(|| format!("the document has {} of a later minor than the claim 1.0", later.join(", "))),
+                (!later.is_empty()).then(|| {
+                    format!(
+                        "the document has {} of a later minor than the claim 1.0",
+                        later.join(", ")
+                    )
+                }),
             ));
         }
     }
-    if document.get("ok") == Some(&Value::Bool(true)) && meta("command").and_then(Value::as_str) == Some("schema") {
+    if document.get("ok") == Some(&Value::Bool(true))
+        && meta("command").and_then(Value::as_str) == Some("schema")
+    {
         findings.push((
             "schema-version-is-claim",
             meta("schemaVersion")
                 .filter(|version| version.as_str() != Some(claim.as_str()))
-                .map(|version| format!("a schema answer has meta.schemaVersion {version}, the claim is \"{}\"", claim.as_str())),
+                .map(|version| {
+                    format!(
+                        "a schema answer has meta.schemaVersion {version}, the claim is \"{}\"",
+                        claim.as_str()
+                    )
+                }),
         ));
     }
     findings
@@ -139,7 +161,12 @@ pub fn hint_problems(document: &Value, tool: &str) -> Vec<String> {
         if let Some(hint) = error.get("hint").and_then(Value::as_str) {
             check(hint);
         }
-        for detail in error.get("details").and_then(Value::as_array).into_iter().flatten() {
+        for detail in error
+            .get("details")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             if let Some(hint) = detail.get("hint").and_then(Value::as_str) {
                 check(hint);
             }
@@ -170,7 +197,12 @@ pub fn emitted(document: &Value) -> Emitted {
     };
     if let Some(error) = document.get("error") {
         take(error);
-        for detail in error.get("details").and_then(Value::as_array).into_iter().flatten() {
+        for detail in error
+            .get("details")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             take(detail);
         }
     }
@@ -232,32 +264,58 @@ pub fn registry_findings(
         .warnings
         .iter()
         .map(String::as_str)
-        .filter(|code| is_upper_snake(code) && !warning_codes.iter().any(|known| known == code) && !rows.iter().any(|row| row.code == *code))
+        .filter(|code| {
+            is_upper_snake(code)
+                && !warning_codes.iter().any(|known| known == code)
+                && !rows.iter().any(|row| row.code == *code)
+        })
         .collect();
     vec![
         (
             "emitted-codes-registered",
-            (!unregistered.is_empty()).then(|| format!("it failed with {}, which is not in the registry", unregistered.join(", "))),
+            (!unregistered.is_empty()).then(|| {
+                format!(
+                    "it failed with {}, which is not in the registry",
+                    unregistered.join(", ")
+                )
+            }),
         ),
         (
             "emitted-reasons-registered",
-            (!unknown_reasons.is_empty())
-                .then(|| format!("it carries the reason {}, which the registry does not list there", unknown_reasons.join(", "))),
+            (!unknown_reasons.is_empty()).then(|| {
+                format!(
+                    "it carries the reason {}, which the registry does not list there",
+                    unknown_reasons.join(", ")
+                )
+            }),
         ),
         (
             "emitted-warnings-registered",
-            (!unlisted.is_empty()).then(|| format!("it warned with {}, which neither registry has", unlisted.join(", "))),
+            (!unlisted.is_empty()).then(|| {
+                format!(
+                    "it warned with {}, which neither registry has",
+                    unlisted.join(", ")
+                )
+            }),
         ),
     ]
 }
 
 /// The code a document is the answer to `schema --error <CODE>` for, when `CODE` is only in the warning registry: the
 /// `received` of a refusal or the code of an entry answered. Used on documents whose call is not known (the examples).
-pub fn warning_only_code_of(document: &Value, rows: &[RegistryRow], warning_codes: &[String]) -> Option<String> {
-    let warning_only = |code: &str| warning_codes.iter().any(|known| known == code) && !rows.iter().any(|row| row.code == code);
+pub fn warning_only_code_of(
+    document: &Value,
+    rows: &[RegistryRow],
+    warning_codes: &[String],
+) -> Option<String> {
+    let warning_only = |code: &str| {
+        warning_codes.iter().any(|known| known == code) && !rows.iter().any(|row| row.code == code)
+    };
     let code = if document.get("ok") == Some(&Value::Bool(false)) {
         let error = document.get("error");
-        let field = error.and_then(|error| error.get("field")).and_then(Value::as_str);
+        let field = error
+            .and_then(|error| error.get("field"))
+            .and_then(Value::as_str);
         error
             .and_then(|error| error.get("received"))
             .and_then(Value::as_str)
@@ -276,24 +334,45 @@ pub fn warning_only_code_of(document: &Value, rows: &[RegistryRow], warning_code
 pub fn warning_only_findings(document: &Value, tool: &str, code: &str) -> Vec<Finding> {
     let refused = document.get("ok") == Some(&Value::Bool(false));
     let error = document.get("error");
-    let text = |member: &str| error.and_then(|error| error.get(member)).and_then(Value::as_str);
+    let text = |member: &str| {
+        error
+            .and_then(|error| error.get(member))
+            .and_then(Value::as_str)
+    };
     let wanted = format!("{tool} schema --warning {code} --json");
     let mut findings: Vec<Finding> = vec![(
         "warning-only-refused",
-        (!refused).then(|| format!("`--error {code}` answered an entry for a code only the warning registry has")),
+        (!refused).then(|| {
+            format!("`--error {code}` answered an entry for a code only the warning registry has")
+        }),
     )];
     if refused {
         findings.push((
             "warning-only-code",
-            (text("code") != Some("USAGE")).then(|| format!("the refusal of `--error {code}` has the code {}, expected USAGE", text("code").unwrap_or("missing"))),
+            (text("code") != Some("USAGE")).then(|| {
+                format!(
+                    "the refusal of `--error {code}` has the code {}, expected USAGE",
+                    text("code").unwrap_or("missing")
+                )
+            }),
         ));
         findings.push((
             "warning-only-field",
-            (text("field") != Some("--error")).then(|| format!("the refusal of `--error {code}` has the field {}, expected \"--error\"", text("field").unwrap_or("missing"))),
+            (text("field") != Some("--error")).then(|| {
+                format!(
+                    "the refusal of `--error {code}` has the field {}, expected \"--error\"",
+                    text("field").unwrap_or("missing")
+                )
+            }),
         ));
         findings.push((
             "warning-only-hint",
-            (text("hint") != Some(wanted.as_str())).then(|| format!("the refusal of `--error {code}` has the hint {:?}, expected {wanted:?}", text("hint"))),
+            (text("hint") != Some(wanted.as_str())).then(|| {
+                format!(
+                    "the refusal of `--error {code}` has the hint {:?}, expected {wanted:?}",
+                    text("hint")
+                )
+            }),
         ));
     }
     findings
@@ -303,22 +382,38 @@ pub fn warning_only_findings(document: &Value, tool: &str, code: &str) -> Vec<Fi
 fn is_upper_snake(name: &str) -> bool {
     name.starts_with(|c: char| c.is_ascii_uppercase())
         && name.split('_').all(|part| {
-            !part.is_empty() && part.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+            !part.is_empty()
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
         })
 }
 
 /// `L0.next`, for one envelope that has `meta.next`: the entries are valid, and each has no placeholder, `--json`
 /// when the call was in JSON mode, and a `command` that splits into the tool name and the `argv` (spec 6.8).
-pub fn next_findings(document: &Value, claim: Claim, json_mode: bool, tool_fallback: &str) -> Vec<Finding> {
+pub fn next_findings(
+    document: &Value,
+    claim: Claim,
+    json_mode: bool,
+    tool_fallback: &str,
+) -> Vec<Finding> {
     let Some(next) = document.pointer("/meta/next") else {
         return Vec::new();
     };
     let found = problems_under(document, claim, "/meta/next");
     let mut findings: Vec<Finding> = vec![(
         "entries-valid",
-        (!found.is_empty()).then(|| format!("meta.next is not valid: {}", found.iter().take(2).cloned().collect::<Vec<_>>().join(", "))),
+        (!found.is_empty()).then(|| {
+            format!(
+                "meta.next is not valid: {}",
+                found.iter().take(2).cloned().collect::<Vec<_>>().join(", ")
+            )
+        }),
     )];
-    let tool = document.pointer("/meta/tool").and_then(Value::as_str).unwrap_or(tool_fallback);
+    let tool = document
+        .pointer("/meta/tool")
+        .and_then(Value::as_str)
+        .unwrap_or(tool_fallback);
     for entry in next.as_array().into_iter().flatten() {
         let (Some(command), Some(argv)) = (
             entry.get("command").and_then(Value::as_str),
@@ -335,10 +430,14 @@ pub fn next_findings(document: &Value, claim: Claim, json_mode: bool, tool_fallb
             placeholder.map(|word| format!("next argv holds the placeholder {word:?}")),
         ));
         if json_mode && !words.is_empty() {
-            let has_json = words.iter().take_while(|word| **word != "--").any(|word| *word == "--json");
+            let has_json = words
+                .iter()
+                .take_while(|word| **word != "--")
+                .any(|word| *word == "--json");
             findings.push((
                 "json-flag",
-                (!has_json).then(|| format!("a next step of a JSON-mode call has no --json: {command}")),
+                (!has_json)
+                    .then(|| format!("a next step of a JSON-mode call has no --json: {command}")),
             ));
         }
         let mut expected = vec![tool.to_string()];
@@ -346,7 +445,8 @@ pub fn next_findings(document: &Value, claim: Claim, json_mode: bool, tool_fallb
         let split = atip::split_argv(command);
         findings.push((
             "command-matches-argv",
-            (split != expected).then(|| format!("next command {command:?} splits to {split:?}, not {expected:?}")),
+            (split != expected)
+                .then(|| format!("next command {command:?} splits to {split:?}, not {expected:?}")),
         ));
     }
     findings
@@ -360,7 +460,12 @@ pub fn page_findings(document: &Value, claim: Claim) -> Vec<Finding> {
     let found = problems_under(document, claim, "/meta/page");
     let mut findings: Vec<Finding> = vec![(
         "page-valid",
-        (!found.is_empty()).then(|| format!("meta.page is not valid: {}", found.iter().take(2).cloned().collect::<Vec<_>>().join(", "))),
+        (!found.is_empty()).then(|| {
+            format!(
+                "meta.page is not valid: {}",
+                found.iter().take(2).cloned().collect::<Vec<_>>().join(", ")
+            )
+        }),
     )];
     if let Some(cursor) = page.get("nextCursor").and_then(Value::as_str) {
         let has_entry = document
@@ -371,7 +476,9 @@ pub fn page_findings(document: &Value, claim: Claim) -> Vec<Finding> {
             .filter_map(|entry| entry.get("argv").and_then(Value::as_array))
             .any(|argv| {
                 let words: Vec<&str> = argv.iter().filter_map(Value::as_str).collect();
-                words.windows(2).any(|pair| pair[0] == "--cursor" && pair[1] == cursor)
+                words
+                    .windows(2)
+                    .any(|pair| pair[0] == "--cursor" && pair[1] == cursor)
                     || words.contains(&format!("--cursor={cursor}").as_str())
             });
         findings.push((
@@ -391,12 +498,38 @@ pub fn entry_problems(document: &Value, claim: Claim) -> Vec<String> {
         return Vec::new();
     }
     let data = document.get("data");
-    let kind = data.and_then(|data| data.get("kind")).and_then(Value::as_str);
+    let kind = data
+        .and_then(|data| data.get("kind"))
+        .and_then(Value::as_str);
     let (entries, is_warning): (Vec<&Value>, bool) = match kind {
-        Some("errors") => (data.and_then(|data| data.get("errors")).and_then(Value::as_array).into_iter().flatten().collect(), false),
-        Some("error") => (data.and_then(|data| data.get("error")).into_iter().collect(), false),
-        Some("warnings") => (data.and_then(|data| data.get("warnings")).and_then(Value::as_array).into_iter().flatten().collect(), true),
-        Some("warning") => (data.and_then(|data| data.get("warning")).into_iter().collect(), true),
+        Some("errors") => (
+            data.and_then(|data| data.get("errors"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .collect(),
+            false,
+        ),
+        Some("error") => (
+            data.and_then(|data| data.get("error"))
+                .into_iter()
+                .collect(),
+            false,
+        ),
+        Some("warnings") => (
+            data.and_then(|data| data.get("warnings"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .collect(),
+            true,
+        ),
+        Some("warning") => (
+            data.and_then(|data| data.get("warning"))
+                .into_iter()
+                .collect(),
+            true,
+        ),
         _ => return Vec::new(),
     };
     entries
@@ -414,7 +547,9 @@ pub fn entry_problems(document: &Value, claim: Claim) -> Vec<String> {
                 }
                 schemas().registry_entry_problems(&prepared)
             };
-            problems.into_iter().map(move |problem| format!("the entry {code} is invalid: {problem}"))
+            problems
+                .into_iter()
+                .map(move |problem| format!("the entry {code} is invalid: {problem}"))
         })
         .collect()
 }
@@ -441,8 +576,12 @@ mod tests {
     }
 
     #[test]
-    fn atip_check_59_a_finding_belongs_to_one_rule_and_the_envelope_schema_leaves_the_others_theirs() {
-        let fine = failure(json!({"contractVersion": "1.1"}), json!({"reason": "NOT_JSON"}));
+    fn atip_check_59_a_finding_belongs_to_one_rule_and_the_envelope_schema_leaves_the_others_theirs(
+    ) {
+        let fine = failure(
+            json!({"contractVersion": "1.1"}),
+            json!({"reason": "NOT_JSON"}),
+        );
         assert!(envelope_problems(&fine, Claim::V1_1).is_empty());
         // A null is no-null's: the envelope check does not report it.
         let null = failure(json!({}), json!({"hint": null}));
@@ -451,11 +590,18 @@ mod tests {
         // A later member under a 1.0 claim is contract-version's.
         assert!(envelope_problems(&fine, Claim::V1_0).is_empty());
         let findings = contract_version_findings(&fine, Claim::V1_0);
-        assert!(findings.iter().any(|(id, problem)| *id == "no-contract-version" && problem.is_some()));
-        assert!(findings.iter().any(|(id, problem)| *id == "no-later-members" && problem.is_some()));
+        assert!(findings
+            .iter()
+            .any(|(id, problem)| *id == "no-contract-version" && problem.is_some()));
+        assert!(findings
+            .iter()
+            .any(|(id, problem)| *id == "no-later-members" && problem.is_some()));
         // A contractVersion without contract is contract-version's, not the schema's dependentRequired.
         let mut lone = failure(json!({"contractVersion": "1.1"}), json!({}));
-        lone["meta"].as_object_mut().expect("meta").remove("contract");
+        lone["meta"]
+            .as_object_mut()
+            .expect("meta")
+            .remove("contract");
         assert!(envelope_problems(&lone, Claim::V1_1).is_empty());
         assert!(contract_version_findings(&lone, Claim::V1_1)
             .iter()
@@ -473,16 +619,44 @@ mod tests {
 
     #[test]
     fn atip_check_59_the_markers_and_the_version_are_the_claims() {
-        let ok = |document: &Value, claim| contract_version_findings(document, claim).iter().all(|(_, problem)| problem.is_none());
-        assert!(ok(&failure(json!({"contractVersion": "1.1"}), json!({})), Claim::V1_1));
-        assert!(!ok(&failure(json!({}), json!({})), Claim::V1_1), "no contractVersion");
-        assert!(!ok(&failure(json!({"contractVersion": "1.0"}), json!({})), Claim::V1_1), "says 1.0");
-        assert!(!ok(&failure(json!({"contractVersion": "1.2"}), json!({})), Claim::V1_1), "another minor");
+        let ok = |document: &Value, claim| {
+            contract_version_findings(document, claim)
+                .iter()
+                .all(|(_, problem)| problem.is_none())
+        };
+        assert!(ok(
+            &failure(json!({"contractVersion": "1.1"}), json!({})),
+            Claim::V1_1
+        ));
+        assert!(
+            !ok(&failure(json!({}), json!({})), Claim::V1_1),
+            "no contractVersion"
+        );
+        assert!(
+            !ok(
+                &failure(json!({"contractVersion": "1.0"}), json!({})),
+                Claim::V1_1
+            ),
+            "says 1.0"
+        );
+        assert!(
+            !ok(
+                &failure(json!({"contractVersion": "1.2"}), json!({})),
+                Claim::V1_1
+            ),
+            "another minor"
+        );
         assert!(ok(&failure(json!({}), json!({})), Claim::V1_0));
-        assert!(!ok(&failure(json!({"contractVersion": "1.1"}), json!({})), Claim::V1_0));
+        assert!(!ok(
+            &failure(json!({"contractVersion": "1.1"}), json!({})),
+            Claim::V1_0
+        ));
         let schema = |version: &str| json!({"ok": true, "data": {"kind": "errors", "errors": []}, "meta": {"command": "schema", "contract": "atip/1", "contractVersion": "1.1", "schemaVersion": version, "tool": "t", "toolVersion": "1"}});
         assert!(ok(&schema("1.1"), Claim::V1_1));
-        assert!(!ok(&schema("1.0"), Claim::V1_1), "a schema answer's schemaVersion is the claim");
+        assert!(
+            !ok(&schema("1.0"), Claim::V1_1),
+            "a schema answer's schemaVersion is the claim"
+        );
     }
 
     #[test]
@@ -490,7 +664,10 @@ mod tests {
         let with = |hint: &str| failure(json!({}), json!({"hint": hint}));
         assert!(hint_problems(&with("t schema member --json"), "t").is_empty());
         assert!(hint_problems(&with("Run the fixer"), "t").is_empty());
-        assert!(hint_problems(&with("tool can't do that"), "t").is_empty(), "the tool name is `t`, followed by no space");
+        assert!(
+            hint_problems(&with("tool can't do that"), "t").is_empty(),
+            "the tool name is `t`, followed by no space"
+        );
         assert_eq!(hint_problems(&with("t can't do that."), "t").len(), 1);
         let mut details = with("t ok --json");
         details["error"]["details"] = json!([{"code": "X", "message": "m", "hint": "t a | b"}]);
@@ -499,12 +676,26 @@ mod tests {
 
     #[test]
     fn atip_check_59_every_code_reason_and_warning_a_document_emits_is_listed() {
-        let mut document = failure(json!({"warnings": [{"code": "W", "message": "m"}]}), json!({"code": "INPUT_INVALID", "reason": "NOT_JSON"}));
+        let mut document = failure(
+            json!({"warnings": [{"code": "W", "message": "m"}]}),
+            json!({"code": "INPUT_INVALID", "reason": "NOT_JSON"}),
+        );
         document["error"]["details"] = json!([{"code": "INPUT_INVALID", "reason": "UNKNOWN_KEY", "message": "m"}, {"code": "USAGE", "message": "m"}]);
         let found = emitted(&document);
         assert_eq!(found.codes, ["INPUT_INVALID", "INPUT_INVALID", "USAGE"]);
-        assert_eq!(found.reasons, [("INPUT_INVALID".to_string(), "NOT_JSON".to_string()), ("INPUT_INVALID".to_string(), "UNKNOWN_KEY".to_string())]);
+        assert_eq!(
+            found.reasons,
+            [
+                ("INPUT_INVALID".to_string(), "NOT_JSON".to_string()),
+                ("INPUT_INVALID".to_string(), "UNKNOWN_KEY".to_string())
+            ]
+        );
         assert_eq!(found.warnings, ["W"]);
-        assert_eq!(reason_names(&json!({"code": "X", "reasons": [{"reason": "A", "meaning": "m", "fix": "f"}]})), ["A"]);
+        assert_eq!(
+            reason_names(
+                &json!({"code": "X", "reasons": [{"reason": "A", "meaning": "m", "fix": "f"}]})
+            ),
+            ["A"]
+        );
     }
 }

@@ -37,7 +37,10 @@ fn position(items: &[Value], segment: &str) -> Option<usize> {
             .iter()
             .position(|item| item.get(key).and_then(Value::as_str) == Some(wanted));
     }
-    segment.parse::<usize>().ok().filter(|index| *index < items.len())
+    segment
+        .parse::<usize>()
+        .ok()
+        .filter(|index| *index < items.len())
 }
 
 fn walk<'a>(document: &'a mut Value, path: &[String]) -> Result<&'a mut Value, String> {
@@ -48,7 +51,8 @@ fn walk<'a>(document: &'a mut Value, path: &[String]) -> Result<&'a mut Value, S
                 .get_mut(segment)
                 .ok_or_else(|| format!("no member {segment}"))?,
             Value::Array(items) => {
-                let index = position(items, segment).ok_or_else(|| format!("no element {segment}"))?;
+                let index =
+                    position(items, segment).ok_or_else(|| format!("no element {segment}"))?;
                 &mut items[index]
             }
             _ => return Err(format!("{segment} is below a scalar")),
@@ -63,9 +67,13 @@ fn read(document: &mut Value, pointer: &str) -> Result<Value, String> {
 
 fn remove(document: &mut Value, pointer: &str) -> Result<Value, String> {
     let path = segments(pointer);
-    let (last, parent) = path.split_last().ok_or("the document itself cannot be removed")?;
+    let (last, parent) = path
+        .split_last()
+        .ok_or("the document itself cannot be removed")?;
     match walk(document, parent)? {
-        Value::Object(members) => members.remove(last).ok_or_else(|| format!("no member {last}")),
+        Value::Object(members) => members
+            .remove(last)
+            .ok_or_else(|| format!("no member {last}")),
         Value::Array(items) => {
             let index = position(items, last).ok_or_else(|| format!("no element {last}"))?;
             Ok(items.remove(index))
@@ -75,7 +83,12 @@ fn remove(document: &mut Value, pointer: &str) -> Result<Value, String> {
 }
 
 /// Puts `value` at `pointer`: inserts into an array (`-` appends), sets a member; `replace` demands that it exists.
-fn put(document: &mut Value, pointer: &str, value: Value, existing: Existing) -> Result<(), String> {
+fn put(
+    document: &mut Value,
+    pointer: &str,
+    value: Value,
+    existing: Existing,
+) -> Result<(), String> {
     let path = segments(pointer);
     let Some((last, parent)) = path.split_last() else {
         *document = value;
@@ -95,7 +108,10 @@ fn put(document: &mut Value, pointer: &str, value: Value, existing: Existing) ->
                 return Ok(());
             }
             if existing == Existing::Insert {
-                let index = last.parse::<usize>().ok().filter(|index| *index <= items.len());
+                let index = last
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|index| *index <= items.len());
                 items.insert(index.ok_or_else(|| format!("no index {last}"))?, value);
                 return Ok(());
             }

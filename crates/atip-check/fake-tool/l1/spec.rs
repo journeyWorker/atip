@@ -164,7 +164,12 @@ impl Rule {
         Self::set("atMostOne", names)
     }
 
-    fn relation(rule: &'static str, name: &'static str, values: &[&str], then: &[&'static str]) -> Self {
+    fn relation(
+        rule: &'static str,
+        name: &'static str,
+        values: &[&str],
+        then: &[&'static str],
+    ) -> Self {
         Self {
             rule,
             names: Vec::new(),
@@ -279,13 +284,16 @@ impl Command {
     pub fn options(mut self, args: Vec<Arg>) -> Self {
         self.args.extend(args);
         self.args.push(
-            Arg::option("json", "switch", "Print the answer as one JSON document")
-                .flag_only(),
+            Arg::option("json", "switch", "Print the answer as one JSON document").flag_only(),
         );
         self.args.push(
-            Arg::option("repo", "path", "The repository directory the command works in")
-                .value("PATH")
-                .default_note("the current directory"),
+            Arg::option(
+                "repo",
+                "path",
+                "The repository directory the command works in",
+            )
+            .value("PATH")
+            .default_note("the current directory"),
         );
         self
     }
@@ -318,7 +326,12 @@ impl Command {
         self
     }
 
-    pub fn output_when(mut self, schema: &'static str, when: &'static str, schema_value: Value) -> Self {
+    pub fn output_when(
+        mut self,
+        schema: &'static str,
+        when: &'static str,
+        schema_value: Value,
+    ) -> Self {
         self.outputs.push(Output {
             schema,
             when: Some(when),
@@ -332,7 +345,14 @@ impl Command {
     }
 
     /// An output that is a stream of `event`s ending in a result of `schema`, chosen by `when`.
-    pub fn output_stream(mut self, schema: &'static str, event: &'static str, when: Option<&'static str>, schema_value: Value, event_value: Value) -> Self {
+    pub fn output_stream(
+        mut self,
+        schema: &'static str,
+        event: &'static str,
+        when: Option<&'static str>,
+        schema_value: Value,
+        event_value: Value,
+    ) -> Self {
         self.outputs.push(Output {
             schema,
             when,
@@ -347,7 +367,12 @@ impl Command {
     }
 
     /// An output that is the report of a batch input, chosen by `when`.
-    pub fn output_batch(mut self, schema: &'static str, when: &'static str, schema_value: Value) -> Self {
+    pub fn output_batch(
+        mut self,
+        schema: &'static str,
+        when: &'static str,
+        schema_value: Value,
+    ) -> Self {
         self.outputs.push(Output {
             schema,
             when: Some(when),
@@ -393,8 +418,10 @@ impl Command {
 
     fn with_flag_only_rule(mut self, on: bool) -> Self {
         if on {
-            self.args.push(Arg::option("keep", "switch", "Keep the earlier tags").flag_only());
-            self.args.push(Arg::option("drop", "switch", "Drop the earlier tags").flag_only());
+            self.args
+                .push(Arg::option("keep", "switch", "Keep the earlier tags").flag_only());
+            self.args
+                .push(Arg::option("drop", "switch", "Drop the earlier tags").flag_only());
             self.rules.push(Rule::at_most_one(&["keep", "drop"]));
         }
         self
@@ -539,33 +566,53 @@ fn state_read(id: &'static str, summary: &'static str, report: &'static str) -> 
 fn member_list(shape: Shape) -> Command {
     let (is_1_1, is_1_2) = (shape.is_1_1, shape.is_1_2);
     // Since 1.2 `limit`, `cursor`, `all` and `fields` are flag-only: they cannot appear in an `--input` document (spec 11.6).
-    let flag = |arg: Arg| if is_1_2 && !(arg.name == "limit" && shape.limit_not_flag_only) { arg.flag_only() } else { arg };
+    let flag = |arg: Arg| {
+        if is_1_2 && !(arg.name == "limit" && shape.limit_not_flag_only) {
+            arg.flag_only()
+        } else {
+            arg
+        }
+    };
     let mut options = vec![
         {
             let team = Arg::option("team", "string", "Only the members of this team").value("TEAM");
-            if is_1_2 { team.env("FAKE_TEAM") } else { team }
+            if is_1_2 {
+                team.env("FAKE_TEAM")
+            } else {
+                team
+            }
         },
         Arg::option("sort", "enum", "The order of the members")
             .value("SORT")
             .possible(&["name", "id"])
             .default(json!("name")),
-        flag(Arg::option("limit", "integer", "Return at most this many members")
-            .value("N")
-            .default(json!(50))
-            .domain(json!({"minimum": 1}))),
+        flag(
+            Arg::option("limit", "integer", "Return at most this many members")
+                .value("N")
+                .default(json!(50))
+                .domain(json!({"minimum": 1})),
+        ),
+        flag(
+            Arg::option(
+                "cursor",
+                "string",
+                "Resume after the last member of the previous page (meta.page.nextCursor)",
+            )
+            .value("CURSOR"),
+        ),
         flag(Arg::option(
-            "cursor",
-            "string",
-            "Resume after the last member of the previous page (meta.page.nextCursor)",
-        )
-        .value("CURSOR")),
-        flag(Arg::option("all", "switch", "Return every member from the cursor on")),
-        flag(Arg::option(
-            "fields",
-            "string",
-            "Keep only these member fields (comma-separated paths); see outputs[0].fields",
-        )
-        .value("FIELDS")),
+            "all",
+            "switch",
+            "Return every member from the cursor on",
+        )),
+        flag(
+            Arg::option(
+                "fields",
+                "string",
+                "Keep only these member fields (comma-separated paths); see outputs[0].fields",
+            )
+            .value("FIELDS"),
+        ),
     ];
     if shape.repeatable_default {
         options.push(
@@ -577,7 +624,15 @@ fn member_list(shape: Shape) -> Command {
         );
     }
     if is_1_2 {
-        options.push(Arg::option("input", "string", "The arguments as a JSON document, or - for the document on stdin").value("JSON").flag_only());
+        options.push(
+            Arg::option(
+                "input",
+                "string",
+                "The arguments as a JSON document, or - for the document on stdin",
+            )
+            .value("JSON")
+            .flag_only(),
+        );
     }
     let mut command = Command::new("member list", "List the members of the directory, a page at a time")
         .options(options)
@@ -655,13 +710,14 @@ fn member_list(shape: Shape) -> Command {
             "{tool} member list --team=core --sort id --json",
         ]);
     if is_1_1 {
-        command.examples.push(
-            "{tool} member list --fields 'attributes[\"http.status-code\"]' --json",
-        );
+        command
+            .examples
+            .push("{tool} member list --fields 'attributes[\"http.status-code\"]' --json");
     }
     if is_1_2 {
         // The arguments a document may give: not `limit`, which is flag-only, unless the tool leaves it unmarked (seeded).
-        let mut document_properties = json!({"team": {"type": "string"}, "sort": {"enum": ["name", "id"]}});
+        let mut document_properties =
+            json!({"team": {"type": "string"}, "sort": {"enum": ["name", "id"]}});
         if shape.limit_not_flag_only {
             document_properties["limit"] = json!({"type": "integer", "minimum": 1});
         }
@@ -780,46 +836,49 @@ fn member_search() -> Command {
 }
 
 fn member_tag(l2: bool, flag_only_rule: bool) -> Command {
-    Command::new("member tag", "Tag a member; the tags go to tags/<MEMBER>.json")
-        .writes("replay-safe")
-        .operand(
-            Arg::operand("member", "integer", "The member to tag")
-                .value("MEMBER")
-                .required()
-                .domain(json!({"minimum": 1})),
-        )
-        .options(vec![
-            Arg::option("tag", "string", "The tag to add; repeat for several")
-                .value("TAG")
-                .required()
-                .repeatable()
-                .domain(json!({"pattern": TAG_PATTERN})),
-            Arg::option("note", "string", "A note kept with the tags")
-                .value("TEXT")
-                .domain(json!({"maxLength": 80})),
-            Arg::option("clear-note", "switch", "Remove the note kept with the tags"),
-        ])
-        .rule(Rule::requires("tag", &[], &["member"]))
-        .rule(Rule::at_most_one(&["note", "clear-note"]))
-        .rule(Rule::forbids("note", &[], &["clear-note"]))
-        .errors(&["MEMBER_NOT_FOUND", "USAGE"])
-        .output(
-            "MemberTagReport",
-            json!({
-                "type": "object",
-                "required": ["member", "tags", "status"],
-                "properties": {
-                    "member": {"type": "integer"},
-                    "tags": {"type": "array", "items": {"type": "string"}},
-                    "note": {"type": "string"},
-                    "status": {"enum": ["written", "unchanged"]}
-                },
-                "additionalProperties": false
-            }),
-        )
-        .examples(&["{tool} member tag 3 --tag lead --tag core --note promoted --json"])
-        .with_l2(l2)
-        .with_flag_only_rule(flag_only_rule)
+    Command::new(
+        "member tag",
+        "Tag a member; the tags go to tags/<MEMBER>.json",
+    )
+    .writes("replay-safe")
+    .operand(
+        Arg::operand("member", "integer", "The member to tag")
+            .value("MEMBER")
+            .required()
+            .domain(json!({"minimum": 1})),
+    )
+    .options(vec![
+        Arg::option("tag", "string", "The tag to add; repeat for several")
+            .value("TAG")
+            .required()
+            .repeatable()
+            .domain(json!({"pattern": TAG_PATTERN})),
+        Arg::option("note", "string", "A note kept with the tags")
+            .value("TEXT")
+            .domain(json!({"maxLength": 80})),
+        Arg::option("clear-note", "switch", "Remove the note kept with the tags"),
+    ])
+    .rule(Rule::requires("tag", &[], &["member"]))
+    .rule(Rule::at_most_one(&["note", "clear-note"]))
+    .rule(Rule::forbids("note", &[], &["clear-note"]))
+    .errors(&["MEMBER_NOT_FOUND", "USAGE"])
+    .output(
+        "MemberTagReport",
+        json!({
+            "type": "object",
+            "required": ["member", "tags", "status"],
+            "properties": {
+                "member": {"type": "integer"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "note": {"type": "string"},
+                "status": {"enum": ["written", "unchanged"]}
+            },
+            "additionalProperties": false
+        }),
+    )
+    .examples(&["{tool} member tag 3 --tag lead --tag core --note promoted --json"])
+    .with_l2(l2)
+    .with_flag_only_rule(flag_only_rule)
 }
 
 fn schema_command(shape: Shape) -> Command {
@@ -829,12 +888,25 @@ fn schema_command(shape: Shape) -> Command {
     ];
     let mut names = vec!["path", "errors", "error"];
     if shape.l2 {
-        options.push(Arg::option("search", "string", "Find the commands that answer a question").value("QUERY"));
+        options.push(
+            Arg::option(
+                "search",
+                "string",
+                "Find the commands that answer a question",
+            )
+            .value("QUERY"),
+        );
         names.push("search");
     }
     if shape.is_1_1 {
-        options.push(Arg::option("warnings", "switch", "Print the warning registry"));
-        options.push(Arg::option("warning", "string", "Print one warning registry entry").value("CODE"));
+        options.push(Arg::option(
+            "warnings",
+            "switch",
+            "Print the warning registry",
+        ));
+        options.push(
+            Arg::option("warning", "string", "Print one warning registry entry").value("CODE"),
+        );
         names.extend(["warnings", "warning"]);
     }
     Command::new("schema", "Describe the commands of the tool, or its registries, as JSON")
@@ -868,10 +940,20 @@ fn touch() -> Command {
     Command::new("touch", "Write touched.txt")
         .writes("replay-safe")
         .options(vec![
-            Arg::option("name", "string", "What to touch").value("NAME").required(),
-            Arg::option("input", "string", "The arguments as inline JSON").value("JSON").flag_only(),
+            Arg::option("name", "string", "What to touch")
+                .value("NAME")
+                .required(),
+            Arg::option("input", "string", "The arguments as inline JSON")
+                .value("JSON")
+                .flag_only(),
         ])
-        .errors(&["BATCH_INCOMPLETE", "INPUT_CONFLICT", "INPUT_INVALID", "INPUT_TOO_LARGE", "USAGE"])
+        .errors(&[
+            "BATCH_INCOMPLETE",
+            "INPUT_CONFLICT",
+            "INPUT_INVALID",
+            "INPUT_TOO_LARGE",
+            "USAGE",
+        ])
         .output(
             "TouchReport",
             json!({
@@ -949,7 +1031,9 @@ pub const MAX_BATCH_ITEMS: usize = 8;
 pub fn commands(shape: Shape, schema_offered: bool) -> Vec<Command> {
     let serve = shape.serve.then(|| {
         let mut command = Command::new("serve", "Serve a snapshot until it is signalled")
-            .options(vec![Arg::option("port", "integer", "The port to serve on").value("PORT").domain(json!({"minimum": 1, "maximum": 65535}))])
+            .options(vec![Arg::option("port", "integer", "The port to serve on")
+                .value("PORT")
+                .domain(json!({"minimum": 1, "maximum": 65535}))])
             .errors(&["USAGE"])
             .output(
                 "ServeReport",
@@ -961,7 +1045,11 @@ pub fn commands(shape: Shape, schema_offered: bool) -> Vec<Command> {
                 }),
             )
             .examples(&["{tool} serve --json", "{tool} serve --port 8080 --json"]);
-        command.effect_note = if shape.serve_without_note { None } else { Some("Prints one envelope and then serves until it is signalled") };
+        command.effect_note = if shape.serve_without_note {
+            None
+        } else {
+            Some("Prints one envelope and then serves until it is signalled")
+        };
         command
     });
     let mut commands = vec![
@@ -1015,19 +1103,22 @@ pub fn commands(shape: Shape, schema_offered: bool) -> Vec<Command> {
     }
     if shape.deep {
         commands.push(
-            Command::new("team roster list", "List the members of the roster of a team")
-                .options(Vec::new())
-                .errors(&["USAGE"])
-                .output(
-                    "RosterReport",
-                    json!({
-                        "type": "object",
-                        "required": ["roster"],
-                        "properties": {"roster": {"type": "array", "items": {"type": "string"}}},
-                        "additionalProperties": false
-                    }),
-                )
-                .examples(&["{tool} team roster list --json"]),
+            Command::new(
+                "team roster list",
+                "List the members of the roster of a team",
+            )
+            .options(Vec::new())
+            .errors(&["USAGE"])
+            .output(
+                "RosterReport",
+                json!({
+                    "type": "object",
+                    "required": ["roster"],
+                    "properties": {"roster": {"type": "array", "items": {"type": "string"}}},
+                    "additionalProperties": false
+                }),
+            )
+            .examples(&["{tool} team roster list --json"]),
         );
     }
     if shape.l2 {
@@ -1037,7 +1128,11 @@ pub fn commands(shape: Shape, schema_offered: bool) -> Vec<Command> {
         commands.extend(super::guides::commands());
         for command in &mut commands {
             if command.id == "member tag" {
-                super::inputdoc::add_input(command, shape.batch, json!({"operands": [3], "tag": ["lead"]}));
+                super::inputdoc::add_input(
+                    command,
+                    shape.batch,
+                    json!({"operands": [3], "tag": ["lead"]}),
+                );
             } else if command.effect != "read" || command.id == "member list" {
                 let example = match command.id {
                     "record put" => json!({"operands": [7], "round": 1, "label": "alpha"}),
@@ -1058,52 +1153,61 @@ pub fn commands(shape: Shape, schema_offered: bool) -> Vec<Command> {
 
 /// `record put`: a write whose arguments have every value type, for the rows that read how a document and argv are merged.
 fn record_put() -> Command {
-    Command::new("record put", "Put one record; it is written to records/<ID>.json")
-        .writes("replay-safe")
-        .operand(
-            Arg::operand("id", "integer", "The record number")
-                .value("ID")
-                .required()
-                .domain(json!({"minimum": 1})),
-        )
-        .options(vec![
-            Arg::option("round", "integer", "The round the record belongs to")
-                .value("ROUND")
-                .required()
-                .domain(json!({"minimum": 1, "maximum": 99})),
-            Arg::option("label", "string", "A label kept with the record")
-                .value("LABEL")
-                .env("FAKE_LABEL")
-                .domain(json!({"maxLength": 40})),
-            Arg::option("weight", "number", "The weight of the record")
-                .value("WEIGHT")
-                .domain(json!({"minimum": 0})),
-            Arg::option("score", "integer", "The score of the record")
-                .value("SCORE")
-                .domain(json!({"minimum": 0, "maximum": 1000})),
-            Arg::option("meta", "json", "Free metadata kept with the record").value("JSON"),
-            Arg::option("note", "string", "A note kept with the record").value("TEXT"),
-            Arg::option("clear-note", "switch", "Remove the note kept with the record"),
-        ])
-        .rule(Rule::at_most_one(&["note", "clear-note"]).code("NOTE_CONFLICT"))
-        .errors(&["ALREADY_SEALED", "NOTE_CONFLICT", "USAGE"])
-        .output(
-            "RecordPutReport",
-            json!({
-                "type": "object",
-                "required": ["id", "round", "status"],
-                "properties": {
-                    "id": {"type": "integer"},
-                    "round": {"type": "integer"},
-                    "label": {"type": "string"},
-                    "weight": {"type": "number"},
-                    "score": {"type": "integer"},
-                    "meta": {},
-                    "note": {"type": "string"},
-                    "status": {"enum": ["written", "unchanged"]}
-                },
-                "additionalProperties": false
-            }),
-        )
-        .examples(&["{tool} record put 7 --round 1 --label alpha --weight 1 --meta '{\"a\":1,\"b\":2}' --json"])
+    Command::new(
+        "record put",
+        "Put one record; it is written to records/<ID>.json",
+    )
+    .writes("replay-safe")
+    .operand(
+        Arg::operand("id", "integer", "The record number")
+            .value("ID")
+            .required()
+            .domain(json!({"minimum": 1})),
+    )
+    .options(vec![
+        Arg::option("round", "integer", "The round the record belongs to")
+            .value("ROUND")
+            .required()
+            .domain(json!({"minimum": 1, "maximum": 99})),
+        Arg::option("label", "string", "A label kept with the record")
+            .value("LABEL")
+            .env("FAKE_LABEL")
+            .domain(json!({"maxLength": 40})),
+        Arg::option("weight", "number", "The weight of the record")
+            .value("WEIGHT")
+            .domain(json!({"minimum": 0})),
+        Arg::option("score", "integer", "The score of the record")
+            .value("SCORE")
+            .domain(json!({"minimum": 0, "maximum": 1000})),
+        Arg::option("meta", "json", "Free metadata kept with the record").value("JSON"),
+        Arg::option("note", "string", "A note kept with the record").value("TEXT"),
+        Arg::option(
+            "clear-note",
+            "switch",
+            "Remove the note kept with the record",
+        ),
+    ])
+    .rule(Rule::at_most_one(&["note", "clear-note"]).code("NOTE_CONFLICT"))
+    .errors(&["ALREADY_SEALED", "NOTE_CONFLICT", "USAGE"])
+    .output(
+        "RecordPutReport",
+        json!({
+            "type": "object",
+            "required": ["id", "round", "status"],
+            "properties": {
+                "id": {"type": "integer"},
+                "round": {"type": "integer"},
+                "label": {"type": "string"},
+                "weight": {"type": "number"},
+                "score": {"type": "integer"},
+                "meta": {},
+                "note": {"type": "string"},
+                "status": {"enum": ["written", "unchanged"]}
+            },
+            "additionalProperties": false
+        }),
+    )
+    .examples(&[
+        "{tool} record put 7 --round 1 --label alpha --weight 1 --meta '{\"a\":1,\"b\":2}' --json",
+    ])
 }

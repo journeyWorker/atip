@@ -89,7 +89,10 @@ fn parse_integer(tool: &Tool, arg: &Arg, text: &str) -> Result<Value, Failure> {
     if !well_formed {
         return Err(usage("parse", format!("{text} is not an integer"), field));
     }
-    let value = text.parse::<i128>().ok().filter(|value| value.abs() <= SAFE);
+    let value = text
+        .parse::<i128>()
+        .ok()
+        .filter(|value| value.abs() <= SAFE);
     if let Some(value) = value {
         return Ok(json!(i64::try_from(value).unwrap_or_default()));
     }
@@ -117,9 +120,9 @@ pub fn typed(tool: &Tool, arg: &Arg, text: &str) -> Result<Value, Failure> {
         "integer" => parse_integer(tool, arg, text),
         "number" => {
             let number_like = !text.is_empty()
-                && text
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || matches!(byte, b'+' | b'-' | b'.' | b'e' | b'E'));
+                && text.bytes().all(|byte| {
+                    byte.is_ascii_digit() || matches!(byte, b'+' | b'-' | b'.' | b'e' | b'E')
+                });
             match text.parse::<f64>() {
                 Ok(number) if number_like && number.is_finite() => Ok(json!(number)),
                 _ => Err(usage("parse", format!("{text} is not a number"), field)),
@@ -148,7 +151,12 @@ pub fn typed(tool: &Tool, arg: &Arg, text: &str) -> Result<Value, Failure> {
 
 /// Reads `args` (the whole argv: path words, options and operands) by the grammar of 9.12 against `command`,
 /// then enforces required arguments, domains, constraints and validators, in that order (spec 11.7 step 6).
-pub fn parse(tool: &Tool, command: &Command, args: &[String], skip_rules: bool) -> Result<Parsed, Failure> {
+pub fn parse(
+    tool: &Tool,
+    command: &Command,
+    args: &[String],
+    skip_rules: bool,
+) -> Result<Parsed, Failure> {
     let mut parsed = read_words(tool, command, args)?;
     if let Some(text) = parsed.text("input").map(ToString::to_string) {
         merge_input(tool, command, &text, &mut parsed)?;
@@ -178,16 +186,27 @@ pub fn read_words(tool: &Tool, command: &Command, args: &[String]) -> Result<Par
             done = true;
             continue;
         }
-        let plain = |text: Option<&String>| text.is_some_and(|text| text == "-" || !(text.is_empty() || text.starts_with('-')));
+        let plain = |text: Option<&String>| {
+            text.is_some_and(|text| text == "-" || !(text.is_empty() || text.starts_with('-')))
+        };
         let option = if let Some(rest) = word.strip_prefix("--") {
-            let (name, joined) = rest
-                .split_once('=')
-                .map_or((rest, None), |(name, value)| (name, Some(value.to_string())));
-            Some((command.flags().find(|arg| arg.name == name), format!("--{name}"), joined))
-        } else if word.len() == 2 && word.starts_with('-') && word.as_bytes()[1].is_ascii_alphabetic() {
+            let (name, joined) = rest.split_once('=').map_or((rest, None), |(name, value)| {
+                (name, Some(value.to_string()))
+            });
+            Some((
+                command.flags().find(|arg| arg.name == name),
+                format!("--{name}"),
+                joined,
+            ))
+        } else if word.len() == 2
+            && word.starts_with('-')
+            && word.as_bytes()[1].is_ascii_alphabetic()
+        {
             let letter = word.chars().nth(1);
             Some((
-                command.flags().find(|arg| arg.short.is_some() && arg.short == letter),
+                command
+                    .flags()
+                    .find(|arg| arg.short.is_some() && arg.short == letter),
                 word.clone(),
                 None,
             ))
@@ -195,7 +214,10 @@ pub fn read_words(tool: &Tool, command: &Command, args: &[String]) -> Result<Par
             None
         };
         // Seeded: of two unknown options the tool answers the later one (the checker's own are named `--no-such-*`).
-        let later_unknown = tool.flag("unknownOptionLast") && args[index..].iter().any(|later| later.starts_with("--no-such"));
+        let later_unknown = tool.flag("unknownOptionLast")
+            && args[index..]
+                .iter()
+                .any(|later| later.starts_with("--no-such"));
         // Seeded: an unknown option is answered after the values and the required arguments (the checker's own are named `--no-such-*`).
         let deferred = tool.flag("unknownOptionDeferred") && word.starts_with("--no-such");
         let Some((arg, written, joined)) = option else {
@@ -228,7 +250,11 @@ pub fn read_words(tool: &Tool, command: &Command, args: &[String]) -> Result<Par
         };
         if !arg.takes_value() {
             if joined.is_some() {
-                return Err(usage("parse", format!("{written} takes no value"), arg.field()));
+                return Err(usage(
+                    "parse",
+                    format!("{written} takes no value"),
+                    arg.field(),
+                ));
             }
             let entry = parsed.given.entry(arg.name).or_default();
             if arg.value_type == "count" {
@@ -247,7 +273,9 @@ pub fn read_words(tool: &Tool, command: &Command, args: &[String]) -> Result<Par
         } else {
             return Err(usage(
                 "parse",
-                format!("{written} needs a value (a value starting with - needs {written}=<value>)"),
+                format!(
+                    "{written} needs a value (a value starting with - needs {written}=<value>)"
+                ),
                 arg.field(),
             ));
         };
@@ -266,7 +294,12 @@ pub fn read_words(tool: &Tool, command: &Command, args: &[String]) -> Result<Par
 }
 
 /// What is left of `parse` after the words are read and the document merged: the stages of spec 11.7 step 6.
-fn enforce(tool: &Tool, command: &Command, parsed: &Parsed, skip_rules: bool) -> Result<(), Failure> {
+fn enforce(
+    tool: &Tool,
+    command: &Command,
+    parsed: &Parsed,
+    skip_rules: bool,
+) -> Result<(), Failure> {
     // The seeded violations of `L1.check-order` (spec 11.7 step 6): a stage answers before an earlier one.
     if tool.flag("orderDomainFirst") {
         check_domains(tool, command, parsed, false)?;
@@ -298,7 +331,12 @@ fn enforce(tool: &Tool, command: &Command, parsed: &Parsed, skip_rules: bool) ->
 }
 
 /// Reads the document of `--input` (`-`: the document on stdin) into the arguments it gives; an argument that argv gave stays as it is.
-fn merge_input(tool: &Tool, command: &Command, text: &str, parsed: &mut Parsed) -> Result<(), Failure> {
+fn merge_input(
+    tool: &Tool,
+    command: &Command,
+    text: &str,
+    parsed: &mut Parsed,
+) -> Result<(), Failure> {
     let body = if text == "-" {
         let mut buffer = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut buffer).unwrap_or_default();
@@ -317,8 +355,13 @@ fn merge_input(tool: &Tool, command: &Command, text: &str, parsed: &mut Parsed) 
         return Err(invalid("--input is not a JSON object".to_string()));
     };
     for (key, value) in document {
-        let Some(arg) = command.flags().find(|arg| arg.name == key && !arg.flag_only) else {
-            return Err(invalid(format!("{key} is not an argument a document may give")));
+        let Some(arg) = command
+            .flags()
+            .find(|arg| arg.name == key && !arg.flag_only)
+        else {
+            return Err(invalid(format!(
+                "{key} is not an argument a document may give"
+            )));
         };
         let word = match &value {
             Value::String(word) => word.clone(),
@@ -331,7 +374,12 @@ fn merge_input(tool: &Tool, command: &Command, text: &str, parsed: &mut Parsed) 
 }
 
 /// Binds the operand words to the command's operands in order; the variadic one takes the rest.
-fn bind_operands(tool: &Tool, command: &Command, words: &[String], parsed: &mut Parsed) -> Result<(), Failure> {
+fn bind_operands(
+    tool: &Tool,
+    command: &Command,
+    words: &[String],
+    parsed: &mut Parsed,
+) -> Result<(), Failure> {
     let slots: Vec<&Arg> = command.operands().collect();
     for (position, word) in words.iter().enumerate() {
         let slot = slots
@@ -359,14 +407,25 @@ pub fn compiled(domain: &Value) -> Option<jsonschema::Validator> {
         .ok()
 }
 
-pub fn check_domains(tool: &Tool, command: &Command, parsed: &Parsed, reverse: bool) -> Result<(), Failure> {
-    let order: Vec<&Arg> = if reverse { command.args.iter().rev().collect() } else { command.args.iter().collect() };
+pub fn check_domains(
+    tool: &Tool,
+    command: &Command,
+    parsed: &Parsed,
+    reverse: bool,
+) -> Result<(), Failure> {
+    let order: Vec<&Arg> = if reverse {
+        command.args.iter().rev().collect()
+    } else {
+        command.args.iter().collect()
+    };
     for arg in order {
         let Some(domain) = &arg.domain else { continue };
         if listed(tool, "acceptDomain", command.id, &json!(arg.name)) {
             continue;
         }
-        let Some(validator) = compiled(domain) else { continue };
+        let Some(validator) = compiled(domain) else {
+            continue;
+        };
         let strict = listed(tool, "strictBounds", command.id, &json!(arg.name));
         for value in parsed.values(arg.name) {
             let on_bound = strict
@@ -399,8 +458,17 @@ pub fn field_of(command: &Command, name: &str) -> String {
 
 /// The argument at fault when `rule` is violated by `parsed`, or `None` when it holds.
 fn violation(command: &Command, parsed: &Parsed, rule: &Rule) -> Option<&'static str> {
-    let first_given = |names: &[&'static str]| names.iter().copied().find(|name| given(command, parsed, name));
-    let count = rule.names.iter().filter(|name| given(command, parsed, name)).count();
+    let first_given = |names: &[&'static str]| {
+        names
+            .iter()
+            .copied()
+            .find(|name| given(command, parsed, name))
+    };
+    let count = rule
+        .names
+        .iter()
+        .filter(|name| given(command, parsed, name))
+        .count();
     match rule.rule {
         "atLeastOne" => (count < 1).then(|| rule.names[0]),
         "exactlyOne" => match count {
@@ -414,11 +482,19 @@ fn violation(command: &Command, parsed: &Parsed, rule: &Rule) -> Option<&'static
             if !given(command, parsed, name) {
                 return None;
             }
-            if !values.is_empty() && !parsed.values(name).iter().any(|value| values.contains(value)) {
+            if !values.is_empty()
+                && !parsed
+                    .values(name)
+                    .iter()
+                    .any(|value| values.contains(value))
+            {
                 return None;
             }
             if rule.rule == "requires" {
-                rule.then.iter().copied().find(|then| !given(command, parsed, then))
+                rule.then
+                    .iter()
+                    .copied()
+                    .find(|then| !given(command, parsed, then))
             } else {
                 first_given(&rule.then)
             }
@@ -436,7 +512,9 @@ pub fn check_rules(tool: &Tool, command: &Command, parsed: &Parsed) -> Result<()
         if listed(tool, "ignoreConstraint", command.id, &json!(index)) {
             continue;
         }
-        let Some(name) = violation(command, parsed, rule) else { continue };
+        let Some(name) = violation(command, parsed, rule) else {
+            continue;
+        };
         let code = rule
             .code
             .filter(|_| !tool.flag("constraintCodeUsage"))
@@ -458,7 +536,11 @@ fn is_calendar_date(text: &str) -> bool {
     let [year, month, day] = parts.as_slice() else {
         return false;
     };
-    let (Ok(year), Ok(month), Ok(day)) = (year.parse::<u32>(), month.parse::<u32>(), day.parse::<u32>()) else {
+    let (Ok(year), Ok(month), Ok(day)) = (
+        year.parse::<u32>(),
+        month.parse::<u32>(),
+        day.parse::<u32>(),
+    ) else {
         return false;
     };
     let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
@@ -478,7 +560,9 @@ pub fn check_validators(tool: &Tool, command: &Command, parsed: &Parsed) -> Resu
     }
     for validator in &command.validators {
         let Check::CalendarDate(name) = validator.check;
-        let Some(text) = parsed.text(name) else { continue };
+        let Some(text) = parsed.text(name) else {
+            continue;
+        };
         if is_calendar_date(text) {
             continue;
         }

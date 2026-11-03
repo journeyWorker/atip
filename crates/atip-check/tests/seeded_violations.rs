@@ -27,8 +27,12 @@ fn proves(id: &str) {
         let document = output.envelope();
         case_verdict(&document["data"], id)
             .unwrap_or_else(|why| panic!("{}: {why}\n{}", case.condition, output.stdout));
-        kind_verdict(&document["data"], id, case.condition.split('/').nth(1).unwrap_or_default())
-            .unwrap_or_else(|why| panic!("{}: {why}\n{}", case.condition, output.stdout));
+        kind_verdict(
+            &document["data"],
+            id,
+            case.condition.split('/').nth(1).unwrap_or_default(),
+        )
+        .unwrap_or_else(|why| panic!("{}: {why}\n{}", case.condition, output.stdout));
         let must = document["data"]["checks"]
             .as_array()
             .expect("checks")
@@ -116,7 +120,12 @@ fn atip_check_13_l0_unknown_option_fails_on_the_code_the_field_or_the_command_of
         }
     }
     let output = harness.check(&fixture, true);
-    assert_eq!(output.check("L0.unknown-option")["result"], "fail", "{}", output.stdout);
+    assert_eq!(
+        output.check("L0.unknown-option")["result"],
+        "fail",
+        "{}",
+        output.stdout
+    );
 }
 
 #[test]
@@ -223,7 +232,11 @@ fn atip_check_64_l0_envelope_fails_when_a_document_breaks_the_envelope_schema_an
     proves("L0.envelope");
     // A document that is no envelope at all is the envelope check's alone: the contract-version and registry checks judge envelopes.
     let harness = Harness::new();
-    for config in [json!({"teamAddNoEnvelope": true}), json!({"teamAddNoEnvelopeCode": true}), json!({"probeNotEnvelope": true})] {
+    for config in [
+        json!({"teamAddNoEnvelope": true}),
+        json!({"teamAddNoEnvelopeCode": true}),
+        json!({"probeNotEnvelope": true}),
+    ] {
         let output = harness.check_config(&config);
         let document = output.envelope();
         let failing: Vec<&str> = document["data"]["checks"]
@@ -237,13 +250,17 @@ fn atip_check_64_l0_envelope_fails_when_a_document_breaks_the_envelope_schema_an
             // The unregistered code and reason of the second document are L0.registry's only on an envelope: here it fails nothing but L0.envelope.
             assert_eq!(failing, ["L0.envelope"], "{config}: {}", output.stdout);
         } else {
-            assert!(!failing.contains(&"L0.contract-version"), "{config}: {failing:?}");
+            assert!(
+                !failing.contains(&"L0.contract-version"),
+                "{config}: {failing:?}"
+            );
         }
     }
 }
 
 #[test]
-fn atip_check_65_l0_contract_version_fails_on_a_missing_or_wrong_marker_or_a_member_of_a_later_minor() {
+fn atip_check_65_l0_contract_version_fails_on_a_missing_or_wrong_marker_or_a_member_of_a_later_minor(
+) {
     proves("L0.contract-version");
     // A tool emits envelopes or stream lines: the start line of a stream carries the markers too, and a stream is judged line by line
     // by the stream-line schema (L0.envelope), not as a second document (L0.one-document).
@@ -253,7 +270,8 @@ fn atip_check_65_l0_contract_version_fails_on_a_missing_or_wrong_marker_or_a_mem
     assert_eq!(good.check("L0.contract-version")["result"], "pass");
     assert_eq!(good.check("L0.envelope")["result"], "pass");
     assert_eq!(good.check("L0.one-document")["result"], "pass");
-    let bad = harness.check_config(&json!({"teamAddStream": true, "streamStartContractVersion": "none"}));
+    let bad =
+        harness.check_config(&json!({"teamAddStream": true, "streamStartContractVersion": "none"}));
     let document = bad.envelope();
     let failing: Vec<&str> = document["data"]["checks"]
         .as_array()
@@ -263,9 +281,22 @@ fn atip_check_65_l0_contract_version_fails_on_a_missing_or_wrong_marker_or_a_mem
         .map(|check| check["id"].as_str().unwrap_or_default())
         .collect();
     assert_eq!(failing, ["L0.contract-version"], "{}", bad.stdout);
-    assert!(bad.check("L0.contract-version")["reason"].as_str().unwrap_or_default().contains("a stream"), "{}", bad.stdout);
-    let wrong = harness.check_config(&json!({"teamAddStream": true, "streamStartContractVersion": "1.0"}));
-    assert_eq!(wrong.check("L0.contract-version")["result"], "fail", "{}", wrong.stdout);
+    assert!(
+        bad.check("L0.contract-version")["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("a stream"),
+        "{}",
+        bad.stdout
+    );
+    let wrong =
+        harness.check_config(&json!({"teamAddStream": true, "streamStartContractVersion": "1.0"}));
+    assert_eq!(
+        wrong.check("L0.contract-version")["result"],
+        "fail",
+        "{}",
+        wrong.stdout
+    );
 }
 
 #[test]
@@ -301,7 +332,10 @@ fn atip_check_69_l0_registry_fails_when_the_tools_registries_or_what_it_emitted_
         .collect();
     assert_eq!(failing, ["L0.ok-exit"], "{}", wrong_exit.stdout);
     assert!(
-        wrong_exit.check("L0.ok-exit")["reason"].as_str().unwrap_or_default().contains("schema --error STALE_VIEW"),
+        wrong_exit.check("L0.ok-exit")["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("schema --error STALE_VIEW"),
         "{}",
         wrong_exit.stdout
     );
@@ -328,16 +362,43 @@ fn atip_check_72_l0_global_on_group_reports_an_advisory_when_a_tool_wide_option_
     let harness = Harness::new();
     let single = |config: Value| {
         let mut fixture = harness.fixture(&config);
-        fixture["commands"].as_object_mut().expect("commands").remove("team add");
+        fixture["commands"]
+            .as_object_mut()
+            .expect("commands")
+            .remove("team add");
         harness.check(&fixture, true)
     };
     let unknown = single(json!({}));
-    assert_eq!((unknown.code, unknown.check("L0.global-on-group")["result"].as_str()), (Some(0), Some("unprovided")), "{}", unknown.stdout);
+    assert_eq!(
+        (
+            unknown.code,
+            unknown.check("L0.global-on-group")["result"].as_str()
+        ),
+        (Some(0), Some("unprovided")),
+        "{}",
+        unknown.stdout
+    );
     let with_groups = single(json!({"schemaTree": "groups"}));
-    assert_eq!(with_groups.check("L0.global-on-group")["result"], "unprovided", "{}", with_groups.stdout);
-    assert!(with_groups.check("L0.global-on-group")["reason"].as_str().unwrap_or_default().contains("lists groups"));
+    assert_eq!(
+        with_groups.check("L0.global-on-group")["result"],
+        "unprovided",
+        "{}",
+        with_groups.stdout
+    );
+    assert!(with_groups.check("L0.global-on-group")["reason"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("lists groups"));
     let none = single(json!({"schemaTree": "nogroups"}));
-    assert_eq!((none.code, none.check("L0.global-on-group")["result"].as_str()), (Some(0), Some("unsupported")), "{}", none.stdout);
+    assert_eq!(
+        (
+            none.code,
+            none.check("L0.global-on-group")["result"].as_str()
+        ),
+        (Some(0), Some("unsupported")),
+        "{}",
+        none.stdout
+    );
 }
 
 /// The check's id, the verdict on the planted violation and the verdict with the check forced to pass.
@@ -383,7 +444,11 @@ fn atip_check_56_each_pass_condition_fails_exactly_its_owner_and_a_run_with_the_
         let (report, conditions) = check_binary_mutated(&args, &[], &[]).expect("a report");
         assert!(report.passed, "{config}: {}", report.text());
         // The conditions of `L2.effects` are planted by `atip_checkl2safety`: the row runs at every level.
-        judged.extend(conditions.into_iter().filter(|condition| !condition.starts_with("effects/")));
+        judged.extend(
+            conditions
+                .into_iter()
+                .filter(|condition| !condition.starts_with("effects/")),
+        );
     }
     let named: BTreeSet<String> = cases()
         .iter()
@@ -447,7 +512,10 @@ fn atip_check_61_a_violation_that_fails_two_checks_fails_the_seeded_test_that_na
     let output = harness.check_config(&json!({"hintNull": true, "pageBadShape": true}));
     let why = case_verdict(&output.envelope()["data"], "L0.no-null")
         .expect_err("a second failing check is refused");
-    assert!(why.contains("L0.page") && why.contains("only L0.no-null was seeded"), "{why}");
+    assert!(
+        why.contains("L0.page") && why.contains("only L0.no-null was seeded"),
+        "{why}"
+    );
     // And one planted violation that the checker attributes to no one fails the verdict as well.
     let clean = harness.check_config(&json!({}));
     let why = case_verdict(&clean.envelope()["data"], "L0.no-null").expect_err("no failure");

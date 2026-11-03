@@ -56,11 +56,26 @@ fn parse(text: &str) -> Value {
 const CONTRACT_SCHEMAS: [(&str, &str); 8] = [
     (ERROR_ID, ERROR_SCHEMA),
     ("https://atip.dev/1/envelope.schema.json", ENVELOPE_SCHEMA),
-    ("https://atip.dev/1/registry-entry.schema.json", REGISTRY_ENTRY_SCHEMA),
-    ("https://atip.dev/1/warning-entry.schema.json", WARNING_ENTRY_SCHEMA),
-    ("https://atip.dev/1/input-document.schema.json", INPUT_DOCUMENT_SCHEMA),
-    ("https://atip.dev/1/batch-report.schema.json", BATCH_REPORT_SCHEMA),
-    ("https://atip.dev/1/stream-line.schema.json", STREAM_LINE_SCHEMA),
+    (
+        "https://atip.dev/1/registry-entry.schema.json",
+        REGISTRY_ENTRY_SCHEMA,
+    ),
+    (
+        "https://atip.dev/1/warning-entry.schema.json",
+        WARNING_ENTRY_SCHEMA,
+    ),
+    (
+        "https://atip.dev/1/input-document.schema.json",
+        INPUT_DOCUMENT_SCHEMA,
+    ),
+    (
+        "https://atip.dev/1/batch-report.schema.json",
+        BATCH_REPORT_SCHEMA,
+    ),
+    (
+        "https://atip.dev/1/stream-line.schema.json",
+        STREAM_LINE_SCHEMA,
+    ),
     ("https://atip.dev/1/guide.schema.json", GUIDE_SCHEMA),
 ];
 
@@ -69,14 +84,21 @@ const CONTRACT_SCHEMAS: [(&str, &str); 8] = [
 pub fn contract_registry() -> Registry<'static> {
     CONTRACT_SCHEMAS
         .iter()
-        .fold(Registry::new(), |registry, (id, text)| registry.add(*id, Resource::from_contents(parse(text))).expect("an embedded contract schema registers"))
+        .fold(Registry::new(), |registry, (id, text)| {
+            registry
+                .add(*id, Resource::from_contents(parse(text)))
+                .expect("an embedded contract schema registers")
+        })
         .prepare()
         .expect("the registry prepares")
 }
 
 #[cfg(feature = "validate")]
 fn compile(text: &str) -> Validator {
-    jsonschema::options().with_registry(&contract_registry()).build(&parse(text)).expect("an embedded contract schema compiles")
+    jsonschema::options()
+        .with_registry(&contract_registry())
+        .build(&parse(text))
+        .expect("an embedded contract schema compiles")
 }
 
 #[cfg(feature = "validate")]
@@ -95,7 +117,10 @@ static GUIDE: LazyLock<Validator> = LazyLock::new(|| compile(GUIDE_SCHEMA));
 
 #[cfg(feature = "validate")]
 fn problems_of(validator: &Validator, document: &Value) -> Vec<String> {
-    validator.iter_errors(document).map(|error| format!("{error} at {}", error.instance_path())).collect()
+    validator
+        .iter_errors(document)
+        .map(|error| format!("{error} at {}", error.instance_path()))
+        .collect()
 }
 
 /// What breaks the envelope schema in `document`: one line per violation,
@@ -152,15 +177,24 @@ mod tests {
         for (id, text) in CONTRACT_SCHEMAS {
             assert_eq!(parse(text)["$id"], id);
         }
-        assert_eq!(parse(SCHEMA_DOC_SCHEMA)["$id"], "https://atip.dev/1/schema-doc.schema.json");
+        assert_eq!(
+            parse(SCHEMA_DOC_SCHEMA)["$id"],
+            "https://atip.dev/1/schema-doc.schema.json"
+        );
     }
 
     #[test]
     fn an_error_object_with_a_tool_extension_passes_and_one_with_an_empty_member_does_not() {
         let with_extension = json!({ "code": "INPUT_INVALID", "message": "m", "retryable": false, "field": "--input", "x-canon": { "note": "n" } });
         assert_eq!(error_problems(&with_extension), Vec::<String>::new());
-        assert!(!error_problems(&json!({ "code": "USAGE", "message": "m", "retryable": false, "hint": "" })).is_empty());
-        assert!(!error_problems(&json!({ "code": "USAGE", "message": "m", "retryable": false, "unknown": 1 })).is_empty());
+        assert!(!error_problems(
+            &json!({ "code": "USAGE", "message": "m", "retryable": false, "hint": "" })
+        )
+        .is_empty());
+        assert!(!error_problems(
+            &json!({ "code": "USAGE", "message": "m", "retryable": false, "unknown": 1 })
+        )
+        .is_empty());
     }
 
     fn meta() -> Value {
@@ -168,18 +202,42 @@ mod tests {
     }
 
     #[test]
-    fn atip_contract11_02_a_contract_version_without_contract_or_of_another_major_or_written_as_1_0_is_refused() {
+    fn atip_contract11_02_a_contract_version_without_contract_or_of_another_major_or_written_as_1_0_is_refused(
+    ) {
         let mut without = meta();
-        without.as_object_mut().expect("meta is an object").remove("contract");
-        assert!(!envelope_problems(&json!({ "ok": true, "data": {}, "meta": without })).is_empty(), "`contractVersion` without `contract` is refused");
+        without
+            .as_object_mut()
+            .expect("meta is an object")
+            .remove("contract");
+        assert!(
+            !envelope_problems(&json!({ "ok": true, "data": {}, "meta": without })).is_empty(),
+            "`contractVersion` without `contract` is refused"
+        );
         let mut lone = meta();
         lone["contractVersion"] = json!("2.0");
-        assert!(!envelope_problems(&json!({ "ok": true, "data": {}, "meta": lone })).is_empty(), "another major is refused");
+        assert!(
+            !envelope_problems(&json!({ "ok": true, "data": {}, "meta": lone })).is_empty(),
+            "another major is refused"
+        );
         let mut written = meta();
         written["contractVersion"] = json!("1.0");
-        assert!(!problems_of(&ENVELOPE, &json!({ "ok": true, "data": {}, "meta": written })).is_empty(), "1.0 is never written out: the schema refuses it, with no check beside it");
-        assert!(ENVELOPE_SCHEMA.contains(r#""pattern": "^1\\.[1-9][0-9]*$""#), "the pattern of contractVersion starts at minor 1 (atip 1.1.1)");
-        assert_eq!(envelope_problems(&json!({ "ok": true, "data": {}, "meta": meta() })), Vec::<String>::new(), "contract atip/1 with contractVersion 1.1 passes");
+        assert!(
+            !problems_of(
+                &ENVELOPE,
+                &json!({ "ok": true, "data": {}, "meta": written })
+            )
+            .is_empty(),
+            "1.0 is never written out: the schema refuses it, with no check beside it"
+        );
+        assert!(
+            ENVELOPE_SCHEMA.contains(r#""pattern": "^1\\.[1-9][0-9]*$""#),
+            "the pattern of contractVersion starts at minor 1 (atip 1.1.1)"
+        );
+        assert_eq!(
+            envelope_problems(&json!({ "ok": true, "data": {}, "meta": meta() })),
+            Vec::<String>::new(),
+            "contract atip/1 with contractVersion 1.1 passes"
+        );
     }
 
     #[test]
@@ -187,16 +245,31 @@ mod tests {
         let failure = json!({ "ok": false, "error": { "code": "INPUT_INVALID", "reason": "NOT_JSON", "message": "m", "retryable": false, "field": "--input", "received": "" }, "meta": meta() });
         assert_eq!(envelope_problems(&failure), Vec::<String>::new());
         let lower = json!({ "code": "INPUT_INVALID", "reason": "not_json", "message": "m", "retryable": false });
-        assert!(!error_problems(&lower).is_empty(), "a reason is UPPER_SNAKE_CASE");
-        assert!(warning_entry_problems(&json!({ "code": "OLD_LAYOUT_FOUND", "meaning": "m", "fix": "f" })).is_empty());
-        assert!(!warning_entry_problems(&json!({ "code": "OLD_LAYOUT_FOUND", "meaning": "m", "fix": "f", "exit": 1 })).is_empty(), "a warning row has no exit");
+        assert!(
+            !error_problems(&lower).is_empty(),
+            "a reason is UPPER_SNAKE_CASE"
+        );
+        assert!(warning_entry_problems(
+            &json!({ "code": "OLD_LAYOUT_FOUND", "meaning": "m", "fix": "f" })
+        )
+        .is_empty());
+        assert!(
+            !warning_entry_problems(
+                &json!({ "code": "OLD_LAYOUT_FOUND", "meaning": "m", "fix": "f", "exit": 1 })
+            )
+            .is_empty(),
+            "a warning row has no exit"
+        );
         let with_reasons = json!({ "code": "INPUT_INVALID", "exit": 2, "retryable": false, "meaning": "m", "fix": "f", "reasons": [{ "reason": "NOT_JSON", "meaning": "m", "fix": "f" }] });
         assert!(registry_entry_problems(&with_reasons).is_empty());
     }
 
     #[test]
     fn atip_l0_06_a_conforming_success_and_failure_pass() {
-        assert_eq!(envelope_problems(&json!({ "ok": true, "data": { "a": 1 }, "meta": meta() })), Vec::<String>::new());
+        assert_eq!(
+            envelope_problems(&json!({ "ok": true, "data": { "a": 1 }, "meta": meta() })),
+            Vec::<String>::new()
+        );
         let failure = json!({ "ok": false, "error": { "code": "USAGE", "message": "m", "retryable": false, "field": "--x" }, "meta": meta() });
         assert_eq!(envelope_problems(&failure), Vec::<String>::new());
     }
@@ -206,13 +279,17 @@ mod tests {
         assert!(!envelope_problems(&json!({ "ok": true, "data": {}, "meta": null })).is_empty());
         let mut with_null = meta();
         with_null["context"] = Value::Null;
-        assert!(!envelope_problems(&json!({ "ok": true, "data": {}, "meta": with_null })).is_empty());
+        assert!(
+            !envelope_problems(&json!({ "ok": true, "data": {}, "meta": with_null })).is_empty()
+        );
         let mut stray = meta();
         stray["unchanged"] = json!(true);
         assert!(!envelope_problems(&json!({ "ok": true, "data": {}, "meta": stray })).is_empty());
         let mut extension = meta();
         extension["x-canon"] = json!({ "unchanged": true });
-        assert!(envelope_problems(&json!({ "ok": true, "data": {}, "meta": extension })).is_empty());
+        assert!(
+            envelope_problems(&json!({ "ok": true, "data": {}, "meta": extension })).is_empty()
+        );
     }
 
     #[test]
@@ -223,8 +300,12 @@ mod tests {
 
     #[test]
     fn atip_l0_19_a_registry_row_has_an_exit_of_one_or_two() {
-        let row = json!({ "code": "USAGE", "exit": 2, "retryable": false, "meaning": "m", "fix": "f" });
+        let row =
+            json!({ "code": "USAGE", "exit": 2, "retryable": false, "meaning": "m", "fix": "f" });
         assert!(registry_entry_problems(&row).is_empty());
-        assert!(!registry_entry_problems(&json!({ "code": "USAGE", "exit": 3, "retryable": false, "meaning": "m", "fix": "f" })).is_empty());
+        assert!(!registry_entry_problems(
+            &json!({ "code": "USAGE", "exit": 3, "retryable": false, "meaning": "m", "fix": "f" })
+        )
+        .is_empty());
     }
 }

@@ -154,14 +154,18 @@ fn uses_category(pattern: &str) -> bool {
 /// is one code point, the pattern uses a category, and each engine's own tables give the code point a different general
 /// category (spec 10.7.4).
 pub fn compare(pattern: &str, value: &str) -> Comparison {
-    let (ecmascript, rust) = (ecmascript_answer(pattern, value), rust_answer(pattern, value));
+    let (ecmascript, rust) = (
+        ecmascript_answer(pattern, value),
+        rust_answer(pattern, value),
+    );
     match (ecmascript, rust) {
         (Answer::Accepts(es), Answer::Accepts(rs)) if es == rs => Comparison::Agree(es),
         (Answer::Accepts(es), Answer::Accepts(rs)) => {
             let difference = single_code_point(value)
                 .filter(|_| uses_category(pattern))
                 .and_then(|code_point| {
-                    let (in_es, in_rust) = (ecmascript_category(code_point)?, rust_category(code_point)?);
+                    let (in_es, in_rust) =
+                        (ecmascript_category(code_point)?, rust_category(code_point)?);
                     (in_es != in_rust).then(|| UnicodeDifference {
                         code_point: format!("U+{:04X}", u32::from(code_point)),
                         ecmascript_category: in_es,
@@ -210,9 +214,9 @@ fn uncached_form_problem(pattern: &str) -> Option<String> {
     if let Some(problem) = body_problem(body) {
         return Some(problem);
     }
-    ecmascript(pattern)
-        .err()
-        .map(|reason| format!("does not compile as an ECMAScript pattern with the u flag: {reason}"))
+    ecmascript(pattern).err().map(|reason| {
+        format!("does not compile as an ECMAScript pattern with the u flag: {reason}")
+    })
 }
 
 /// Why the Rust `regex` crate refuses `pattern` at its default limits; `None` when it compiles.
@@ -221,9 +225,12 @@ pub fn rust_problem(pattern: &str) -> Option<String> {
 }
 
 fn uncached_rust_problem(pattern: &str) -> Option<String> {
-    rust(pattern)
-        .err()
-        .map(|reason| format!("the Rust regex crate refuses it with its default limits: {}", reason.lines().last().unwrap_or_default().trim()))
+    rust(pattern).err().map(|reason| {
+        format!(
+            "the Rust regex crate refuses it with its default limits: {}",
+            reason.lines().last().unwrap_or_default().trim()
+        )
+    })
 }
 
 /// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of spec 10.7.4 that make the two
@@ -302,7 +309,9 @@ impl Body {
             return Ok(false);
         }
         if (c == '&' || c == '~') && self.at(1) == Some(c) {
-            return self.fail(&format!("{c}{c} in a character class (a set operation in Rust)"));
+            return self.fail(&format!(
+                "{c}{c} in a character class (a set operation in Rust)"
+            ));
         }
         self.i += 1;
         Ok(true)
@@ -441,7 +450,10 @@ fn is_category_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{body_problem, compare, ecmascript_category, form_problem, is_category_name, rust_category, rust_problem, Comparison};
+    use super::{
+        body_problem, compare, ecmascript_category, form_problem, is_category_name, rust_category,
+        rust_problem, Comparison,
+    };
 
     #[test]
     fn atip_checkl1_regex_the_form_of_a_pattern_is_the_restricted_i_regexp() {
@@ -499,27 +511,47 @@ mod tests {
     }
 
     #[test]
-    fn atip_checkl1_regex_a_letter_assigned_in_unicode_17_is_a_version_difference_and_nothing_else_is() {
+    fn atip_checkl1_regex_a_letter_assigned_in_unicode_17_is_a_version_difference_and_nothing_else_is(
+    ) {
         assert_eq!(ecmascript_category('\u{11DB0}'), Some("Lo"));
         assert_eq!(rust_category('\u{11DB0}'), Some("Cn"));
         // Unicode 16 added the Garay letters: both engines have them.
         assert_eq!(rust_category('\u{10D50}'), Some("Lu"));
         assert_eq!(ecmascript_category('\u{10D50}'), Some("Lu"));
         match compare("^\\p{L}$", "\u{11DB0}") {
-            Comparison::UnicodeVersion { ecmascript, rust, difference } => {
+            Comparison::UnicodeVersion {
+                ecmascript,
+                rust,
+                difference,
+            } => {
                 assert!(ecmascript && !rust);
                 assert_eq!(difference.code_point, "U+11DB0");
-                assert!(difference.describe().contains("Unicode 17.0") && difference.describe().contains("Unicode 16.0.0"));
+                assert!(
+                    difference.describe().contains("Unicode 17.0")
+                        && difference.describe().contains("Unicode 16.0.0")
+                );
             }
             other => panic!("{other:?}"),
         }
         assert_eq!(compare("^\\p{L}$", "a"), Comparison::Agree(true));
-        assert_eq!(compare("^[a&&b]+$", "a"), Comparison::Differs { ecmascript: true, rust: false });
+        assert_eq!(
+            compare("^[a&&b]+$", "a"),
+            Comparison::Differs {
+                ecmascript: true,
+                rust: false
+            }
+        );
         // The same value with no category in the pattern is not explained by a Unicode version.
         assert_eq!(
             compare("^[\u{11DB0}]$", "\u{11DB0}"),
             Comparison::Agree(true)
         );
-        assert!(matches!(compare("^\\p{L}{1,500}$", "a"), Comparison::Uncompilable { ecmascript: None, rust: Some(_) }));
+        assert!(matches!(
+            compare("^\\p{L}{1,500}$", "a"),
+            Comparison::Uncompilable {
+                ecmascript: None,
+                rust: Some(_)
+            }
+        ));
     }
 }

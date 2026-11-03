@@ -52,7 +52,9 @@ pub struct Split {
 
 /// The operand of `doc` that the `index`-th operand word stands for: the last one takes the rest when it is variadic.
 fn operand_arg(doc: &CommandDoc, index: usize) -> Option<&Arg> {
-    doc.operands.get(index).or_else(|| doc.operands.last().filter(|operand| operand.variadic))
+    doc.operands
+        .get(index)
+        .or_else(|| doc.operands.last().filter(|operand| operand.variadic))
 }
 
 fn written(arg: Option<&Arg>, value: &Value, numeric_strings: bool) -> Value {
@@ -68,7 +70,11 @@ fn written(arg: Option<&Arg>, value: &Value, numeric_strings: bool) -> Value {
 
 /// Splits `base` by `spec`. `None` when the base reads its arguments from `--input` already.
 pub fn split(doc: &CommandDoc, base: &Invocation, spec: &Spec) -> Option<Split> {
-    if base.items.iter().any(|item| matches!(item, Item::Option { name, .. } if name == "input")) {
+    if base
+        .items
+        .iter()
+        .any(|item| matches!(item, Item::Option { name, .. } if name == "input"))
+    {
         return None;
     }
     let args = invocation::args(doc, base);
@@ -83,7 +89,11 @@ pub fn split(doc: &CommandDoc, base: &Invocation, spec: &Spec) -> Option<Split> 
                 Which::Nothing => false,
             }
     };
-    let mut invocation = Invocation { before: base.before.clone(), path: base.path.clone(), items: Vec::new() };
+    let mut invocation = Invocation {
+        before: base.before.clone(),
+        path: base.path.clone(),
+        items: Vec::new(),
+    };
     let mut document = Map::new();
     let mut operands: Vec<Value> = Vec::new();
     let mut seen_operands = 0;
@@ -119,14 +129,19 @@ pub fn split(doc: &CommandDoc, base: &Invocation, spec: &Spec) -> Option<Split> 
         document.insert("operands".to_string(), Value::Array(operands));
     }
     for (name, value) in &args.options {
-        let Some(arg) = doc.option(name) else { continue };
+        let Some(arg) = doc.option(name) else {
+            continue;
+        };
         if omitted(name) || !takes_option(arg) {
             continue;
         }
         let value = match value {
-            Value::Array(values) if arg.repeatable && arg.value_type != "count" => {
-                Value::Array(values.iter().map(|value| written(Some(arg), value, spec.numeric_strings)).collect())
-            }
+            Value::Array(values) if arg.repeatable && arg.value_type != "count" => Value::Array(
+                values
+                    .iter()
+                    .map(|value| written(Some(arg), value, spec.numeric_strings))
+                    .collect(),
+            ),
             other => written(Some(arg), other, spec.numeric_strings),
         };
         document.insert(camel(name), value);
@@ -137,7 +152,11 @@ pub fn split(doc: &CommandDoc, base: &Invocation, spec: &Spec) -> Option<Split> 
     for (key, _) in &spec.raw {
         document.insert(key.clone(), Value::Null);
     }
-    Some(Split { invocation, document, raw: spec.raw.clone() })
+    Some(Split {
+        invocation,
+        document,
+        raw: spec.raw.clone(),
+    })
 }
 
 impl Split {
@@ -181,7 +200,11 @@ impl Split {
 
 /// The argv of `base` with the single JSON text `input` as `--input`, and only the flag-only options and the words before the path kept.
 pub fn argv_for_input(doc: &CommandDoc, base: &Invocation, input: &str) -> Vec<String> {
-    let spec = Spec { options: Which::Nothing, omit: names_of(doc), ..Spec::default() };
+    let spec = Spec {
+        options: Which::Nothing,
+        omit: names_of(doc),
+        ..Spec::default()
+    };
     match split(doc, base, &spec) {
         Some(split) => split.argv_with(input),
         None => Vec::new(),
@@ -190,7 +213,10 @@ pub fn argv_for_input(doc: &CommandDoc, base: &Invocation, input: &str) -> Vec<S
 
 /// Every operand and option name of `doc` that is not flag-only: the arguments a document can carry.
 pub fn names_of(doc: &CommandDoc) -> Vec<String> {
-    doc.args().filter(|arg| !arg.flag_only).map(|arg| arg.name.clone()).collect()
+    doc.args()
+        .filter(|arg| !arg.flag_only)
+        .map(|arg| arg.name.clone())
+        .collect()
 }
 
 /// The names of the arguments that `base` gives (operands by their operand name, options by option name), flag-only ones left out.
@@ -214,7 +240,12 @@ pub fn given_names(doc: &CommandDoc, base: &Invocation) -> Vec<String> {
 
 /// The set of keys a document of `doc` may carry: the camelCase option names that are not flag-only, and `operands`.
 pub fn document_keys(doc: &CommandDoc) -> BTreeSet<String> {
-    let mut keys: BTreeSet<String> = doc.options.iter().filter(|option| !option.flag_only).map(|option| camel(&option.name)).collect();
+    let mut keys: BTreeSet<String> = doc
+        .options
+        .iter()
+        .filter(|option| !option.flag_only)
+        .map(|option| camel(&option.name))
+        .collect();
     if !doc.operands.is_empty() {
         keys.insert("operands".to_string());
     }

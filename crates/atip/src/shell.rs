@@ -8,7 +8,11 @@
 
 /// `arg` as one shell word: itself when it has only safe characters, else single-quoted.
 pub fn quote(arg: &str) -> String {
-    if !arg.is_empty() && arg.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_./:=@,+".contains(&b)) {
+    if !arg.is_empty()
+        && arg
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_./:=@,+".contains(&b))
+    {
         arg.to_string()
     } else {
         format!("'{}'", arg.replace('\'', "'\\''"))
@@ -17,7 +21,10 @@ pub fn quote(arg: &str) -> String {
 
 /// Whether `command` still holds a `<placeholder>`: a `<` opening a word and a later `>`.
 pub fn has_placeholder(command: &str) -> bool {
-    command.match_indices('<').any(|(at, _)| command[at + 1..].starts_with(|c: char| c.is_ascii_alphabetic()) && command[at..].contains('>'))
+    command.match_indices('<').any(|(at, _)| {
+        command[at + 1..].starts_with(|c: char| c.is_ascii_alphabetic())
+            && command[at..].contains('>')
+    })
 }
 
 /// `command` split into words the way a POSIX shell would, without expansion:
@@ -95,7 +102,10 @@ mod tests {
 
     #[test]
     fn quote_leaves_safe_words_and_quotes_the_rest() {
-        assert_eq!(quote("2026-01-01T00:00:00+00:00"), "2026-01-01T00:00:00+00:00");
+        assert_eq!(
+            quote("2026-01-01T00:00:00+00:00"),
+            "2026-01-01T00:00:00+00:00"
+        );
         assert_eq!(quote("a b"), "'a b'");
         assert_eq!(quote("it's"), "'it'\\''s'");
     }
@@ -111,7 +121,10 @@ mod tests {
     fn split_argv_reads_shell_words() {
         assert_eq!(split_argv("canon gate check"), ["canon", "gate", "check"]);
         assert_eq!(split_argv("  canon   status  "), ["canon", "status"]);
-        assert_eq!(split_argv("canon x 'a b' \"c d\" e'f'\"g\""), ["canon", "x", "a b", "c d", "efg"]);
+        assert_eq!(
+            split_argv("canon x 'a b' \"c d\" e'f'\"g\""),
+            ["canon", "x", "a b", "c d", "efg"]
+        );
         assert_eq!(split_argv(r#"x "a \" \\ \n""#), ["x", r#"a " \ \n"#]);
         assert_eq!(split_argv("x '' y"), ["x", "", "y"]);
         assert!(split_argv("   ").is_empty());
@@ -119,7 +132,9 @@ mod tests {
 
     #[test]
     fn a_placeholder_is_an_angle_word_with_a_closer() {
-        assert!(has_placeholder("canon evidence add --scenario <SCENARIO_ID>"));
+        assert!(has_placeholder(
+            "canon evidence add --scenario <SCENARIO_ID>"
+        ));
         assert!(has_placeholder("canon x <id>"));
         assert!(!has_placeholder("canon gate check"));
         assert!(!has_placeholder("canon x < input"));
@@ -128,7 +143,11 @@ mod tests {
     }
 
     fn join(words: &[String]) -> String {
-        words.iter().map(|word| quote(word)).collect::<Vec<_>>().join(" ")
+        words
+            .iter()
+            .map(|word| quote(word))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// Every string of length 0 to `max` over `alphabet`, shortest first.
@@ -136,7 +155,10 @@ mod tests {
         let mut all = vec![String::new()];
         let mut layer = vec![String::new()];
         for _ in 0..max {
-            layer = layer.iter().flat_map(|prefix| alphabet.iter().map(move |c| format!("{prefix}{c}"))).collect();
+            layer = layer
+                .iter()
+                .flat_map(|prefix| alphabet.iter().map(move |c| format!("{prefix}{c}")))
+                .collect();
             all.extend(layer.iter().cloned());
         }
         all
@@ -147,7 +169,14 @@ mod tests {
         let mut all = vec![Vec::new()];
         let mut layer: Vec<Vec<String>> = vec![Vec::new()];
         for _ in 0..max {
-            layer = layer.iter().flat_map(|prefix| words.iter().map(move |word| [prefix.clone(), vec![word.clone()]].concat())).collect();
+            layer = layer
+                .iter()
+                .flat_map(|prefix| {
+                    words
+                        .iter()
+                        .map(move |word| [prefix.clone(), vec![word.clone()]].concat())
+                })
+                .collect();
             all.extend(layer.iter().cloned());
         }
         all
@@ -159,7 +188,10 @@ mod tests {
     fn atip_crateshell_01_a_word_with_a_single_quote_is_written_and_read_back() {
         assert_eq!(quote("it's"), "'it'\\''s'");
         assert_eq!(split_argv(&quote("it's")), ["it's"]);
-        assert_eq!(split_argv("canon x 'it'\\''s' y"), ["canon", "x", "it's", "y"]);
+        assert_eq!(
+            split_argv("canon x 'it'\\''s' y"),
+            ["canon", "x", "it's", "y"]
+        );
         assert_eq!(split_argv(&quote("'")), ["'"]);
         assert_eq!(split_argv(&quote("''")), ["''"]);
     }
@@ -181,7 +213,9 @@ mod tests {
             }
         }
         // Every list of 0 to 4 words drawn from the empty word and the nine single characters.
-        let singles: Vec<String> = std::iter::once(String::new()).chain(AWKWARD.iter().map(char::to_string)).collect();
+        let singles: Vec<String> = std::iter::once(String::new())
+            .chain(AWKWARD.iter().map(char::to_string))
+            .collect();
         let lists = lists_up_to(&singles, 4);
         assert_eq!(lists.len(), 1 + 10 + 100 + 1000 + 10000);
         for list in &lists {
@@ -211,7 +245,8 @@ mod tests {
     }
 
     #[test]
-    fn atip_crateshell_04_a_backslash_inside_quotes_is_unchanged_and_an_unclosed_quote_does_not_panic() {
+    fn atip_crateshell_04_a_backslash_inside_quotes_is_unchanged_and_an_unclosed_quote_does_not_panic(
+    ) {
         assert_eq!(split_argv(r#""a\xb""#), [r"a\xb"]);
         assert_eq!(split_argv(r#""\x""#), [r"\x"]);
         assert_eq!(split_argv(r#""a\"b\\c""#), ["a\"b\\c"]);
@@ -256,7 +291,12 @@ mod tests {
     #[test]
     fn atip_crateshell_07_a_word_that_would_break_unquoted_is_never_written_bare() {
         // Every word of 0 to 3 characters over the awkward ones: a word with a character outside the safe set, or the empty word, is quoted.
-        let safe = |word: &str| !word.is_empty() && word.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_./:=@,+".contains(&b));
+        let safe = |word: &str| {
+            !word.is_empty()
+                && word
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"-_./:=@,+".contains(&b))
+        };
         let mut bare = 0;
         for word in strings_up_to(&AWKWARD, 3) {
             let written = quote(&word);
@@ -265,16 +305,31 @@ mod tests {
                 bare += 1;
                 continue;
             }
-            assert!(written.starts_with('\'') && written.ends_with('\''), "{word:?} is written {written:?}, not as a quoted word");
-            assert_eq!(split_argv(&written), std::slice::from_ref(&word), "{word:?}");
+            assert!(
+                written.starts_with('\'') && written.ends_with('\''),
+                "{word:?} is written {written:?}, not as a quoted word"
+            );
+            assert_eq!(
+                split_argv(&written),
+                std::slice::from_ref(&word),
+                "{word:?}"
+            );
             // Written raw, a word with white space, a quote or nothing in it does not come back as itself: the quote is what keeps it whole.
-            if word.is_empty() || word.contains(|c: char| c.is_whitespace() || c == '\'' || c == '"') {
-                assert_ne!(split_argv(&word), std::slice::from_ref(&word), "{word:?} would survive unquoted, so quoting it is not needed");
+            if word.is_empty()
+                || word.contains(|c: char| c.is_whitespace() || c == '\'' || c == '"')
+            {
+                assert_ne!(
+                    split_argv(&word),
+                    std::slice::from_ref(&word),
+                    "{word:?} would survive unquoted, so quoting it is not needed"
+                );
             }
         }
         assert!(bare > 0, "the sweep holds words that need no quote");
         // The words that carry a shell's meaning are quoted and read back whole.
-        for word in ["$HOME", "`date`", "a;b", "a|b", "a&b", "<id>", "*", "~", "a#b", "(x)"] {
+        for word in [
+            "$HOME", "`date`", "a;b", "a|b", "a&b", "<id>", "*", "~", "a#b", "(x)",
+        ] {
             assert_ne!(quote(word), word, "{word}");
             assert_eq!(split_argv(&quote(word)), [word], "{word}");
         }

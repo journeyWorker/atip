@@ -67,7 +67,10 @@ fn normalised(arg: &Arg) -> Value {
         "json" => json!({"not": {"type": "null"}}),
         _ => json!({"type": "string"}),
     };
-    if let (Some(domain), Some(target)) = (arg.domain.as_ref().and_then(Value::as_object), schema.as_object_mut()) {
+    if let (Some(domain), Some(target)) = (
+        arg.domain.as_ref().and_then(Value::as_object),
+        schema.as_object_mut(),
+    ) {
         for (key, value) in domain {
             target.insert(key.clone(), value.clone());
         }
@@ -115,8 +118,17 @@ pub fn add_input(command: &mut Command, batch: bool, example: Value) {
     if command.operands().any(|operand| operand.required) {
         required.push("operands".to_string());
     }
-    required.extend(command.flags().filter(documented).filter(|arg| arg.required).map(|arg| camel(arg.name)));
-    command.schemas.push((fragment_name, json!({"type": "object", "additionalProperties": false, "properties": fragment})));
+    required.extend(
+        command
+            .flags()
+            .filter(documented)
+            .filter(|arg| arg.required)
+            .map(|arg| camel(arg.name)),
+    );
+    command.schemas.push((
+        fragment_name,
+        json!({"type": "object", "additionalProperties": false, "properties": fragment}),
+    ));
     command.schemas.push((
         arguments_name,
         json!({"type": "object", "required": required, "additionalProperties": false, "properties": arguments}),
@@ -134,13 +146,25 @@ pub fn add_input(command: &mut Command, batch: bool, example: Value) {
     }
     command.input = Some(input);
     if command.arg("input").is_none() {
-        let position = command.args.iter().position(|arg| arg.name == "json").unwrap_or(command.args.len());
+        let position = command
+            .args
+            .iter()
+            .position(|arg| arg.name == "json")
+            .unwrap_or(command.args.len());
         command.args.insert(
             position,
-            Arg::option("input", "string", "The arguments as JSON: one object, or an array for a batch").value("JSON").flag_only(),
+            Arg::option(
+                "input",
+                "string",
+                "The arguments as JSON: one object, or an array for a batch",
+            )
+            .value("JSON")
+            .flag_only(),
         );
     }
-    command.errors.extend(["INPUT_CONFLICT", "INPUT_INVALID", "INPUT_TOO_LARGE"]);
+    command
+        .errors
+        .extend(["INPUT_CONFLICT", "INPUT_INVALID", "INPUT_TOO_LARGE"]);
     if batch {
         command.errors.push("BATCH_INCOMPLETE");
     }
