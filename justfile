@@ -60,5 +60,9 @@ check-minor minor mode="":
     cp {{ target }}/debug/atip-fake-tool {{ target }}/debug/atip-fake-tool-claims{{ replace(minor, ".", "") }}
     {{ target }}/debug/atip check --bin {{ target }}/debug/atip-fake-tool-claims{{ replace(minor, ".", "") }} --level L0 --fixture crates/atip-check/fake-tool/fixture-{{ minor }}.json {{ mode }}
 
+# `atip` with its default features, and the probe built on it, pull no `jsonschema` (`cargo tree`).
+deps-check:
+    scripts/check_no_jsonschema.sh
+
 # Everything CI does.
-ci: validate fmt-check lint test
+ci: validate fmt-check lint deps-check test
