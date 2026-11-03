@@ -1,8 +1,7 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
 Status: **1.4.1, release candidate**: a patch (15.1) that states the compactness rule as whitespace outside strings
-only, closes the set of `USAGE` replacements a command document implies, and words the MINOR row for replaced members
-(Appendix A D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a minor (15.1) that
+only, applies 7.3.2's naming to every minor from 1.3, and words the MINOR row for replaced members (Appendix A D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a minor (15.1) that
 makes the self-description small and compact for agents and separates `--help` from `schema` (D38); 1.3.1 and 1.3.0
 are described in D37 and D36.
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
@@ -351,11 +350,9 @@ of the features it offers in `errors` (`--input`: `INPUT_*`; batches: `BATCH_INC
 | `CURSOR_INVALID` | 2 | no | `INVALID` | a cursor not issued by this command, or for other arguments (6.9) |
 
 7.3.2. Finer parse codes MAY replace `USAGE` for a situation the tool never reports as `USAGE`; in a document that
-declares 1.3 or later they follow 7.2: `OPTION_INVALID` for an unknown or malformed option, `OPTION_REQUIRED` for a
-missing one, `OPERAND_INVALID` and `OPERAND_REQUIRED` for operands. These four are the **finer replacements** a 1.4
-command document implies (9.5); a tool's other finer codes are listed where emitted. A caller treats any exit-2 code
-whose `field` names an argument as a usage problem. Under any other core code, situations are told
-apart by reasons.
+declares 1.3 or later they follow 7.2 (`OPTION_INVALID` for an unknown or malformed option, `OPTION_REQUIRED` for a
+missing one). A caller treats any exit-2 code whose `field` names an argument as a usage problem. Under any other core
+code, situations are told apart by reasons.
 
 7.3.3. **Reserved reasons**, SHOULD names for these situations: `INPUT_INVALID` `UNREADABLE`, `STDIN_TTY`, `EMPTY`,
 `NOT_JSON`, `NOT_OBJECT`, `BATCH_UNSUPPORTED`, `UNKNOWN_KEY`, `FLAG_ONLY_KEY`, `INVALID_VALUE`; `INPUT_TOO_LARGE`
@@ -485,9 +482,8 @@ satisfying the command's requirements; none reads a file or stdin.
   included, so that the document alone says whether a bare run of a destructive command acts or previews (11.4);
   `--help` and `--version` never are. A command that needs another `required`, default or enum subset of a shared
   option (Annex S1 item 4) declares it in full.
-- **Errors.** `errors` lists every code the command can emit except the implied ones: `USAGE`, the finer
-  replacements of 7.3.2 that the tool registers (`OPTION_INVALID`, `OPTION_REQUIRED`, `OPERAND_INVALID`,
-  `OPERAND_REQUIRED`) and `INTERNAL`; the `INPUT_*` codes with `input`; `BATCH_INCOMPLETE` with `input.batch`;
+- **Errors.** `errors` lists every code the command can emit except the implied ones: `USAGE`, its registered finer
+  replacements (7.3.2) and `INTERNAL`; the `INPUT_*` codes with `input`; `BATCH_INCOMPLETE` with `input.batch`;
   `PLAN_STALE` with `--commit`; `OPERATION_REUSED` with `--operation`; `CURSOR_INVALID` with `--cursor`.
 - **Defaults.** A member whose value is its default is absent; `schema/schema-doc.schema.json` gives each default:
   `required`, `repeatable` (a count is always repeatable and does not say so), `variadic`, `flagOnly` and `async`
@@ -942,7 +938,7 @@ sections of this version.
 
 | # | Owner decision 2026-11-04, version 1.4.1, a patch (15.1) | Where |
 |---|---|---|
-| D39 | Three clarifications, no rule strength changed; `meta.contractVersion` stays `"1.4"`. (1) 5.1's compactness forbids whitespace (space, tab, CR, LF) outside strings and nothing else: any valid number spelling (`60.0`, `1e3`) and any escape form (`\u00e9`) is compact. The repository checker had compared the file with `JSON.stringify(JSON.parse(line))`, which also normalised numbers and escapes and so rejected compact documents a Rust serializer prints; an implementer found it. (2) The finer replacements of `USAGE` that a 1.4 command document implies are a closed list, `OPTION_INVALID`, `OPTION_REQUIRED`, `OPERAND_INVALID` and `OPERAND_REQUIRED`, when the tool registers them, so that whether a code may be left out of `errors` is decided by its name, not by reading its meaning; 7.3.2's 1.3 naming applies to documents that declare 1.3 or later. A tool's other finer codes are listed. (3) 15.1's MINOR row covers members a change replaces (an option object replaced by a name) as well as members it leaves out. | 5.1, 7.3.2, 9.5, 15.1, approaches/checker.md |
+| D39 | Three clarifications, no rule strength changed; `meta.contractVersion` stays `"1.4"`. (1) 5.1's compactness forbids whitespace (space, tab, CR, LF) outside strings and nothing else: any valid number spelling (`60.0`, `1e3`) and any escape form (`\u00e9`) is compact. The repository checker had compared the file with `JSON.stringify(JSON.parse(line))`, which also normalised numbers and escapes and so rejected compact documents a Rust serializer prints; an implementer found it. (2) 7.3.2's naming of finer parse codes applies to documents that declare 1.3 or later, not only 1.3. The set of finer replacements a 1.4 command document implies stays open, as in 1.4.0: a review found that closing it to named codes in a patch could fail a conforming 1.4.0 document either way (a replacement left out under another name, or an `OPERAND_*` domain refusal listed), so closing it is left to a minor. (3) 15.1's MINOR row covers members a change replaces (an option object replaced by a name) as well as members it leaves out. | 5.1, 7.3.2, 9.5, 15.1, approaches/checker.md |
 
 ## Appendix B. Prior art
 

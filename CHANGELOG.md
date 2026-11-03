@@ -10,10 +10,11 @@ A patch (15.1) from implementer feedback and round 23 (D39). No rule changes str
   it with `JSON.stringify(JSON.parse(line))`, which also rewrote numbers and escapes and rejected compact output of a
   Rust serializer; `approaches/checker.md` L0.compact says the same. New example
   `report-acme-filter-test-number-escape.json`; the indented invalid examples stay.
-- **The implied `USAGE` replacements are a closed list (7.3.2, 9.5).** A 1.4 command document leaves out of `errors`
-  exactly `OPTION_INVALID`, `OPTION_REQUIRED`, `OPERAND_INVALID` and `OPERAND_REQUIRED` when the tool registers them;
-  any other finer code is listed. 7.3.2's naming applies to documents that declare 1.3 or later. `check.ts` no longer
-  reads a code's `meaning` to decide.
+- **7.3.2** names finer parse codes per 7.2 in documents that declare 1.3 or later (it said "a 1.3 document"). The
+  implied replacements of `USAGE` in a 1.4 command document stay as in 1.4.0. `check.ts` no longer reads a code's
+  `meaning`: it accepts a registered exit-2 non-core `*_INVALID` or `*_REQUIRED` code listed or left out. It also
+  rejects a stream file that starts with a blank line, and reports which document holds whitespace instead of an
+  offset.
 - **15.1 MINOR row** covers members a change replaces as well as members it leaves out.
 
 ## 1.4.0 (2026-11-04)

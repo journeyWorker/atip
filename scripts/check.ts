@@ -39,9 +39,10 @@
 // structurally with the derivation) and one `rejects` list per validator, in order (rule 13 runs on those).
 //
 // Implied codes (spec 9.5) are `USAGE`, `INTERNAL`, the codes of the features the options and `input` offer, and the
-// finer replacements of `USAGE` the tool registers, a closed list (spec 7.3.2: `OPTION_INVALID`, `OPTION_REQUIRED`,
-// `OPERAND_INVALID`, `OPERAND_REQUIRED`; `usageReplacements`). `--commit` and `--plan-digest` are never implied: a
-// destructive command lists them, as an object or as the reserved name.
+// finer replacements of `USAGE` the tool registers (spec 7.3.2). The registry does not mark a replacement, so this
+// checker accepts a registered exit-2 code that is not a core code and whose condition is `INVALID` or `REQUIRED` either
+// listed or left out (`usageReplacements`). `--commit` and `--plan-digest` are never implied: a destructive command
+// lists them, as an object or as the reserved name.
 //
 // The command documents and registries of the valid examples (examples/schema-*.json) are the reference that
 // reports, inputs and streams are checked against. Every document is validated against its JSON Schema before
@@ -1165,18 +1166,21 @@ function impliedOptionNames(doc: RawCommandDoc): string[] {
   return ["json", ...(doc.input ? ["input"] : []), ...(doc.outputs.some((o) => o.fields) ? ["fields"] : [])]
 }
 
-/** The finer replacements of `USAGE` a 1.4 command document implies when the tool registers them (spec 7.3.2, 9.5). */
-const USAGE_REPLACEMENTS = ["OPTION_INVALID", "OPTION_REQUIRED", "OPERAND_INVALID", "OPERAND_REQUIRED"]
+/**
+ * The codes that may be finer replacements of `USAGE` (spec 7.3.2): registered, exit 2, not a core code, with the
+ * condition `INVALID` or `REQUIRED`. The registry does not say which of them a tool uses in place of `USAGE`, so a 1.4
+ * command document may list them or leave them out (spec 9.5); either is accepted.
+ */
 function usageReplacements(tool: string): string[] {
-  const registered = new Set((registries.get(tool) ?? []).map((e) => e.code))
-  return USAGE_REPLACEMENTS.filter((c) => registered.has(c))
+  return (registries.get(tool) ?? [])
+    .filter((e) => e.exit === 2 && !RESERVED[e.code] && /_(INVALID|REQUIRED)$/.test(e.code))
+    .map((e) => e.code)
 }
 
 /** The error codes a 1.4 document implies, and so does not list (spec 9.5), given its full option set. */
 function impliedCodes(doc: RawCommandDoc, optionNames: string[], tool: string): string[] {
   return [
     "USAGE",
-    ...usageReplacements(tool),
     "INTERNAL",
     ...(doc.input ? ["INPUT_INVALID", "INPUT_CONFLICT", "INPUT_TOO_LARGE"] : []),
     ...(doc.input?.batch ? ["BATCH_INCOMPLETE"] : []),
@@ -1220,7 +1224,7 @@ function resolveCommand(raw: RawCommandDoc, tool: string, v14: boolean, problems
   const answer = v14 ? schemasAnswers.get(`${tool} ${raw.command}`) : undefined
   if (v14) {
     for (const name of implied) if (!given.has(name)) options.push(fullArg(RESERVED_OPTIONS[name]))
-    errors = [...new Set([...errors, ...impliedCodes(raw, options.map((o) => o.name), tool)])]
+    errors = [...new Set([...errors, ...impliedCodes(raw, options.map((o) => o.name), tool), ...usageReplacements(tool)])]
   }
   return {
     command: raw.command,
@@ -2247,21 +2251,17 @@ function compactProblems(name: string, text: string, problems: string[]) {
   const minor = first.contractVersion ?? first.meta?.contractVersion ?? "1.0"
   if (MINORS.indexOf(minor) < MINORS.indexOf("1.4")) return
   // Spec 5.1 forbids whitespace outside strings and nothing else: number spellings and escapes stay as written.
-  if (!text.endsWith("\n") || text.includes("\n\n"))
-    problems.push("the file is not compact JSON: each document is followed by exactly one newline (spec 5.1)")
-  let offset = 0
-  for (const document of documents) {
-    const at = whitespaceOutsideStrings(document)
-    if (at >= 0) {
-      problems.push(`the file is not compact JSON: whitespace outside a string at offset ${offset + at}, which a document that declares 1.4 must not have (spec 5.1)`)
+  if (!text.endsWith("\n") || text.startsWith("\n") || text.includes("\n\n"))
+    problems.push("the file is not compact JSON: each document is followed by exactly one newline, and nothing precedes the first (spec 5.1)")
+  for (const [i, document] of documents.entries())
+    if (whitespaceOutsideStrings(document)) {
+      problems.push(`the file is not compact JSON: ${documents.length > 1 ? `document ${i + 1} has ` : ""}whitespace outside a string, which a document that declares 1.4 must not have (spec 5.1)`)
       return
     }
-    offset += document.length + 1
-  }
 }
 
-/** The offset of the first space, tab, CR or LF outside a JSON string, or -1. */
-function whitespaceOutsideStrings(document: string): number {
+/** Whether a space, tab, CR or LF occurs outside a JSON string. */
+function whitespaceOutsideStrings(document: string): boolean {
   let inString = false
   for (let i = 0; i < document.length; i++) {
     const c = document[i]
@@ -2269,9 +2269,9 @@ function whitespaceOutsideStrings(document: string): number {
       if (c === "\\") i++
       else if (c === '"') inString = false
     } else if (c === '"') inString = true
-    else if (c === " " || c === "\t" || c === "\r" || c === "\n") return i
+    else if (c === " " || c === "\t" || c === "\r" || c === "\n") return true
   }
-  return -1
+  return false
 }
 
 function check(path: string): string[] {

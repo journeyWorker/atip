@@ -250,7 +250,7 @@ or `plan-digest`; a 1.4 document lists them whenever the command offers them (sp
 | Case | File | Result |
 |---|---|---|
 | the tree defines `team` once (`short`, `required`, help; no `path`, no `kind` on commands, `options`); the commands that share it name it, `"options":["team"]`; the one whose help differs declares its own | `schema-tree-acme.json`; `schema-command-acme-member-export.json`, `schema-command-acme-member-roster.json`; `schema-command-acme-member-list.json` | accepted |
-| a command document without `path`, `schemas`, `input.option`, `input.schemaRef`, the implied `--json`, `--input`, `--fields`, and the implied codes (`USAGE` and the registered `OPTION_*`/`OPERAND_*` replacements of 7.3.2, `INTERNAL`, `INPUT_*`, `BATCH_INCOMPLETE`, `OPERATION_REUSED`, `CURSOR_INVALID`), and with every default left out | every `schema-command-acme-*.json` | accepted |
+| a command document without `path`, `schemas`, `input.option`, `input.schemaRef`, the implied `--json`, `--input`, `--fields`, and the implied codes (`USAGE`, `INTERNAL`, `INPUT_*`, `BATCH_INCOMPLETE`, `OPERATION_REUSED`, `CURSOR_INVALID`), and with every default left out | every `schema-command-acme-*.json` | accepted |
 | the schemas answer of each command; a ref resolved there; a report and a stream validated against it | `schema-schemas-acme-*.json`; `report-acme-*.json`, `stream-acme-*.ndjson` | accepted |
 | `--input` examples and documents against the derived fragment, a batch among them | `input-acme-*.json` and the `input.example` of every acme command with input | accepted |
 | a compact 1.4 document that spells a number `60.0` and escapes `\u00e9`: compactness forbids only whitespace outside strings (spec 5.1) | `report-acme-filter-test-number-escape.json` | accepted |

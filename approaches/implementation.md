@@ -164,11 +164,11 @@ writing:
 
 The same serializer omits what the document implies (spec 9.5): the options `--json`, `--input` (with `input`) and
 `--fields` (when an output declares `fields`), and the codes `USAGE`, the finer replacements of `USAGE` the tool
-registers (spec 7.3.2: `OPTION_INVALID`, `OPTION_REQUIRED`, `OPERAND_INVALID`, `OPERAND_REQUIRED`, and no other),
-`INTERNAL`, the `INPUT_*` codes with `input`, `BATCH_INCOMPLETE`, `PLAN_STALE`, `OPERATION_REUSED` and `CURSOR_INVALID`
-with the feature that raises them. `--commit` and `--plan-digest` are not implied: a destructive command lists them, so
-that the document alone says whether a bare run acts or previews. The tool still registers every code and still enforces
-every option; only the document leaves out what it implies.
+registers (spec 7.3.2, such as `OPTION_INVALID`), `INTERNAL`, the `INPUT_*` codes with `input`, `BATCH_INCOMPLETE`,
+`PLAN_STALE`, `OPERATION_REUSED` and `CURSOR_INVALID` with the feature that raises them. `--commit` and
+`--plan-digest` are not implied: a destructive command lists them, so that the document alone says whether a bare run
+acts or previews. The tool still registers every code and still enforces every option; only the document leaves out
+what it implies.
 
 **Compact serialization.** Print the document with no whitespace outside strings, members in the order the model
 declares, then one newline (spec 5.1). Do it for every envelope and stream line, not only for `schema`, and compare

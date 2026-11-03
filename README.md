@@ -26,10 +26,10 @@ Schemas (`schema <PATH> --schemas` returns them), shared options are defined onc
 and default-valued members are left out (`--commit` and `--plan-digest` stay listed), every JSON document is compact,
 and `--help` stays text while `--help --json` refuses and points at `schema`; the `--schemas` answer also carries the
 derived input schema and the validators' counterexamples; its rules bind only documents that declare 1.4. 1.4.1 is a
-patch: compactness forbids only whitespace outside strings, and the implied `USAGE` replacements are a closed list. The
-decisions behind all of the versions are in Appendix A of the spec; no question is open. `CHANGELOG.md` lists the
-versions; spec 15 says how versions work, 15.7 lists what differs in the earlier minors, and 15.8 says what 1.4 means
-for callers. Until its second revision the contract was called `agent-cli/1`.
+patch: compactness forbids only whitespace outside strings. The decisions behind all of the versions are in Appendix A
+of the spec; no question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, 15.7 lists what
+differs in the earlier minors, and 15.8 says what 1.4 means for callers. Until its second revision the contract was
+called `agent-cli/1`.
 
 **Names.** Contract id `atip/1` (`meta.contract`); schema `$id`s under `https://atip.dev/1/` (placeholders); the
 checker command `atip check`; the TypeScript package `@journeykit/atip` and the Rust crate `atip`. OpenCLI is out of
