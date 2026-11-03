@@ -518,7 +518,7 @@ impl Runner {
             command.stdout(Stdio::piped());
             None
         };
-        let mut child = command.spawn()?;
+        let mut child = spawn(&mut command)?;
         // The document goes in from a thread of its own: a tool that answers before it reads must not block this one. A tool that has
         // exited by then (it refused the call without reading stdin) makes the write fail with `EPIPE`, which is no one's error.
         let writer = match (call.stdin.clone(), child.stdin.take()) {
@@ -570,7 +570,7 @@ impl Runner {
         let started = Instant::now();
         let mut command = self.command(call, root);
         command.stdout(Stdio::piped());
-        let mut child = command.spawn()?;
+        let mut child = spawn(&mut command)?;
         drop(command);
         let printed = Arc::new(Mutex::new(Vec::new()));
         let reading = child.stdout.take().map(|mut pipe| {
@@ -713,7 +713,7 @@ impl Runner {
         command.stdout(Stdio::from(pty.slave));
         let master = std::fs::File::from(pty.master);
         let mut writer = master.try_clone()?;
-        let mut child = command.spawn()?;
+        let mut child = spawn(&mut command)?;
         drop(command);
         let ended = Arc::new(AtomicBool::new(false));
         let buffer = Arc::new(Mutex::new(Vec::new()));
@@ -897,6 +897,23 @@ fn ignore_sigpipe() {
     }
 }
 
+/// Starts `command`, trying again while the kernel says the executable is busy. On Linux an exec fails with ETXTBSY ("Text file busy") while any
+/// process holds the file open for writing, and a process that forked while another thread was writing the file (a build, a test that copies the
+/// binary, `cp` itself) holds its copy of that descriptor until it execs, a moment later. The condition ends by itself; a binary that stays busy is
+/// reported as one that cannot be started, as before.
+fn spawn(command: &mut Command) -> std::io::Result<Child> {
+    let mut tries = 0;
+    loop {
+        match command.spawn() {
+            Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 50 => {
+                tries += 1;
+                thread::sleep(Duration::from_millis(20));
+            }
+            other => return other,
+        }
+    }
+}
+
 fn kill_group(child: &Child) {
     if let Ok(pid) = i32::try_from(child.id()) {
         // ESRCH is the usual answer: the group is already gone.
@@ -1058,6 +1075,30 @@ mod tests {
             physical(paths[1]).starts_with(physical(paths[0]).parent().expect("a copy")),
             "HOME is inside the copy: {paths:?}"
         );
+    }
+
+    #[test]
+    fn atip_check_exec_busy_a_binary_that_is_still_open_for_writing_is_tried_again_and_started() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        // Linux refuses to exec a file that some process holds open for writing (ETXTBSY) and says so until the descriptor is closed.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tool.sh");
+        let mut file = std::fs::File::create(&path).expect("create");
+        file.write_all(b"#!/bin/sh\necho busy-then-free\n")
+            .expect("write");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let closer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            drop(file);
+        });
+        let mut runner =
+            Runner::new(&path, &fixture(&[], Duration::from_secs(10))).expect("runner");
+        let outcome = runner
+            .run(&Call::new(Vec::<String>::new()))
+            .expect("started");
+        closer.join().expect("closer");
+        assert_eq!(text(&outcome.stdout), "busy-then-free\n");
     }
 
     #[test]
