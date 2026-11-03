@@ -105,7 +105,7 @@ export const findingClose = defineCommand(
 
 `defineCommand` returns a value; the tool's root is `defineTool({ name, version, level, commands: [...], groups:
 [...], guides })`, which also adds `schema`, `skills show`, `--json`, `--input` and, for destructive commands,
-`--commit`/`--plan-digest`. The handler's error channel is typed: it can only fail with the declared error classes
+`--commit`/`--plan-digest` (a 1.4 document lists them, as reserved names). The handler's error channel is typed: it can only fail with the declared error classes
 (or defects, mapped to `INTERNAL`), so `errors` in the self-description is exact by construction. Constraint names
 are field names of `input` (or operand names), checked by the type of `requires`/`forbids`/`atMostOne`.
 
@@ -219,12 +219,17 @@ with no value, is `USAGE` with `field` `--input` (spec 10.2), raised by the argv
    test round-trips every path of the examples and one with a quote, a backslash and a comma in the key.
 9. **The 1.4 form.** A tool that declares 1.4 maps the same declarations, and one serializer writes the document of
    spec 9 (approaches/implementation.md §8): it omits every member at its default and the options and codes the
-   document implies, and prints compact JSON. It collects the shared options from the declarations, an option with
-   the same definition on two or more commands going into the tree's `options` and each command naming it. The
-   lifted `schemas` of item 6 are served by `schema <path> --schemas --json`, holding the schemas the command's refs
-   reach and those they reference, and the command document has no `schemas`, `path`, `input.schemaRef` or
-   `input.option`. The fragment schema of item 1 is not published: a reader derives it from the options (spec
-   9.9.2), and `defineTool` keeps using it to decode documents. `--help --json` is refused with `USAGE` (spec 4.4.1).
+   document implies (`--json`, `--input` with `input`, `--fields` with `fields`; `USAGE`, its registered finer
+   replacements, `INTERNAL` and the feature codes), and prints compact JSON. A destructive command lists `--commit`
+   and `--plan-digest` as reserved names, since they are not implied. It collects the shared options from the
+   declarations, an option with the same definition on two or more commands going into the tree's `options` and each
+   command naming it. The lifted `schemas` of item 6 are served by `schema <path> --schemas --json`, holding the
+   schemas the command's refs reach and those they reference, and the command document has no `schemas`, `path`,
+   `input.schemaRef`, `input.option` or `validators[].rejects`. The same answer holds the fragment schema of item 1
+   under the name `Input` when the command has `input` (a reader may derive it from the options instead, spec 9.9.2;
+   `defineTool` keeps using it to decode documents), and `rejects`, one list per declared validator in order (§3.3).
+   `--help --json` and `--version --json` are refused with `USAGE`, `field` `--help` or `--version` (spec 4.4.1), after
+   the path is resolved, so an unknown word is `UNKNOWN_COMMAND`.
 
 ### 3.3 Schema → self-description mapping
 
@@ -272,7 +277,8 @@ Any other check, such as `Schema.makeFilter` with a custom predicate, a union of
 one field against another, is outside the profile. The generator does not publish it in `domain`. It must be
 declared as a validator with `validator({ arguments, code, description, rejects }, predicate)`. The validator runs
 after the argument schema, and its `rejects` invocations are part of the tool's own tests and of the checker's
-L1.validators. An undeclared check outside the profile fails the build. The check names above follow Effect 4.1's
+L1.validators; a 1.4 tool publishes them in the `--schemas` answer (spec 9.9.3), not in the command document. An
+undeclared check outside the profile fails the build. The check names above follow Effect 4.1's
 `Schema` module; a test pins the exact combinators, as for the numeric codec in §3.2.
 
 ### 3.4 The default helper
@@ -296,7 +302,8 @@ at run time is not `defaulted`: the field is `optionalKey` with a `defaultNote`,
 - `operand(name, schema, opts)` declares one operand; `variadic: true` takes an `Array`. In `--input` they are the
   `operands` array, decoded with a tuple schema built from the operand list, each element in its fragment encoding
   (spec 10.5): a `json` operand takes any JSON value.
-- `effect: { kind: "destructive", … }` makes `defineTool` add `--commit` and `--plan-digest`, refuse `batch`, and
+- `effect: { kind: "destructive", … }` makes `defineTool` add `--commit` and `--plan-digest` (listed in a 1.4 document),
+  refuse `batch`, and
   require the handler to have the shape `{ plan: (args) => Effect<Plan>, commit: (args, plan) => Effect<Report> }`.
   `plan` runs with no write capability in its environment (no `FileSystem` write layer, no store writer), so a
   preview cannot make an effect (spec 11.2). The library computes the digest (JCS + SHA-256), prints the preview

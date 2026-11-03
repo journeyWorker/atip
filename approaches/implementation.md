@@ -162,11 +162,13 @@ writing:
 | command | `async` false; an empty `operands`, `options`, `errors`, `constraints` or `validators` |
 | tree entry | `kind` `command` (a group's entry says `group`); `path` is never written (the words of `command`) |
 
-The same serializer omits what the document implies (spec 9.5): the options `--json`, `--input` (with `input`),
-`--fields` (when an output declares `fields`), `--commit` and `--plan-digest` (a `destructive` command of an L2 tree),
-and the codes `USAGE`, `INTERNAL`, the `INPUT_*` codes with `input`, `BATCH_INCOMPLETE`, `PLAN_STALE`,
-`OPERATION_REUSED` and `CURSOR_INVALID` with the feature that raises them. The tool still registers every code and
-still enforces every option; only the document leaves them out.
+The same serializer omits what the document implies (spec 9.5): the options `--json`, `--input` (with `input`) and
+`--fields` (when an output declares `fields`), and the codes `USAGE`, the finer replacements of `USAGE` the tool
+registers (spec 7.3.2, such as `OPTION_INVALID`), `INTERNAL`, the `INPUT_*` codes with `input`, `BATCH_INCOMPLETE`,
+`PLAN_STALE`, `OPERATION_REUSED` and `CURSOR_INVALID` with the feature that raises them. `--commit` and
+`--plan-digest` are not implied: a destructive command lists them, so that the document alone says whether a bare run
+acts or previews. The tool still registers every code and still enforces every option; only the document leaves out
+what it implies.
 
 **Compact serialization.** Print the document with no whitespace outside strings, members in the order the model
 declares, then one newline (spec 5.1). Do it for every envelope and stream line, not only for `schema`, and compare
@@ -184,17 +186,28 @@ be named by some command (Annex S2 rule 17), which holds by construction when th
 the paging surface in the command document alone, and `CURSOR_INVALID` is implied by the listed `--cursor`. A
 `--limit` that is identical on several commands is shared like any other option.
 
+**Shared names and reserved names.** A string in `options` names a tree option or a reserved option (spec 4.5). A
+reserved option's shape is fixed (Annex S2 rule 8), so a command lists `--commit`, `--plan-digest`, `--limit`,
+`--cursor`, `--all` and the like by their bare names, with no tree entry; the serializer writes the name when the
+option is the reserved one unchanged, and an object only for a command's own option. Never list an option the document
+implies, neither as an object nor as a name (Annex S2 rule 17).
+
 **How a caller rebuilds the full option set and the fragment schema** (spec 9.5, 9.9.2):
 
 1. Read the tree once per tool (`<tool> schema --json`) and keep its `options` by name.
 2. Read the command document (`<tool> schema <PATH> --json`) and give every absent member its default.
 3. Start the option set with the implied reserved options, each with its shape from spec 4.5. Then, for each entry of
-   `options` in order: a string is the tree option of that name (a name the tree lacks leaves the option out, spec
-   15.4), an object is that option. The errors of the command are `errors` plus the implied codes.
-4. For the input fragment schema, build an object with `additionalProperties: false` and no `required`. `operands` is
+   `options` in order: a string is the tree option of that name, else the reserved option of that name with its fixed
+   shape (a name that is neither leaves the option out, spec 15.4), an object is that option. The errors of the
+   command are `errors` plus the implied codes.
+4. For the input fragment schema (or read `Input` from the schemas answer, item 5), build an object with
+   `additionalProperties: false` and no `required`. `operands` is
    an array of the operand values, at least one, at most one per operand unless the last is variadic. For every
    option of the set that is not flag-only, add a property with the camelCase name that admits the `--input` values
    of its valueType (spec 9.7.2); an array of them for a repeatable option. Domains are checked later, at step 6 of
    spec 10.7.
-5. Ask `<tool> schema <PATH> --schemas --json` only to validate or decode `data`, and resolve each
-   `#/schemas/<Name>` in its `schemas`; a caller that only builds invocations never needs it.
+5. Ask `<tool> schema <PATH> --schemas --json` to validate or decode `data`, to test a validator, or to take the
+   input fragment schema without deriving it: when the command has `input`, the answer's `schemas` holds it under the
+   name `Input` (spec 9.9.3). Resolve each `#/schemas/<Name>` in `schemas`. The answer's `rejects` has one list per
+   validator, in the command document's `validators` order; the command document itself has no `rejects`. A caller that
+   only builds invocations never needs the answer.

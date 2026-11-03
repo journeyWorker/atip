@@ -381,28 +381,34 @@ registries and streams keep their shape. No section was renumbered, so every cit
 | Rule | Spec | Strength for a 1.4 tool |
 |---|---|---|
 | Every JSON document is compact, without whitespace outside strings: each envelope, `schema` answer and stream line | 5.1 | MUST |
-| `--help` prints text only; with `--json` it refuses `USAGE`, `field` `--help`, `hint` naming `schema` | 4.4.1 | MUST |
-| A command document has no `schemas`, `path`, `input.schemaRef` or `input.option`; `schema <path> --schemas --json` answers `kind: schemas` with exactly the schemas the refs reach; without a path or with a group it refuses `USAGE`, `field` `--schemas` | 9.5, 9.9.3 | MUST |
-| The input fragment schema is derived from the full option set, not declared | 9.9.2, Annex S2 rule 10 | MUST |
-| Options that commands share are defined in the tree's `options` and named by the commands; a name resolves to a definition, every definition is named by a command | 9.3, 9.5, Annex S2 rule 17 | MUST (which options to share is the tool's choice, approaches/implementation.md §8) |
-| The reserved options and codes the document implies are not listed | 9.5, Annex S2 rule 4 | MUST |
+| `--help` prints text only; with `--json` it refuses `USAGE`, `field` `--help`, `hint` naming `schema`, after the path is resolved (an unknown word is `UNKNOWN_COMMAND`); `--version --json` refuses `USAGE`, `field` `--version`, `hint` `<tool> --version` | 4.4.1 | MUST |
+| A command document has no `schemas`, `path`, `input.schemaRef`, `input.option` or `validators[].rejects`; `schema <path> --schemas --json` answers `kind: schemas` with exactly the schemas the refs reach, plus `Input` (the derived fragment) when the command has `input`, plus `rejects` (one list per validator, in the document's order); without a path or with a group it refuses `USAGE`, `field` `--schemas` | 9.5, 9.8.2, 9.9.3 | MUST |
+| The input fragment schema is derived from the full option set, not declared; it is published only as `Input` in the schemas answer | 9.9.2, 9.9.3, Annex S2 rules 2, 10 | MUST |
+| Options that commands share are defined in the tree's `options` and named by the commands; a name resolves to a tree option or to a reserved option of fixed shape; every definition is named by a command | 9.3, 9.5, Annex S2 rule 17 | MUST (which options to share is the tool's choice, approaches/implementation.md §8) |
+| The options `--json`, `--input` (with `input`) and `--fields` (with an output's `fields`) and the codes `USAGE`, its registered finer replacements (7.3.2), `INTERNAL` and the feature codes are implied and not listed; `--commit` and `--plan-digest` are listed whenever offered, as a name, so the document says whether a bare run acts | 9.5, Annex S2 rules 4, 17 | MUST |
 | A member whose value is its default is absent | 9.5, Annex S2 rule 17 | MUST |
 
 **How a tool moves.** Put the omission and the compact printing in the one serializer that writes the
 self-description and the envelopes (approaches/implementation.md §8; approaches/rust.md §5; approaches/typescript.md
 §3.2). Generate the tree's `options` from the commands' identical option definitions and replace each by its name in
 the commands. Split what `schemas` held into the `--schemas` answer, keeping the `#/schemas/<Name>` refs as they are.
-Stop emitting `path`, `input.schemaRef` and `input.option`, and make `--help --json` refuse. Set the contract constant
+Stop emitting `path`, `input.schemaRef`, `input.option` and `validators[].rejects` (move the `rejects` lists into the
+schemas answer), add `Input` to it, list `--commit` and `--plan-digest` on every destructive command, and make
+`--help --json` and `--version --json` refuse. Set the contract constant
 to `"1.4"` and the fixture's `contractVersion` to `"1.4"`; the checker then runs `L0.compact` as a MUST and the
 1.4 rows `L1.schemas` and `L1.help-json` (approaches/checker.md §6).
 
 **A caller.** Read the tree once per tool and keep its `options`. For a command, read its document and apply every
-default to an absent member. The option set is the reserved options the document implies, the tree options it names
-and its own options; an unknown name leaves that option out. A command's errors are its `errors` and the implied
-codes. Ask `schema <path> --schemas --json` only to validate or decode `data`. A caller written for 1.3 fails
-closed on a 1.4 tree, group or command document as a wrong shape, since members its minor requires are absent (spec
-15.8), and reads every other 1.4 document, which is only compact. A caller moving to 1.4 reads both forms: a 1.3
-document as it always did, a 1.4 document as above.
+default to an absent member. The option set is the reserved options the document implies, the options it names (a
+tree option, else a reserved one of fixed shape) and its own options; an unknown name leaves that option out. A
+destructive command acts on a bare run unless it lists `--commit`, so read the list, never assume it. A command's
+errors are its `errors` and the implied codes. Ask `schema <path> --schemas --json` to validate or decode `data`, to
+take the input fragment schema as `Input` instead of deriving it, or to read a validator's `rejects`. Validate
+against the schemas of the release tag the caller was built for (spec 15.6): the current files cover every minor and
+are looser. A caller written for 1.3 that validates against its release's schemas rejects a 1.4 tree, group or
+command document; one that does not validate reads each member left out as the 1.3 default or as a feature not
+offered, and so uses less of the tool, never more (spec 15.8). It reads every other 1.4 document, which is only
+compact. A caller moving to 1.4 reads both forms: a 1.3 document as it always did, a 1.4 document as above.
 
 **Size.** The point of the change is the reader: one agent reads the tree once and a command document each time it
 calls. The canon command `finding close` is 10,876 bytes pretty-printed in the 1.3 form, 6,732 bytes compact, and

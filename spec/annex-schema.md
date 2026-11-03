@@ -31,12 +31,13 @@ S2 lists the rules every `schema` answer satisfies beyond `schema/schema-doc.sch
 ## S2. Self-description rules
 
 Every `schema` answer satisfies the rules below. A command's arguments are its operands and its full option set: in a
-1.4 document its own options, the tree options it names and the reserved options it implies (spec 9.5).
+1.4 document its own options, the tree and reserved options it names and the reserved options it implies (spec 9.5).
 
 1. A group's children extend its `command` by one word; before 1.4, `command` also equals `path` joined by one space.
 2. Every `schemaRef`, `eventRef`, `input.schemaRef` and `input.argumentsRef` names a member of `schemas` (by
    membership: `false` is a valid schema): in a 1.4 document the schemas answer's, which holds exactly the schemas the
-   refs reach (spec 9.9.3); before 1.4 the command document's. Every member compiles under draft 2020-12; no two
+   refs reach, the derived `Input` when the command has `input`, and one `rejects` list per validator (spec 9.9.3);
+   before 1.4 the command document's. Every member compiles under draft 2020-12; no two
    outputs share a `schemaRef`.
 3. Defaults, `in` values and domains are valid: an `enum` default is in `possibleValues`; an `in` value is a valid,
    normalised value of its argument within its `domain`, never on a switch or a count; a `domain` keeps to its
@@ -62,7 +63,8 @@ Every `schema` answer satisfies the rules below. A command's arguments are its o
     satisfies `required`, `constraints` and `argumentsRef`; an inline `--input` word is framed, validated and merged
     as spec 10.7 says.
 13. A validator names arguments of the command; its `code` is in `errors` (or implied) with exit 2; each `rejects`
-    invocation satisfies `required`, `constraints` and the domains, and is not in `examples`.
+    invocation (in a 1.4 document, from the schemas answer) satisfies `required`, `constraints` and the domains, and
+    is not in `examples`.
 14. In an `errors` answer a code appears once, a core code has its exit and retryability (spec 7.3.1), a reason
     appears once within its code, and in a document that declares 1.3 or later every code follows spec 7.2.3; in a
     `warnings` answer a code appears once.
@@ -70,5 +72,6 @@ Every `schema` answer satisfies the rules below. A command's arguments are its o
     declared map path by one key (Annex F1, F3).
 16. A document carries only what its declared minor defines (spec 15.5).
 17. In a 1.4 document no member has its default value (spec 9.5); every option name in a command's `options` names
-    a tree option, every tree option is named by at least one command, and a name and an object never give the same
+    a tree option or a reserved one that the document does not imply, every tree option is named by at least one
+    command, and a name and an object never give the same
     option twice.

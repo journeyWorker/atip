@@ -188,14 +188,24 @@
       "additionalProperties": false
     },
     "schemas": {
-      "description": "The JSON Schemas a command document's refs reach, and nothing else (spec 9.9.3).",
+      "description": "The JSON Schemas a command document's refs reach, the derived `Input` fragment schema when the command has `input`, and the `rejects` of its validators (spec 9.9.3).",
       "x-atip-since": "1.4",
       "type": "object",
       "required": ["kind", "command", "schemas"],
       "properties": {
         "kind": { "const": "schemas" },
         "command": { "$ref": "#/$defs/commandId" },
-        "schemas": { "$ref": "#/$defs/schemaMap" }
+        "schemas": { "$ref": "#/$defs/schemaMap" },
+        "rejects": {
+          "description": "One list per validator of the command document, in its order: complete invocations that satisfy every declared requirement, constraint and domain and that the validator refuses (spec 9.8.2).",
+          "x-atip-since": "1.4",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          }
+        }
       },
       "additionalProperties": false
     },
@@ -236,13 +246,13 @@
           "default": []
         },
         "options": {
-          "description": "The command's own options, and the names of the tree options it shares (since 1.4). A 1.4 document does not list the reserved options its document implies (spec 9.5); an earlier document lists every option the command accepts.",
+          "description": "The command's own options, and the names of the tree options or reserved options it names (since 1.4). A 1.4 document does not list the reserved options its document implies (spec 9.5); an earlier document lists every option the command accepts.",
           "type": "array",
           "items": {
             "oneOf": [
               { "$ref": "#/$defs/option" },
               {
-                "description": "The name of a tree option (spec 9.3).",
+                "description": "The name of a tree option (spec 9.3) or of a reserved option (spec 4.5) the document does not imply.",
                 "x-atip-since": "1.4",
                 "$ref": "#/$defs/optionName"
               }
@@ -495,7 +505,7 @@
     "validator": {
       "description": "A stateless check outside the domain profile and the constraint vocabulary (spec 9.8.2).",
       "type": "object",
-      "required": ["arguments", "code", "description", "rejects"],
+      "required": ["arguments", "code", "description"],
       "properties": {
         "arguments": {
           "type": "array",
@@ -506,7 +516,8 @@
         "code": { "$ref": "error.schema.json#/$defs/code" },
         "description": { "type": "string", "minLength": 1 },
         "rejects": {
-          "description": "Complete invocations that satisfy every declared requirement, constraint and domain and that this validator refuses.",
+          "description": "Complete invocations that satisfy every declared requirement, constraint and domain and that this validator refuses. Before 1.4 only, and then required: since 1.4 the schemas answer holds them (spec 9.9.3).",
+          "x-atip-until": "1.3",
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "minItems": 1
@@ -535,7 +546,12 @@
           "then": { "properties": { "default": { "$ref": "#/$defs/defaultNumber" } } }
         },
         {
-          "if": { "properties": { "valueType": { "enum": ["string", "path", "enum"] } } },
+          "if": {
+            "anyOf": [
+              { "not": { "required": ["valueType"] } },
+              { "required": ["valueType"], "properties": { "valueType": { "enum": ["string", "path", "enum"] } } }
+            ]
+          },
           "then": { "properties": { "default": { "$ref": "#/$defs/defaultString" } } }
         }
       ]

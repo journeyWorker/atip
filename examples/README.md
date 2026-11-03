@@ -101,7 +101,7 @@ ones that are easiest to miss:
 | a `number` domain bound of `1e20`; a bound that is not finite | `schema-command-acme-filter-test.json` (`--weight`); `invalid/schema-domain-number-bound-not-finite.json` | accepted; rejected |
 | a `format: email` domain and the value `not-an-email` | `input-acme-member-tag-format-annotation.json` | accepted: `format` is an annotation (Annex V1) |
 | a numeric string in a document against an integer `argumentsRef` | `input-acme-member-tag-numeric.json` | accepted (the argument object has numbers) |
-| a validator that `argumentsRef` also states; a validator witness that is also an example | `schema-command-acme-member-tag.json` (`TAG_INVALID`); `invalid/schema-validator-rejects-is-example.json` | accepted; rejected |
+| a validator that `argumentsRef` also states; a validator witness that is also an example | `schema-command-acme-member-tag.json` (`TAG_INVALID`, its `rejects` in `schema-schemas-acme-member-tag.json`); `invalid/schema-validator-rejects-is-example.json` | accepted; rejected |
 | an optional variadic operand defaulting to an array, absent; the same without the default | `schema-command-acme-lint.json`, `input-acme-lint-empty.json`; `invalid/schema-example-variadic-without-default.json` | accepted; rejected |
 | the argv example `acme filter test 7`; `acme member tag 0` | `invalid/schema-example-outside-domain-json.json`, `invalid/schema-example-member-tag-zero.json` | rejected by the domain |
 | patterns outside the form (`.`, lookahead, `\w`, top-level `|`, no anchors, `&&` or `~~` in a class), refused by Rust's size limit, or not recorded | `invalid/schema-domain-pattern-*.json` | rejected |
@@ -233,14 +233,19 @@ a document that declares 1.4. acme declares 1.4 and every acme file that declare
 rules of 1.0-1.3 that declare 1.3 (`invalid/*-acme-*`): they are held to their own minor, against the 1.4 command
 documents, trees and schemas answers of acme, which `scripts/check.ts` reads in whatever minor they are.
 
-**Pairing.** A tool's tree is `schema-tree-<tool>.json`; it states the tool's `level` (spec 11.4, which fixes the
-options a destructive command implies) and the options its commands share. A command's document is
+**Pairing.** A tool's tree is `schema-tree-<tool>.json`; it states the tool's `level` (spec 11.4) and the options its commands
+share. A command's document is
 `schema-command-<tool>-<command words joined by ->.json`, and the JSON Schemas its refs name are in
 `schema-schemas-<tool>-<command words joined by ->.json` (`schema <PATH> --schemas --json`, spec 9.9.3): exactly the
-schemas the refs reach, directly and through `#/schemas/<Name>`, nothing else. Refs resolve there; the report and stream
-examples of a 1.4 tool are validated against that answer. The fragment schema of `--input` is not in it: the checker
-derives it from the command's full option set (the implied reserved options, the tree options it names and its own,
-defaults applied; `deriveFragment` in `scripts/check.ts`, spec 9.9.2), and every rule of Annex S2 runs against that set.
+schemas the refs reach, directly and through `#/schemas/<Name>`, the derived fragment schema of `--input` as `Input` when
+the command has `input`, and `rejects`, one list per validator in the command document's order (the invocations a
+validator refuses, no longer in the command document). Refs resolve there; the report and stream examples of a 1.4 tool
+are validated against that answer, and so are the `rejects` (Annex S2 rule 13). The checker derives the fragment schema
+from the command's full option set (the implied reserved options, the tree and reserved options it names and its own,
+defaults applied; `deriveFragment` in `scripts/check.ts`, spec 9.9.2), requires `Input` to equal it, and runs every rule
+of Annex S2 against that set. A command that names a reserved option (`"dry-run"` in `acme page label`) needs no tree
+entry: its shape is fixed (Annex S2 rule 8). acme is L1 and has no destructive command, so nothing here lists `commit`
+or `plan-digest`; a 1.4 document lists them whenever the command offers them (spec 9.5).
 
 | Case | File | Result |
 |---|---|---|
@@ -251,16 +256,24 @@ defaults applied; `deriveFragment` in `scripts/check.ts`, spec 9.9.2), and every
 | a pretty-printed 1.4 document; a stream line with whitespace | `invalid/schema-command-acme-member-show-not-compact.json`, `invalid/stream-acme-build-not-compact.ndjson` | rejected (spec 5.1) |
 | a member at its default: `"required":false`; `"repeatable":true` on a count; `"kind":"command"` on a tree entry | `invalid/schema-command-acme-member-tag-option-required-false.json`, `invalid/schema-command-acme-build-count-repeatable.json`, `invalid/schema-tree-acme-entry-kind-command.json` | rejected (Annex S2 rule 17) |
 | a member only 1.0-1.3 carry: `schemas` or `path` in a command document, `path` on a tree entry | `invalid/schema-command-acme-member-show-embeds-schemas.json`, `invalid/schema-command-acme-member-show-has-path.json`, `invalid/schema-tree-acme-entry-path.json` | rejected (Annex S2 rule 16) |
-| an implied option listed (`json`); an implied code listed (`USAGE`) | `invalid/schema-command-acme-member-show-lists-json.json`, `invalid/schema-command-acme-member-show-lists-usage.json` | rejected (spec 9.5, Annex S2 rule 4) |
-| an option name the tree does not define; an option given as a name and in full; a tree option no command names | `invalid/schema-command-acme-member-show-unknown-option-name.json`, `invalid/schema-command-acme-member-roster-option-twice.json`, `invalid/schema-tree-acme-option-unused.json` | rejected (Annex S2 rule 17) |
+| an implied option listed, as an object or as a name (`json`); an implied code listed (`USAGE`) | `invalid/schema-command-acme-member-show-lists-json.json`, `invalid/schema-command-acme-member-show-names-json.json`, `invalid/schema-command-acme-member-show-lists-usage.json` | rejected (spec 9.5, Annex S2 rule 4) |
+| a reserved option named, not listed in full (`"dry-run"`, its shape fixed), and its `dryRun` key in the derived `Input` | `schema-command-acme-page-label.json`, `schema-schemas-acme-page-label.json` | accepted |
+| an option name that is neither a tree option nor a reserved one (`region`); an option given as a name and in full; a tree option no command names | `invalid/schema-command-acme-member-show-unknown-option-name.json`, `invalid/schema-command-acme-member-roster-option-twice.json`, `invalid/schema-tree-acme-option-unused.json` | rejected (Annex S2 rule 17) |
 | an `input.example` with a key the derived fragment does not allow | `invalid/schema-command-acme-member-tag-input-example-unknown-key.json` | rejected (spec 9.9.2, Annex S2 rule 7) |
 | a schemas answer missing a schema a ref reaches (`Owner`, through `MemberRow`); one holding a schema no ref reaches | `invalid/schema-schemas-acme-member-show-missing-schema.json`, `invalid/schema-schemas-acme-member-show-extra-schema.json` | rejected (spec 9.9.3, Annex S2 rule 2) |
+| a 1.4 command document whose validator still carries `rejects` | `invalid/schema-command-acme-member-tag-validator-rejects.json` | rejected (spec 9.8.2, Annex S2 rule 16) |
+| a schemas answer without `Input` for a command with `input`; one whose `Input` differs from the derived fragment schema | `invalid/schema-schemas-acme-member-tag-without-input.json`, `invalid/schema-schemas-acme-member-tag-input-differs.json` | rejected (spec 9.9.2, 9.9.3, Annex S2 rule 2) |
+| a schemas answer without the `rejects` of a command's validator; one whose `rejects` line is also an example | `invalid/schema-schemas-acme-member-tag-without-rejects.json`, `invalid/schema-schemas-acme-member-tag-rejects-is-example.json` | rejected (spec 9.9.3, Annex S2 rules 2 and 13) |
 | a schemas answer, or an option name, in a document that declares 1.3 | `invalid/schema-schemas-acme-member-show-in-1-3.json`, `invalid/schema-command-acme-member-roster-1-3-option-name.json` | rejected (Annex S2 rule 16) |
 | a 1.3 command document without `path`, or in the 1.4 form (an operand with its defaults left out) | `invalid/schema-command-acme-member-show-1-3-no-path.json`, `invalid/schema-command-acme-member-show-1-3-operand-defaults-left-out.json` | rejected: the schema no longer requires them, the checker does (spec 15.7) |
 
 The caller table of spec 15.4 reads an absent member as its default in a 1.4 self-description: a tree entry without
 `kind` is a command, an argument without `valueType` a string. The caller examples are therefore stated at 1.5, a minor
-later than the one this repository describes, and a caller of this minor reads them open (spec 15.6).
+later than the one this repository describes, and a caller of this minor reads them open (spec 15.6). Those that
+carry a command document or a tree are written in the 1.4 form too (compact, no `path`, no embedded `schemas`, no
+implied options or codes, no member at its default), because that is the form a later minor prints; only
+`caller-schema-command-acme-unknown-input-option.json` keeps the 1.3 form, since its purpose is an `input.option` value
+and a 1.4 document has no `input.option`.
 
 ## Plan digests
 

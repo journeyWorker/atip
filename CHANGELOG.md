@@ -5,42 +5,48 @@
 A minor (15.1): a small, compact self-description for agents, and distinct roles for `--help` and `schema` (D38). Its
 new MUSTs bind only documents that declare `meta.contractVersion` `"1.4"`; a tool that declares 1.0 to 1.3 stays
 conforming as that minor, held to that minor's release text (15.7). Envelopes, registries and stream lines keep their
-shape and are only compact. The tree, group and command documents change shape: a caller of 1.3 or earlier rejects
-them as a wrong shape (members its minor requires are absent) and never misreads them, which 15.1's MINOR row now
-allows for the self-description (15.8).
+shape and are only compact. The tree, group and command documents change shape, but every member 1.4 leaves out
+reads, when absent, as the earlier minor's default or as a feature not offered, so a caller of 1.3 or earlier uses
+less of the tool, never more; 15.1's MINOR row now allows exactly that for the self-description (15.8).
 
 - **Compact JSON (5.1).** Every JSON document a 1.4 tool prints has no whitespace outside strings (SHOULD before).
 - **`--help` and `schema` (4.4.1, 9).** `--help` is text for people; `schema` is the machine self-description. In 1.4
-  `--help --json` refuses with `USAGE`, `field` `--help` and a `hint` naming `schema`, so JSON mode always prints an
-  envelope; earlier minors MAY still answer it with the `schema` document. The root help line still points at
-  `schema`.
+  `--help --json` refuses with `USAGE`, `field` `--help` and a `hint` naming `schema` (after the path is resolved, so
+  an unknown word answers `UNKNOWN_COMMAND`), and `--version --json` refuses with a `hint` `<tool> --version`, so JSON
+  mode always prints an envelope; earlier minors MAY still answer `--help --json` with the `schema` document.
 - **The command document is the call surface (9.5, 9.9.3).** It embeds no JSON Schema. `schema <PATH> --schemas`
-  answers with `kind: "schemas"` and exactly the schemas the command's refs reach; refs keep the form
-  `#/schemas/<Name>` and resolve there.
+  answers with `kind: "schemas"`: exactly the schemas the command's refs reach (refs keep the form `#/schemas/<Name>`
+  and resolve there), the derived fragment schema as `Input`, and the validators' `rejects`, which are test material
+  rather than the call surface.
 - **The fragment schema is derived (9.9.2).** It is no longer declared as `input.schemaRef`: the options and 9.7.2
-  determine it, so a declared copy could only disagree.
+  determine it, so a declared copy could only disagree. The `--schemas` answer carries it, so a caller need not
+  derive it.
 - **Shared options are defined once (9.3, 9.5).** The tree's `options` holds options that commands share; a command
-  names them. A command that needs another `required`, default or enum subset declares the option in full.
+  names them; a name may also be a reserved option's (4.5), whose shape is fixed. A command that needs another
+  `required`, default or enum subset declares the option in full.
 - **Implied options and codes are not listed (9.5, 7.3.1).** `--json` always; `--input` with `input`; `--fields` with
-  an output's `fields`; `--commit` and `--plan-digest` for a destructive command of an L2 tool. Codes: `USAGE`,
-  `INTERNAL`, `INPUT_*` with `input`, `BATCH_INCOMPLETE` with a batch, `PLAN_STALE` with `--commit`,
-  `OPERATION_REUSED` with `--operation`, `CURSOR_INVALID` with `--cursor`. Paging options stay listed (a per-command
+  an output's `fields`. Codes: `USAGE` and its registered finer replacements (7.3.2), `INTERNAL`, `INPUT_*` with
+  `input`, `BATCH_INCOMPLETE` with a batch, `PLAN_STALE` with `--commit`, `OPERATION_REUSED` with `--operation`,
+  `CURSOR_INVALID` with `--cursor`. `--commit` and `--plan-digest` are listed whenever offered, so the command document
+  alone says whether a bare run of a destructive command acts or previews; paging options stay listed (a per-command
   default and bound; `--all` is optional).
 - **Defaults are absent (9.5).** `required`, `repeatable`, `variadic`, `flagOnly`, `async` false; `default` null
   (false for a switch, 0 for a count); `valueType` string; `valueName` the upper-cased name; an output's `kind` report
   and `schemaVersion` 1.0; `input.batch` false; empty lists. `path` (the words of `command`), `input.option` and a tree
   entry's `kind: "command"` are gone.
-- **Versioning (15.1, 15.4, 15.6, 15.7, 15.8).** The MINOR row allows a self-description change that earlier callers
-  reject rather than misread; absent members have their defaults; the published schemas cover every minor
-  (`x-atip-until: "1.3"` on members 1.4 no longer carries, `default` on members it omits at their default); 15.7 gains
-  the 1.0-1.3 row; 15.8 is "1.4 and callers". Annex S2 rules 1, 2, 4, 8, 10, 13 and 14 read both forms; rule 17 is
+- **Versioning (15.1, 15.4, 15.6, 15.7, 15.8).** The MINOR row allows a self-description change whose left-out
+  members read, when absent, as the earlier default or a feature not offered; absent members have their defaults; the
+  published schemas cover every minor (`x-atip-until: "1.3"` on members 1.4 no longer carries, `default` on members it
+  omits at their default), and a caller validates against the schemas of its own release; 15.7 gains the 1.0-1.3 row;
+  15.8 is "1.4 and callers". Annex S2 rules 1, 2, 4, 8, 10, 13 and 14 read both forms; rule 17 is
   new.
 - **Schemas, examples and `scripts/check.ts`.** `schema-doc.schema.json` covers 1.0-1.4. `check.ts` knows 1.4:
-  compactness, absent defaults, implied options and codes, shared option names, the derived fragment schema, and
-  refs resolved in the `--schemas` answer; documents of 1.0-1.3 must still carry the members the schema no longer
-  requires. acme declares 1.4, stored compact, with one `schema-schemas-acme-<command>.json` per command; canon and
-  ledger stay 1.0 and tally 1.1; `caller-*` examples model a later minor as 1.5. Twenty new invalid examples break the
-  1.4 rules one by one.
+  compactness, absent defaults, implied options and codes, shared and reserved option names, the derived fragment schema
+  and the `--schemas` answer (refs resolved there, `Input` equal to the derivation, `rejects`); documents of 1.0-1.3
+  must still carry the members the schema no longer requires. acme declares 1.4, stored compact, with one
+  `schema-schemas-acme-<command>.json` per command; canon and ledger stay 1.0 and tally 1.1; `caller-*` examples model a
+  later minor as 1.5. Twenty-six new invalid examples break the 1.4 rules one by one; `caller-*` self-description
+  examples are in the 1.4 form.
 - **Approaches.** `migration.md` §9 (From 1.3 to 1.4); `checker.md`: `L0.compact` is M for a 1.4 claim, new rows
   `L1.schemas` and `L1.help-json`, the full option set and derived fragment where rows read them; `implementation.md`
   §8 (producing the 1.4 self-description); `rust.md` and `typescript.md` describe the 1.4 serializer.
@@ -51,29 +57,29 @@ and tally's 1.4 forms are computed from their 1.0/1.1 examples by the 1.4 rules 
 
 | Document | before 1.4, pretty | before 1.4, compact | 1.4 form | its `--schemas` answer |
 |---|---|---|---|---|
-| canon `finding close` | 10,876 | 6,732 | 3,088 | 1,672 |
-| canon `finding list` | 5,816 | 3,441 | 1,396 | 895 |
-| canon `purge` | 9,396 | 5,793 | 1,759 | 2,598 |
-| canon `skills show` | 2,229 | 1,538 | 884 | 121 |
+| canon `finding close` | 10,876 | 6,732 | 3,088 | 1,831 |
+| canon `finding list` | 5,816 | 3,441 | 1,396 | 1,069 |
+| canon `purge` | 9,396 | 5,793 | 1,714 | 2,837 |
+| canon `skills show` | 2,229 | 1,538 | 884 | 272 |
 | canon tree | 2,404 | 1,635 | 2,060 (holds the 667-byte shared options) | — |
-| ledger `entry list` | 3,911 | 2,392 | 1,044 | 683 |
-| tally `entry list` | 3,890 | 2,379 | 1,041 | 649 |
-| acme `build` | 3,780 | 2,299 | 990 | 703 |
+| ledger `entry list` | 3,911 | 2,392 | 1,044 | 834 |
+| tally `entry list` | 3,890 | 2,379 | 1,041 | 799 |
+| acme `build` | 3,780 | 2,299 | 990 | 841 |
 | acme `deploy start` | 2,653 | 1,836 | 1,084 | 530 |
 | acme `deploy status` | 2,368 | 1,488 | 800 | 449 |
-| acme `filter test` | 4,853 | 2,903 | 1,407 | 712 |
-| acme `lint` | 3,544 | 2,135 | 730 | 842 |
+| acme `filter test` | 4,853 | 2,903 | 1,407 | 1,041 |
+| acme `lint` | 3,544 | 2,135 | 730 | 979 |
 | acme `member export` | 3,080 | 1,774 | 542 | 871 |
 | acme `member list` | 7,214 | 4,099 | 1,293 | 2,251 |
 | acme `member roster` | 2,476 | 1,469 | 547 | 561 |
 | acme `member show` | 3,316 | 1,801 | 590 | 1,094 |
-| acme `member tag` | 5,562 | 3,434 | 1,405 | 1,148 |
-| acme `page label` | 4,044 | 2,620 | 1,224 | 503 |
+| acme `member tag` | 5,562 | 3,434 | 1,354 | 1,483 |
+| acme `page label` | 4,044 | 2,620 | 1,234 | 781 |
 | acme tree | 3,891 | 2,409 | 1,928 | — |
 
 What an agent reads to call one command it knows by name (tree once, then the command document): canon
-`finding close` 8,367 → 5,148 bytes; acme `member tag` 5,843 → 3,333 bytes; acme's tree and all eleven command
-documents 28,267 → 12,540 bytes.
+`finding close` 8,367 → 5,148 bytes; acme `member tag` 5,843 → 3,282 bytes; acme's tree and all eleven command
+documents 28,267 → 12,499 bytes.
 
 ## 1.3.1 (2026-11-03)
 

@@ -309,7 +309,8 @@ outside that range fails generation. An identifier that can exceed it is a `Stri
 
 Checks outside the profile, such as a `value_parser` closure that checks a calendar date or a comparison of two
 arguments, are declared in the table as validators (spec 9.8.2): `Validator { arguments, code, description,
-rejects }`. The crate publishes them in `validators`, and its `constraints_hold` test runs every `rejects`
+rejects }`. The crate publishes the declarations in `validators` and, for a 1.4 tool, the `rejects` lists in the
+`--schemas` answer (spec 9.8.2, 9.9.3), not in the command document. Its `constraints_hold` test runs every `rejects`
 invocation through the real parser and handler entry point and asserts that it is refused with that code and
 nothing else fails first. canon's `--before` (RFC 3339 or `YYYY-MM-DD`) is the first such validator.
 
@@ -359,12 +360,17 @@ that is not flag-only (camelCase name; type from valueType in its encoded form, 
 
 **The 1.4 form.** A tool that declares 1.4 projects the same typed nodes, and one serializer writes the document of
 spec 9 (approaches/implementation.md §8). It omits every member at its default and the options and codes the document
-implies, and prints compact JSON. It collects the shared options from the nodes: an option with the same definition
-on two or more commands moves into the tree's `options`, and each command names it. The map above is no longer a
+implies (`--json`, `--input` with `input`, `--fields` with `fields`; `USAGE`, its registered finer replacements,
+`INTERNAL` and the feature codes), and prints compact JSON. `--commit` and `--plan-digest` are not implied: a
+`destructive` node lists them, as the reserved names, so that `SafetyArgs` is projected like any other reserved
+option. It collects the shared options from the nodes: an option with the same definition on two or more commands
+moves into the tree's `options`, and each command names it. The map above is no longer a
 member of the command document: `schema <path> --schemas --json` serves the schemas that the command's refs reach and
-those they reference, with the same lifting of `$defs`. No fragment schema is generated, since a reader derives it
-from the options (spec 9.9.2). `--help --json` is refused with `USAGE` (spec 4.4.1), so `schema` is the only JSON
-self-description.
+those they reference, with the same lifting of `$defs`, and also the fragment schema generated from the clap node, under
+the name `Input` when the command has `input`, and `rejects`, one list per validator in the order of `validators`
+(spec 9.9.3; the test of L1.schemas compares `Input` with a derivation from the options). `--help --json` and
+`--version --json` are refused with `USAGE`, `field` `--help` or `--version` (spec 4.4.1), after clap has resolved the
+path, so `tool bogus --help --json` is `UNKNOWN_COMMAND`; `schema` is the only JSON self-description.
 
 ## 6. `--input` in Rust
 
