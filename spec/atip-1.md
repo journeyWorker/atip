@@ -1,11 +1,12 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.4.2, release candidate**: a patch (15.1) that says how a caller writes none for a repeatable option in
-`--input` and that `--version --json` resolves its path first (Appendix A D40). Version 1.4.1, adopted 2026-11-04 after
-one round of independent review, is a patch that states the compactness rule as whitespace outside strings only, applies
-7.3.2's naming to every minor from 1.3, and words the MINOR row for replaced members (D39). Version 1.4.0, adopted
-2026-11-04 after two rounds of independent review, is a minor (15.1) that makes the self-description small and compact
-for agents and separates `--help` from `schema` (D38); 1.3.1 and 1.3.0 are described in D37 and D36.
+Status: **1.4.2**, adopted 2026-11-04 after one round of independent review: a patch (15.1) that says how a caller
+writes none for a repeatable option in `--input` and that `--version --json` resolves its path first (Appendix A D40).
+Version 1.4.1, adopted 2026-11-04 after one round of independent review, is a patch that states the compactness rule as
+whitespace outside strings only, applies 7.3.2's naming to every minor from 1.3, and words the MINOR row for replaced
+members (D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a minor (15.1) that makes
+the self-description small and compact for agents and separates `--help` from `schema` (D38); 1.3.1 and 1.3.0 are
+described in D37 and D36.
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
 (V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 

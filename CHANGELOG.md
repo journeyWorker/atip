@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.2 (unreleased)
+## 1.4.2 (2026-11-04)
 
 A patch (15.1) from implementer feedback on 1.4 (D40). No rule changes strength; `meta.contractVersion` stays
 `"1.4"`.
