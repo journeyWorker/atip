@@ -1,10 +1,11 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.4.0, release candidate**: a minor (15.1) that makes the self-description small and compact for agents
-(command documents without embedded JSON Schemas, shared options declared once, defaults omitted, compact JSON) and
-separates `--help` from `schema` (Appendix A D38). Version 1.3.1, adopted 2026-11-03, is a patch that aligns the
-checker's description with the reference checker (D37); 1.3.0, adopted 2026-11-03 after two rounds of independent
-review and three implementer reviews, restates the contract as a protocol (D36).
+Status: **1.4.0**, adopted 2026-11-04 after two rounds of independent review: a minor (15.1) that makes the
+self-description small and compact for agents (command documents without embedded JSON Schemas, shared options
+declared once, defaults omitted, compact JSON) and separates `--help` from `schema` (Appendix A D38). Version 1.3.1,
+adopted 2026-11-03, is a patch that aligns the checker's description with the reference checker (D37); 1.3.0, adopted
+2026-11-03 after two rounds of independent review and three implementer reviews, restates the contract as a protocol
+(D36).
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
 (V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 

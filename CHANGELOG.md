@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0 (unreleased)
+## 1.4.0 (2026-11-04)
 
 A minor (15.1): a small, compact self-description for agents, and distinct roles for `--help` and `schema` (D38). Its
 new MUSTs bind only documents that declare `meta.contractVersion` `"1.4"`; a tool that declares 1.0 to 1.3 stays
