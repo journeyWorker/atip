@@ -22,7 +22,8 @@
 //!   with `_` for `-`; an output's `kind` `report` and `schemaVersion` `1.0`; `input.batch` false; an empty list; a tree entry's
 //!   `kind` `command`. `path` is never written.
 //! - *What the document implies is left out*: the options `--json`, `--input` (with `input`) and `--fields` (when an output has
-//!   `fields`), which the model lists in their reserved shape and which must be in that shape; the codes `USAGE`, `INTERNAL`,
+//!   `fields`), which the model lists in their reserved kind (value type, `flagOnly`, no `required`, `repeatable` or default;
+//!   their placeholder and help never reach a document) and which must be of it; the codes `USAGE`, `INTERNAL`,
 //!   `INPUT_INVALID`, `INPUT_CONFLICT` and `INPUT_TOO_LARGE` with `input`, `BATCH_INCOMPLETE` with `input.batch`, `PLAN_STALE`
 //!   with `--commit`, `OPERATION_REUSED` with `--operation`, `CURSOR_INVALID` with `--cursor`, and the finer replacements of
 //!   `USAGE` the tool registers ([`Described::usage_replacements`]). `--commit` and `--plan-digest` are not implied: they stay
@@ -140,8 +141,10 @@ fn is_default_value_name(value_name: &str, name: &str) -> bool {
         })
 }
 
-/// Whether `option` is the reserved option of its name in its fixed shape, whatever its `help` (spec 4.5, Annex S2 rule 8).
-fn is_reserved_shape(option: &OptionDoc) -> bool {
+/// Whether `option` has the fixed shape of the reserved option of its name (spec 4.5, Annex S2 rule 8): its value type and
+/// `flagOnly`, and no `required`, `repeatable` or default of its own. What an option the document implies says besides is
+/// never written, so this is all that is compared for it.
+fn has_reserved_kind(option: &OptionDoc) -> bool {
     RESERVED_OPTIONS
         .iter()
         .find(|(name, _, _)| *name == option.name)
@@ -151,16 +154,22 @@ fn is_reserved_shape(option: &OptionDoc) -> bool {
                 && !option.required
                 && !option.repeatable
                 && default_is_implied(option.value_type, &option.default)
-                && option.short.is_none()
-                && option.default_note.is_none()
-                && option.env.is_none()
-                && option.domain.is_none()
-                && option.possible_values.is_none()
-                && option
-                    .value_name
-                    .as_deref()
-                    .is_none_or(|value_name| is_default_value_name(value_name, &option.name))
         })
+}
+
+/// Whether `option` is the reserved option of its name, unchanged, whatever its `help`: it can be listed by its bare name,
+/// which resolves to the fixed shape, so nothing else of it may differ (a `valueName` is the default one).
+fn is_reserved_shape(option: &OptionDoc) -> bool {
+    has_reserved_kind(option)
+        && option.short.is_none()
+        && option.default_note.is_none()
+        && option.env.is_none()
+        && option.domain.is_none()
+        && option.possible_values.is_none()
+        && option
+            .value_name
+            .as_deref()
+            .is_none_or(|value_name| is_default_value_name(value_name, &option.name))
 }
 
 // ------------------------------------------------------------------- the 1.4 views
@@ -442,6 +451,8 @@ struct GroupView<'a> {
     command: &'a str,
     summary: &'a str,
     commands: Vec<EntryView<'a>>,
+    #[serde(flatten)]
+    extensions: &'a BTreeMap<String, Value>,
 }
 
 /// One schema of a schemas answer: the command's own, or the derived fragment schema.
@@ -482,6 +493,8 @@ struct LegacyGroup<'a> {
     path: &'a [String],
     summary: &'a str,
     commands: Vec<&'a TreeEntry>,
+    #[serde(flatten)]
+    extensions: &'a BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -532,11 +545,15 @@ pub struct Described {
     minor: Minor,
     level: String,
     tree_extensions: BTreeMap<String, Value>,
+    group_extensions: BTreeMap<String, BTreeMap<String, Value>>,
     usage_replacements: Vec<String>,
     entries: Vec<TreeEntry>,
     commands: Vec<CommandDoc>,
     layout: Option<Layout>,
 }
+
+/// What a group or tree writes when the tool set no `x-` members of its own.
+static NO_EXTENSIONS: BTreeMap<String, Value> = BTreeMap::new();
 
 const SCHEMAS_PREFIX: &str = "#/schemas/";
 
@@ -577,6 +594,7 @@ impl Described {
             minor,
             level: level.into(),
             tree_extensions: BTreeMap::new(),
+            group_extensions: BTreeMap::new(),
             usage_replacements: Vec::new(),
             entries,
             commands,
@@ -598,6 +616,17 @@ impl Described {
     /// The tool's own members of the tree (`x-<tool>`, spec 9.10.2): a tool that filters its tree (spec 9.3) says so here.
     pub fn tree_extensions(mut self, extensions: BTreeMap<String, Value>) -> Self {
         self.tree_extensions = extensions;
+        self
+    }
+
+    /// The tool's own members of the group `command` (`x-<tool>`, spec 9.10.2), written beside the contract's own in its
+    /// document; none by default.
+    pub fn group_extensions(
+        mut self,
+        command: impl Into<String>,
+        extensions: BTreeMap<String, Value>,
+    ) -> Self {
+        self.group_extensions.insert(command.into(), extensions);
         self
     }
 
@@ -642,6 +671,7 @@ impl Described {
                 .and_then(|rest| rest.strip_prefix(' '))
                 .is_some_and(|word| !word.contains(' '))
         });
+        let extensions = self.group_extensions.get(command).unwrap_or(&NO_EXTENSIONS);
         Some(Document(match &self.layout {
             None => Body::LegacyGroup(LegacyGroup {
                 kind: "group",
@@ -649,12 +679,14 @@ impl Described {
                 path: &group.path,
                 summary: &group.summary,
                 commands: children.collect(),
+                extensions,
             }),
             Some(_) => Body::Group(GroupView {
                 kind: "group",
                 command: &group.command,
                 summary: &group.summary,
                 commands: children.map(EntryView).collect(),
+                extensions,
             }),
         }))
     }
@@ -780,7 +812,7 @@ fn slot_of(command: &CommandDoc, option: &OptionDoc) -> Result<Slot, Error> {
         let (command, option) = refused();
         return Err(Error::OptionWithoutFeature { command, option });
     }
-    if implied && !is_reserved_shape(option) {
+    if implied && !has_reserved_kind(option) {
         let (command, option) = refused();
         return Err(Error::ImpliedOptionChanged { command, option });
     }
@@ -899,14 +931,15 @@ fn reached_schemas(command: &CommandDoc) -> Result<BTreeSet<String>, Error> {
                 command: command.command.clone(),
                 reference: reference.to_string(),
             })?;
+        pending.push(name);
+    }
+    while let Some(name) = pending.pop() {
+        // `Input` is the derived fragment schema's name: no ref, direct or reached through another schema, takes it.
         if name == "Input" {
             return Err(Error::InputIsReserved {
                 command: command.command.clone(),
             });
         }
-        pending.push(name);
-    }
-    while let Some(name) = pending.pop() {
         if reached.contains(name) {
             continue;
         }
@@ -1561,5 +1594,117 @@ mod tests {
             document["constraints"][0],
             json!({ "rule": "atMostOne", "names": ["a", "b"], "x-acme": 1 })
         );
+    }
+
+    fn group_model(minor: Minor) -> Described {
+        let a = command("tool a");
+        let group = TreeEntry {
+            command: "tool".to_string(),
+            path: vec!["tool".to_string()],
+            kind: EntryKind::Group,
+            summary: "Tool commands.".to_string(),
+            effect: None,
+            extensions: BTreeMap::new(),
+        };
+        Described::new(minor, "L1", vec![group, entry(&a)], vec![a]).expect("a model")
+    }
+
+    #[test]
+    fn atip_crate14_44_an_implied_option_is_judged_by_its_kind_not_its_placeholder() {
+        let mut input = reserved("input");
+        input.value_name = Some("JSON|FILE|-".to_string());
+        input.help = "A document, a file or - for stdin.".to_string();
+        let mut run = feature_command();
+        let at = run
+            .options
+            .iter()
+            .position(|option| option.name == "input")
+            .expect("input");
+        run.options[at] = input;
+        let described = described(vec![run]).expect("an implied --input keeps its placeholder");
+        assert!(
+            !listed(&written(&described, "feature"))
+                .iter()
+                .any(|option| option == "input" || option["name"] == "input"),
+            "an implied option is not listed"
+        );
+        // The kind is still held: another value type, `required` or a default is a change.
+        for change in [
+            (|option: &mut OptionDoc| option.value_type = ValueType::Integer) as fn(&mut OptionDoc),
+            |option| option.required = true,
+            |option| option.default = json!("x"),
+            |option| option.flag_only = false,
+        ] {
+            let mut run = feature_command();
+            let at = run
+                .options
+                .iter()
+                .position(|option| option.name == "input")
+                .expect("input");
+            change(&mut run.options[at]);
+            assert!(matches!(
+                super::tests::described(vec![run]),
+                Err(Error::ImpliedOptionChanged { .. })
+            ));
+        }
+        // A reserved option listed by its bare name is strict: its placeholder reaches the document through the name.
+        let mut plan = command("plan");
+        let mut digest = reserved("plan-digest");
+        digest.value_name = Some("SHA256".to_string());
+        plan.options.push(digest);
+        let described = super::tests::described(vec![plan]).expect("a model");
+        assert_eq!(
+            listed(&written(&described, "plan")),
+            [
+                json!({ "name": "plan-digest", "valueName": "SHA256", "flagOnly": true, "help": "The plan-digest." })
+            ]
+        );
+    }
+
+    #[test]
+    fn atip_crate14_45_a_groups_own_extensions_are_written_at_1_3_and_1_4_and_none_by_default() {
+        for minor in [Minor::V1_3, Minor::V1_4] {
+            let plain = group_model(minor);
+            let before = plain.group("tool").expect("a group").to_line();
+            assert!(!before.contains("x-"), "{minor}: {before}");
+            let described = group_model(minor).group_extensions(
+                "tool",
+                BTreeMap::from([("x-acme".to_string(), json!({ "area": "ops" }))]),
+            );
+            let group = described.group("tool").expect("a group").to_value();
+            assert_eq!(group["x-acme"], json!({ "area": "ops" }), "{minor}");
+            assert_eq!(group["summary"], "Tool commands.", "{minor}");
+            assert_eq!(group.get("path").is_some(), minor == Minor::V1_3, "{minor}");
+            // An extension of another group, or of none, changes nothing here.
+            let other = group_model(minor).group_extensions(
+                "elsewhere",
+                BTreeMap::from([("x-acme".to_string(), json!(1))]),
+            );
+            assert_eq!(other.group("tool").expect("a group").to_line(), before);
+        }
+    }
+
+    #[test]
+    fn atip_crate14_46_a_ref_that_reaches_input_through_another_schema_is_refused() {
+        let mut nested = command("a");
+        nested.schemas.insert(
+            "Report".to_string(),
+            json!({ "type": "object", "properties": { "args": { "$ref": "#/schemas/Input" } } }),
+        );
+        nested
+            .schemas
+            .insert("Input".to_string(), json!({ "type": "object" }));
+        assert!(matches!(
+            super::tests::described(vec![nested]),
+            Err(Error::InputIsReserved { .. })
+        ));
+        // A schema the model calls `Input` that no ref reaches is not served and not an error.
+        let mut unreached = command("a");
+        unreached
+            .schemas
+            .insert("Input".to_string(), json!({ "type": "null" }));
+        let described = super::tests::described(vec![unreached]).expect("a model");
+        let answer = described.schemas("a").expect("an answer").to_value();
+        assert!(answer["schemas"].get("Input").is_none());
     }
 }

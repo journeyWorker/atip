@@ -540,8 +540,8 @@ impl Run<'_> {
         })
     }
 
-    /// The invocations of an interface run (approaches/checker.md 3.1) but the last: nine at most with the `--help` of L1 and the control run
-    /// that [`Run::invoke_first_missing_value`] makes, all in the one shared copy of the fixture state.
+    /// The invocations of an interface run (approaches/checker.md 3.1) but the last: thirteen at most below a claim of 1.4 (with the `--help` of L1 and the control run
+    /// that [`Run::invoke_first_missing_value`] makes), eighteen at 1.4 (the calls of `L1.schemas` and `L1.help-json`), all in the one shared copy of the fixture state.
     ///
     /// None of them writes, by construction, so that one shared copy serves all: `--version`, a refusal (an unknown command, a bare
     /// `--json`) changes nothing by the contract (spec 8.2); `schema` writes nothing (spec 9.2); `--help` writes nothing; the fixture's `probe`
@@ -2223,10 +2223,7 @@ impl<'a> Judge<'a> {
                     continue;
                 }
                 let text = String::from_utf8_lossy(&self.at(index).stdout);
-                let problem = text
-                    .split_inclusive('\n')
-                    .filter(|line| !line.trim().is_empty())
-                    .find_map(rules::compact_problem);
+                let problem = text.split_inclusive('\n').find_map(rules::compact_problem);
                 c.holds_at(index, "no-whitespace", problem.is_none(), || {
                     format!(
                         "{} (a stream) printed a line that is not compact: {}",

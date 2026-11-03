@@ -495,8 +495,8 @@ pub struct ToolDocs {
     /// `meta.tool` of the answers.
     pub tool: String,
     pub tree: Option<Tree>,
-    /// The `options` of the tree answer, the options commands share (spec 9.3), as the tree lists them: empty before 1.4
-    /// and when it has none. The 1.4 view of a command reads them ([`ToolDocs::assemble`]).
+    /// The `options` of the tree answer, the options commands share (spec 9.3), as the tree lists them: empty when it has none (only the
+    /// 1.4 view reads them). The 1.4 view of a command reads them ([`ToolDocs::assemble`]).
     pub tree_options: Vec<Value>,
     /// The command documents by command id.
     pub commands: BTreeMap<String, CommandDoc>,
