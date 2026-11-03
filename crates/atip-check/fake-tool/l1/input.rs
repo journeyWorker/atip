@@ -216,7 +216,7 @@ fn fragment_problems(
             reason,
             pointer: format!("{prefix}{pointer}"),
             message,
-        })
+        });
     };
     let operand_slots: Vec<&Arg> = command.operands().collect();
     for (key, value) in document {

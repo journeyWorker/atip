@@ -179,13 +179,13 @@ fn check_node(value_type: ValueType, node: &Value, at: &str, problems: &mut Vec<
             match value.as_f64() {
                 None => problems.push(format!("{at}: {keyword} is not a finite number")),
                 Some(number) if !number.is_finite() => {
-                    problems.push(format!("{at}: {keyword} is not a finite number"))
+                    problems.push(format!("{at}: {keyword} is not a finite number"));
                 }
                 Some(number) if integral && !is_safe_integer(value) => problems.push(format!(
                     "{at}: {keyword} {number} is not a safe integer (spec 10.7.5)"
                 )),
                 Some(number) if keyword == "multipleOf" && number <= 0.0 => {
-                    problems.push(format!("{at}: multipleOf is not positive"))
+                    problems.push(format!("{at}: multipleOf is not positive"));
                 }
                 Some(_) => {}
             }

@@ -178,7 +178,7 @@ fn string(text: &str, out: &mut String) {
             '\u{c}' => out.push_str("\\f"),
             '\r' => out.push_str("\\r"),
             control if control < '\u{20}' => {
-                out.push_str(&format!("\\u{:04x}", u32::from(control)))
+                out.push_str(&format!("\\u{:04x}", u32::from(control)));
             }
             other => out.push(other),
         }

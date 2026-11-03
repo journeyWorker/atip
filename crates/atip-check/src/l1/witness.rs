@@ -50,11 +50,11 @@ pub fn generate(arg: &Arg, avoid: &[Value]) -> Option<String> {
     match arg.value_type.as_str() {
         "enum" => candidates.extend(arg.possible_values.iter().cloned()),
         "integer" | "count" => {
-            candidates.extend(["1", "0", "2", "5", "10", "100", "3", "7", "-1"].map(String::from))
+            candidates.extend(["1", "0", "2", "5", "10", "100", "3", "7", "-1"].map(String::from));
         }
         "number" => candidates.extend(["1.5", "1", "0.5", "2", "10", "100", "0"].map(String::from)),
         "json" => {
-            candidates.extend(["{}", "[]", "\"x\"", "1", "true", "{\"a\":1}"].map(String::from))
+            candidates.extend(["{}", "[]", "\"x\"", "1", "true", "{\"a\":1}"].map(String::from));
         }
         _ => candidates.extend(
             [

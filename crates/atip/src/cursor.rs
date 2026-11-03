@@ -723,7 +723,7 @@ mod tests {
                     Kind::Switch => given.push(Given::switch(name, true)),
                     Kind::Count => match given.iter_mut().find(|argument| argument.name == name) {
                         Some(counted) => {
-                            counted.value = json!(counted.value.as_u64().unwrap_or(0) + 1)
+                            counted.value = json!(counted.value.as_u64().unwrap_or(0) + 1);
                         }
                         None => given.push(Given::count(name, 1)),
                     },
