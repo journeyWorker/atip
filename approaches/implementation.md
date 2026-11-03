@@ -1,6 +1,6 @@
 # Implementation guidance: recommendations beyond the protocol
 
-Not normative. Section numbers ("spec 10.7") refer to `spec/atip-1.md`, version 1.3.0.
+Not normative. Section numbers ("spec 10.7") refer to `spec/atip-1.md`, version 1.4.0.
 
 The protocol fixes what a caller can rely on. Some behaviour lies below that line: two answers are both correct for
 the caller, but tools that choose the same one behave alike, and a conformance checker can then test one answer
@@ -144,3 +144,57 @@ answer in different hands:
 
 A shared crate or `defineError` helper can take the condition as the input and derive `exit` and `retryable`, and
 refuse at definition time a name that does not end in a condition (`approaches/rust.md`, `approaches/typescript.md`).
+
+## 8. Producing the 1.4 self-description
+
+A tool that declares 1.4 writes the self-description in the form of spec 9, from a typed model, through one serializer
+that owns the rules below; no command writes an omission by hand. What a 1.3 tool writes (every member, `path`, the
+schemas inside the command document) is held to 1.3.1 and is not described here (spec 15.7).
+
+**Omit a member that equals its default** (spec 9.5; Annex S2 rule 17). The defaults, each compared at the point of
+writing:
+
+| Where | Absent means |
+|---|---|
+| operand, option | `required`, `repeatable`, `variadic`, `flagOnly` false; `default` null (`false` for a switch, `0` for a count); `valueType` `string`; `valueName` the name in upper case with `_` for `-` (a switch and a count have none); a count does not say `repeatable` |
+| output | `kind` `report`; `schemaVersion` `1.0` |
+| `input` | `batch` false |
+| command | `async` false; an empty `operands`, `options`, `errors`, `constraints` or `validators` |
+| tree entry | `kind` `command` (a group's entry says `group`); `path` is never written (the words of `command`) |
+
+The same serializer omits what the document implies (spec 9.5): the options `--json`, `--input` (with `input`),
+`--fields` (when an output declares `fields`), `--commit` and `--plan-digest` (a `destructive` command of an L2 tree),
+and the codes `USAGE`, `INTERNAL`, the `INPUT_*` codes with `input`, `BATCH_INCOMPLETE`, `PLAN_STALE`,
+`OPERATION_REUSED` and `CURSOR_INVALID` with the feature that raises them. The tool still registers every code and
+still enforces every option; only the document leaves them out.
+
+**Compact serialization.** Print the document with no whitespace outside strings, members in the order the model
+declares, then one newline (spec 5.1). Do it for every envelope and stream line, not only for `schema`, and compare
+with `JSON.stringify(JSON.parse(text))` in a test.
+
+**Decide shared options by identical definitions.** After the defaults are omitted, serialize each option of each
+command. An option whose serialization is the same on two or more commands is defined once in the tree's `options`,
+in the order of its first appearance, and each of those commands names it, at the place its option stood. An option
+whose `required`, default or enum subset differs on a command is a different definition (Annex S1 item 4 allows the
+difference), so that command keeps it in full. An option on one command stays on that command. Every tree option must
+be named by some command (Annex S2 rule 17), which holds by construction when the tree is built from the commands.
+
+**Why paging options stay listed.** `--limit` carries a default and a bound that differ per command, and `--all`,
+`--cursor` are offered or not per command, so the list is what declares which commands page and how far. A caller finds
+the paging surface in the command document alone, and `CURSOR_INVALID` is implied by the listed `--cursor`. A
+`--limit` that is identical on several commands is shared like any other option.
+
+**How a caller rebuilds the full option set and the fragment schema** (spec 9.5, 9.9.2):
+
+1. Read the tree once per tool (`<tool> schema --json`) and keep its `options` by name.
+2. Read the command document (`<tool> schema <PATH> --json`) and give every absent member its default.
+3. Start the option set with the implied reserved options, each with its shape from spec 4.5. Then, for each entry of
+   `options` in order: a string is the tree option of that name (a name the tree lacks leaves the option out, spec
+   15.4), an object is that option. The errors of the command are `errors` plus the implied codes.
+4. For the input fragment schema, build an object with `additionalProperties: false` and no `required`. `operands` is
+   an array of the operand values, at least one, at most one per operand unless the last is variadic. For every
+   option of the set that is not flag-only, add a property with the camelCase name that admits the `--input` values
+   of its valueType (spec 9.7.2); an array of them for a repeatable option. Domains are checked later, at step 6 of
+   spec 10.7.
+5. Ask `<tool> schema <PATH> --schemas --json` only to validate or decode `data`, and resolve each
+   `#/schemas/<Name>` in its `schemas`; a caller that only builds invocations never needs it.

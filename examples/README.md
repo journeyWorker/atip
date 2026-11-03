@@ -31,7 +31,7 @@ three kinds:
 - **proposed**: a behaviour change the contract requires of canon, not just a rename.
 - **not verified**: shown for completeness; nothing here establishes it.
 
-**A synthetic reference tool, `acme`** (`*-acme-*`), which declares contract 1.3 (`meta.contractVersion`, spec 15.5)
+**A synthetic reference tool, `acme`** (`*-acme-*`), which declares contract 1.4 (`meta.contractVersion`, spec 15.5)
 while canon's translations declare 1.0: an invented tool that exercises what neither translation does,
 so that every rule has a positive witness: a declared short option (`-t`), a required repeatable option and an
 `x-acme` extension member (`acme page label`), an `async` command with an operation key and the command that
@@ -113,7 +113,7 @@ that differs between Unicode versions) is recorded in `scripts/regex-cases.json`
 
 ## Contract 1.1
 
-acme declares 1.3, which includes what 1.1 adds; canon's translations declare 1.0, and every 1.1 addition in a
+acme declares 1.4, which includes what 1.1 adds; canon's translations declare 1.0, and every 1.1 addition in a
 document that declares 1.0 is rejected (spec Annex S2 rule 16).
 
 | Case | File | Result |
@@ -150,13 +150,13 @@ bracketed path in its `meta`, or an unregistered warning in its schema answer is
 | the empty map key `attributes[""]`, a map under `labels[]`, a map written with `properties: {}` | `report-acme-member-list-fields-map-keys.json` | accepted |
 | `labels.region` where `labels` is an array of maps; the empty key left in unselected | `invalid/report-acme-member-list-fields-map-key-without-descent.json`, `invalid/report-acme-member-list-fields-empty-key-leak.json` | rejected |
 
-**Caller documents** (`caller-*.json`) are what a tool of a later minor might print: `contractVersion` `1.4` (they
-model a minor later than the 1.3 this repository describes) and
+**Caller documents** (`caller-*.json`) are what a tool of a later minor might print: `contractVersion` `1.5` (they
+model a minor later than the 1.4 this repository describes) and
 members this repository does not define (`meta.costMs`, `page.exact`, `error.severity`, a registry entry's `docs`).
 A caller of this minor must read them (spec 15.4): each passes the contract schemas read open and fails them
 closed. `invalid/caller-report-nothing-unknown.json` carries nothing unknown, and `invalid/caller-report-wrong-type.json`
 gives a known member the wrong type, so a caller reading open still rejects it. Values outside a listed set go
-through the caller's view of spec 15.6 first (`callerView` in `scripts/check.ts`): an unknown `data.kind`
+through the caller's view of spec 15.6 first (`schemaAnswerView` in `scripts/check.ts`): an unknown `data.kind`
 (`caller-schema-acme-unknown-kind.json`), `valueType`, `effect`, output `kind` and tree entry `kind`
 (`caller-schema-command-acme-unknown-*.json`, `caller-schema-tree-acme-unknown-entry-kind.json`) are accepted that
 way, while an unknown major (`invalid/caller-report-unknown-major.json`) and a known member of the wrong type
@@ -186,14 +186,14 @@ map key containing U+0000 cannot be selected (`invalid/report-acme-member-list-f
 
 1.2 adds no member, so its rules are checked by the declared minor (spec Annex S2 rule 16): in a document that declares
 1.2 or later the paging and field-selection options are flag-only (spec 10.6), and in a document that declares exactly
-1.2 `STOPPED_MIDWAY` is a core code (spec 15.7). acme declares 1.3 and keeps the flag-only options; the two
+1.2 `STOPPED_MIDWAY` is a core code (spec 15.7). acme declares 1.4 and keeps the flag-only options; the two
 1.2-only rules have their witnesses in documents that declare 1.2. A third synthetic tool, **`tally`** (`*-tally-*`),
 stays on 1.1: its `entry list` is `ledger`'s with the map's `minProperties` removed (a 1.1 map is a cut node), and it
 shows that neither 1.2 rule applies below 1.2.
 
 | Case | File | Result |
 |---|---|---|
-| a command document whose `--limit`, `--cursor`, `--all` and `--fields` are flag-only, at 1.3 | `schema-command-acme-member-list.json` | accepted |
+| a command document whose `--limit`, `--cursor`, `--all` and `--fields` are flag-only, at 1.4 | `schema-command-acme-member-list.json` | accepted |
 | the same at 1.2 with `--limit` not flag-only; a 1.1 document with none of them flag-only | `invalid/schema-command-acme-member-list-limit-not-flag-only.json`; `schema-command-tally-entry-list.json` | rejected; accepted |
 | `STOPPED_MIDWAY` at exit 2 in a 1.2 registry; a 1.1 tool's own `STOPPED_MIDWAY` that is retryable, read by its registry entry (spec 8.3.2) | `invalid/schema-errors-acme-stopped-midway-exit-2.json`; `schema-errors-tally.json` | rejected; accepted |
 
@@ -203,12 +203,12 @@ are behaviour, not documents; the checker tests them (approaches/checker.md).
 ## Contract 1.3
 
 1.3 adds no member, document kind or enum value either; its rules bind a document that declares 1.3 or later (spec
-15.1, 15.5). acme declares 1.3 and its codes are renamed to follow the convention of spec 7.2: `DEPLOY_FAILED` is
-`DEPLOYMENT_FAILED`, `DEPLOY_WAIT_TIMEOUT` is `DEPLOYMENT_TIMEOUT` (exit 1, retryable), `ENVIRONMENT_FROZEN` is the
-reason of `DEPLOYMENT_DENIED` (exit 2), `TAG_RESERVED` is `TAG_INVALID` with the reason `RESERVED`, and
-`STOPPED_MIDWAY` is acme's own `DEPLOYMENT_INCOMPLETE` (exit 1, not retryable) whose reason is the refused code,
-`DEPLOYMENT_DENIED` (spec 8.3.2). canon (1.0), ledger (1.0) and tally (1.1) are unchanged, so earlier minors keep
-passing and failing as before.
+15.1, 15.5). acme declares 1.4, which includes 1.3, and its codes are renamed to follow the convention of spec 7.2:
+`DEPLOY_FAILED` is `DEPLOYMENT_FAILED`, `DEPLOY_WAIT_TIMEOUT` is `DEPLOYMENT_TIMEOUT` (exit 1, retryable),
+`ENVIRONMENT_FROZEN` is the reason of `DEPLOYMENT_DENIED` (exit 2), `TAG_RESERVED` is `TAG_INVALID` with the reason
+`RESERVED`, and `STOPPED_MIDWAY` is acme's own `DEPLOYMENT_INCOMPLETE` (exit 1, not retryable) whose reason is the
+refused code, `DEPLOYMENT_DENIED` (spec 8.3.2). canon (1.0), ledger (1.0) and tally (1.1) are unchanged, so earlier
+minors keep passing and failing as before.
 
 | Case | File | Result |
 |---|---|---|
@@ -224,6 +224,43 @@ passing and failing as before.
 
 Documents of an earlier minor keep the earlier rules: ledger's warning code lives in its error registry only
 (`schema-errors-ledger.json`, accepted at 1.0), and tally's own `STOPPED_MIDWAY` is accepted at 1.1.
+
+## Contract 1.4
+
+1.4 changes the form of the self-description (spec 9, 15.7) and makes every document compact (spec 5.1); its rules bind
+a document that declares 1.4. acme declares 1.4 and every acme file that declares a minor is stored compact, the way a
+1.4 tool prints it. canon and ledger (1.0) and tally (1.1) stay as they were, and so do the acme witnesses of the
+rules of 1.0-1.3 that declare 1.3 (`invalid/*-acme-*`): they are held to their own minor, against the 1.4 command
+documents, trees and schemas answers of acme, which `scripts/check.ts` reads in whatever minor they are.
+
+**Pairing.** A tool's tree is `schema-tree-<tool>.json`; it states the tool's `level` (spec 11.4, which fixes the
+options a destructive command implies) and the options its commands share. A command's document is
+`schema-command-<tool>-<command words joined by ->.json`, and the JSON Schemas its refs name are in
+`schema-schemas-<tool>-<command words joined by ->.json` (`schema <PATH> --schemas --json`, spec 9.9.3): exactly the
+schemas the refs reach, directly and through `#/schemas/<Name>`, nothing else. Refs resolve there; the report and stream
+examples of a 1.4 tool are validated against that answer. The fragment schema of `--input` is not in it: the checker
+derives it from the command's full option set (the implied reserved options, the tree options it names and its own,
+defaults applied; `deriveFragment` in `scripts/check.ts`, spec 9.9.2), and every rule of Annex S2 runs against that set.
+
+| Case | File | Result |
+|---|---|---|
+| the tree defines `team` once (`short`, `required`, help; no `path`, no `kind` on commands, `options`); the commands that share it name it, `"options":["team"]`; the one whose help differs declares its own | `schema-tree-acme.json`; `schema-command-acme-member-export.json`, `schema-command-acme-member-roster.json`; `schema-command-acme-member-list.json` | accepted |
+| a command document without `path`, `schemas`, `input.option`, `input.schemaRef`, the implied `--json`, `--input`, `--fields`, and the implied codes (`USAGE`, `INTERNAL`, `INPUT_*`, `BATCH_INCOMPLETE`, `OPERATION_REUSED`, `CURSOR_INVALID`), and with every default left out | every `schema-command-acme-*.json` | accepted |
+| the schemas answer of each command; a ref resolved there; a report and a stream validated against it | `schema-schemas-acme-*.json`; `report-acme-*.json`, `stream-acme-*.ndjson` | accepted |
+| `--input` examples and documents against the derived fragment, a batch among them | `input-acme-*.json` and the `input.example` of every acme command with input | accepted |
+| a pretty-printed 1.4 document; a stream line with whitespace | `invalid/schema-command-acme-member-show-not-compact.json`, `invalid/stream-acme-build-not-compact.ndjson` | rejected (spec 5.1) |
+| a member at its default: `"required":false`; `"repeatable":true` on a count; `"kind":"command"` on a tree entry | `invalid/schema-command-acme-member-tag-option-required-false.json`, `invalid/schema-command-acme-build-count-repeatable.json`, `invalid/schema-tree-acme-entry-kind-command.json` | rejected (Annex S2 rule 17) |
+| a member only 1.0-1.3 carry: `schemas` or `path` in a command document, `path` on a tree entry | `invalid/schema-command-acme-member-show-embeds-schemas.json`, `invalid/schema-command-acme-member-show-has-path.json`, `invalid/schema-tree-acme-entry-path.json` | rejected (Annex S2 rule 16) |
+| an implied option listed (`json`); an implied code listed (`USAGE`) | `invalid/schema-command-acme-member-show-lists-json.json`, `invalid/schema-command-acme-member-show-lists-usage.json` | rejected (spec 9.5, Annex S2 rule 4) |
+| an option name the tree does not define; an option given as a name and in full; a tree option no command names | `invalid/schema-command-acme-member-show-unknown-option-name.json`, `invalid/schema-command-acme-member-roster-option-twice.json`, `invalid/schema-tree-acme-option-unused.json` | rejected (Annex S2 rule 17) |
+| an `input.example` with a key the derived fragment does not allow | `invalid/schema-command-acme-member-tag-input-example-unknown-key.json` | rejected (spec 9.9.2, Annex S2 rule 7) |
+| a schemas answer missing a schema a ref reaches (`Owner`, through `MemberRow`); one holding a schema no ref reaches | `invalid/schema-schemas-acme-member-show-missing-schema.json`, `invalid/schema-schemas-acme-member-show-extra-schema.json` | rejected (spec 9.9.3, Annex S2 rule 2) |
+| a schemas answer, or an option name, in a document that declares 1.3 | `invalid/schema-schemas-acme-member-show-in-1-3.json`, `invalid/schema-command-acme-member-roster-1-3-option-name.json` | rejected (Annex S2 rule 16) |
+| a 1.3 command document without `path`, or in the 1.4 form (an operand with its defaults left out) | `invalid/schema-command-acme-member-show-1-3-no-path.json`, `invalid/schema-command-acme-member-show-1-3-operand-defaults-left-out.json` | rejected: the schema no longer requires them, the checker does (spec 15.7) |
+
+The caller table of spec 15.4 reads an absent member as its default in a 1.4 self-description: a tree entry without
+`kind` is a command, an argument without `valueType` a string. The caller examples are therefore stated at 1.5, a minor
+later than the one this repository describes, and a caller of this minor reads them open (spec 15.6).
 
 ## Plan digests
 

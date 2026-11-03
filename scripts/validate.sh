@@ -7,6 +7,10 @@
 #   examples/*            must pass
 #   examples/invalid/*    must be rejected
 #
+# A document that declares 1.4 is also checked for compact JSON (spec 5.1), the 1.4 form of the self-description (no
+# member at its default, implied options and codes not listed, tree options named, Annex S2 rules 16 and 17) and, for a
+# command, against the schemas answer next to it (examples/schema-schemas-<tool>-<command words joined by ->.json).
+#
 # Needs bun. ajv 8 is installed into a scratch directory under $TMPDIR, never into the repository; point
 # TMPDIR at a scratch volume if the default temporary directory is not where it belongs.
 # With cargo on PATH it also builds scripts/regex-parity (build output under $TMPDIR, crates from the lock file)

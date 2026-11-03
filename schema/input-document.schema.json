@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://atip.dev/1/input-document.schema.json",
   "title": "atip/1 --input document (generic fragment shape)",
-  "description": "What every --input value parses to (spec 10.4-10.6): one document, or, where the command declares `input.batch`, a non-empty array of documents. This is the shape all fragment schemas share; each command publishes its exact fragment schema at input.schemaRef. Requirements are checked after the merge with argv (spec 10.7), not here.",
+  "description": "What every --input value parses to (spec 10.4-10.6): one document, or, where the command declares `input.batch`, a non-empty array of documents. This is the shape all fragment schemas share; a command's exact fragment schema is derived from its options since 1.4 (spec 9.9.2) and was published at input.schemaRef before. Requirements are checked after the merge with argv (spec 10.7), not here.",
   "oneOf": [
     { "$ref": "#/$defs/document" },
     { "$ref": "#/$defs/batch" }

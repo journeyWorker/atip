@@ -1,9 +1,10 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.3.1**, adopted 2026-11-03 after one round of independent review: a patch (15.1) that aligns the
-conformance checker's description with the reference checker and says what the caller of an `INVALID` without `field`
-changes (Appendix A D37). Version 1.3.0, adopted 2026-11-03 after two rounds of independent review and three
-implementer reviews, is a minor (15.1) that restates the contract as a protocol (Appendix A D36).
+Status: **1.4.0, release candidate**: a minor (15.1) that makes the self-description small and compact for agents
+(command documents without embedded JSON Schemas, shared options declared once, defaults omitted, compact JSON) and
+separates `--help` from `schema` (Appendix A D38). Version 1.3.1, adopted 2026-11-03, is a patch that aligns the
+checker's description with the reference checker (D37); 1.3.0, adopted 2026-11-03 after two rounds of independent
+review and three implementer reviews, restates the contract as a protocol (D36).
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
 (V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 
@@ -147,8 +148,11 @@ fails, so that every parse failure is a JSON failure envelope.
 
 ### 4.4. Help and version
 
-4.4.1. `--help`/`-h` and `--version`/`-V` print text and exit 0; `--version` SHOULD print `<tool> <version>`;
-`--help --json` MAY answer with the path's `schema` document.
+4.4.1. `--help`/`-h` and `--version`/`-V` print text for people and exit 0; that text is not part of the protocol, and
+`--version` SHOULD print `<tool> <version>`. The machine-readable self-description is `schema` (9), never `--help`: in
+a 1.4 document `--help` with `--json` refuses with `USAGE`, `field` `--help`, `hint` `<tool> schema <PATH> --json`
+for the path it named (`<tool> schema --json` at the root). (Earlier minors MAY answer `--help --json` with the
+`schema` document.)
 
 4.4.2. (L1) The first line of the root `--help` MUST point agents at `<tool> schema --json` (every `--help` SHOULD),
 never at a `schema` the tool lacks.
@@ -172,8 +176,9 @@ refused, and tool-wide options accepted after a group word. [Appendix A D4, D11.
 
 ## 5. Output channels
 
-5.1. In JSON mode stdout MUST hold exactly one UTF-8 JSON document and a newline (SHOULD be compact), on success and
-on failure; a stream (13) prints one document per line.
+5.1. In JSON mode stdout MUST hold exactly one UTF-8 JSON document and a newline, on success and on failure; a stream
+(13) prints one document per line. Every document is compact, without whitespace outside strings: MUST in a document
+that declares 1.4, SHOULD before.
 
 5.2. In JSON mode stderr MUST NOT carry the result or the error and SHOULD be empty except for progress; callers MUST
 NOT parse it.
@@ -324,8 +329,9 @@ retryability are different codes. Warning codes SHOULD have the same shape and M
 
 7.3.1. Every tool uses these codes for these situations and registers those it can produce; a command lists the codes
 of the features it offers in `errors` (`--input`: `INPUT_*`; batches: `BATCH_INCOMPLETE`; `--commit`: `PLAN_STALE`;
-`--operation`: `OPERATION_REUSED`; `--cursor`: `CURSOR_INVALID`). Five names predate 7.2 and keep them, since renaming
-a core code is a major change. [Appendix A D11.9, D12.2, D16.1, D36]
+`--operation`: `OPERATION_REUSED`; `--cursor`: `CURSOR_INVALID`), except in a 1.4 document, where they are implied
+(9.5). Five names predate 7.2 and keep them, since renaming a core code is a major change.
+[Appendix A D11.9, D12.2, D16.1, D36]
 
 | Code | Exit | Retryable | Condition | When |
 |---|---|---|---|---|
@@ -420,22 +426,25 @@ absent, is a refusal with its own code; a scope that was read and holds nothing 
 
 ## 9. Self-description: `schema`
 
-Shape: `schema/schema-doc.schema.json`; rules beyond it: Annex S2 (normative). [Appendix A D5]
+Shape: `schema/schema-doc.schema.json`; rules beyond it: Annex S2 (normative). `schema` is the machine-readable
+self-description, read by agents; `--help` is text for people (4.4.1). This section gives the 1.4 form; 15.7 lists how
+a document of an earlier minor differs. [Appendix A D5, D38]
 
 ### 9.1. Invocation
 
 ```
 <tool> schema --json                                  the tree (9.3)
 <tool> schema <PATH>... --json                        a group (9.4) or a command (9.5)
+<tool> schema <PATH>... --schemas --json              the JSON Schemas a command refers to (9.9.3)
 <tool> schema --errors | --error <CODE> --json        the error registry or one entry (7.4)
 <tool> schema --warnings | --warning <CODE> --json    the warning registry or one entry (7.5)
 <tool> schema --search "<TASK>" --json                ranked commands (9.10.1, OPTIONAL)
 ```
 
-9.1.1. Path words MUST be accepted as separate words or one quoted string. A path, `--errors`, `--error`,
-`--warnings`, `--warning` and `--search` exclude each other (`USAGE`); an unknown path refuses with
-`UNKNOWN_COMMAND`, `expected` the valid words at that position. Without `--json`, `schema` prints text, which MAY be
-the JSON document. [Appendix A D11.2, D30]
+9.1.1. Path words MUST be accepted as separate words or one quoted string. A path, `--errors`, `--error`, `--warnings`,
+`--warning` and `--search` exclude each other (`USAGE`), and `--schemas` needs a command path and none of the others
+(`USAGE`, `field` `--schemas`); an unknown path refuses with `UNKNOWN_COMMAND`, `expected` the valid words at that
+position. Without `--json`, `schema` prints text, which MAY be the JSON document. [Appendix A D11.2, D30]
 
 9.1.2. The answer's `meta.command` is `"schema"` and its `meta.schemaVersion` the declared minor. [Appendix A D20, D22]
 
@@ -448,7 +457,9 @@ nothing (11.2). For one build it SHOULD be byte-identical across runs.
 ### 9.3. `tree`
 
 The tree lists every group and command once, in a stable order, a group before its commands, `schema` included (a
-command for the tool's own use MAY be left out); `level` is the claimed level (3.5).
+command for the tool's own use MAY be left out). An entry has `command` and `summary`, and `effect` for a command; a
+group's entry has `kind: "group"`. `level` is the claimed level (3.5). `options` defines once the options that commands
+share (9.5); a caller reads the tree once per tool.
 
 ### 9.4. `group`
 
@@ -456,11 +467,27 @@ command for the tool's own use MAY be left out); `level` is the claimed level (3
 
 ### 9.5. `command`
 
-A command document (example: `examples/schema-command-canon-finding-close.json`) lists every argument but `--help`
-and `--version`, and every error code the command can emit, core codes included. `effectNote` names every effect the
-effect class does not say (an audit line, a cache, a passthrough exit, serving until signalled), for successful runs
-only (11.2). `examples` are complete invocations in the syntax of 4.2, from the tool name, `--json` after the path,
-without placeholders, satisfying the command's requirements; none reads a file or stdin.
+A command document is the call surface of one command: `summary`, `effect`, `idempotency` (11.3; exactly for `write`
+and `destructive`), `effectNote`, `async`, `operands`, `options`, `constraints`, `validators`, `errors`, `outputs`,
+`input` and `examples`. It embeds no JSON Schema (9.9.3). `effectNote` names every effect the effect class does not say
+(an audit line, a cache, a passthrough exit, serving until signalled), for successful runs only (11.2). `examples` are
+complete invocations in the syntax of 4.2, from the tool name, `--json` after the path, without placeholders,
+satisfying the command's requirements; none reads a file or stdin.
+
+- **Options.** The command accepts the options it lists, each an option object (its own) or the name of a tree option
+  (9.3), and the reserved options its document implies, which it does not list: `--json` always; `--input` when it has
+  `input`; `--fields` when an output declares `fields`; `--commit` and `--plan-digest` for a `destructive` command of an
+  L2 tool (below L2 they are listed when offered). Every other reserved option is listed when offered, and `--help`
+  and `--version` never are. A command that needs another `required`, default or enum subset of a shared option
+  (Annex S1 item 4) declares it in full.
+- **Errors.** `errors` lists every code the command can emit except the implied ones: `USAGE` and `INTERNAL`; the
+  `INPUT_*` codes with `input`; `BATCH_INCOMPLETE` with `input.batch`; `PLAN_STALE` with `--commit`; `OPERATION_REUSED`
+  with `--operation`; `CURSOR_INVALID` with `--cursor`.
+- **Defaults.** A member whose value is its default is absent; `schema/schema-doc.schema.json` gives each default:
+  `required`, `repeatable` (a count is always repeatable and does not say so), `variadic`, `flagOnly` and `async`
+  false; an argument's `default` null (`false` for a switch, `0` for a count); `valueType` `string`; `valueName` the
+  name in upper case with `_` for `-`; an output's `kind` `report` and `schemaVersion` `1.0`; `input.batch` false; a
+  list, empty. The tree's entries and its `options` follow the same rule.
 
 ### 9.6. Operands
 
@@ -470,8 +497,8 @@ An operand's `name` names it in `constraints` and is never an option's name; its
 ### 9.7. Options
 
 9.7.1. An option's `name` is its long name without `--`; `defaultNote` says how a computed default is found; `env`
-names the variable read when the option is absent; `flagOnly` marks an option no document may carry (always for the
-flag-only reserved options); `short` is a declared letter; `domain` restricts the value (9.7.4).
+names the variable read when the option is absent; `flagOnly` marks an option no document may carry (the flag-only
+reserved options are, whether implied or listed); `short` is a declared letter; `domain` restricts the value (9.7.4).
 
 9.7.2. **valueType:**
 
@@ -525,12 +552,22 @@ any state is read. [Appendix A D17, D18, D30]
 9.9.1. `outputs` lists every form a command prints: `report`; `artifact` (`mediaType` of the text-mode bytes, an
 envelope with `--json`); `stream` (13; `eventRef` the event schema, `schemaRef` the end result's). `batch: true` marks
 a batch's output (10.11), `when` which invocation selects an output, `fields` the selectable paths (Annex F). Refs
-are `#/schemas/<Name>`, never shared between outputs. A report schema describes the whole report; a batch output's
-describes `items[].data`, and the batch report also follows `schema/batch-report.schema.json`. [Appendix A D11.13, D23]
+are `#/schemas/<Name>`, resolved in the schemas answer (9.9.3); two outputs never share one. A report schema
+describes the whole report; a batch output's describes `items[].data`, and the batch report also follows
+`schema/batch-report.schema.json`. [Appendix A D11.13, D23]
 
-9.9.2. `input.schemaRef` names the **fragment schema** of one document (every accepted key with its encoded values, no
-`required`, no flag-only key); `argumentsRef`, informative, the argument object of 10.7 step 6, never stricter than
-the declarations; `example` one complete valid document.
+9.9.2. `input` declares `--input`: `maxBytes`, `batch` and `maxItems` (10.10, 10.11), `example` one complete valid
+document, and optionally `argumentsRef`, an informative schema of the argument object of 10.7 step 6, never stricter
+than the declarations. The **fragment schema** of one document is derived from the command's options, not declared:
+an object with no `required` and `additionalProperties: false` whose properties are `operands` (an array of operand
+values, at least one, at most one per operand unless the last is variadic) and the camelCase name of every option that
+is not flag-only, each admitting the `--input` values of 9.7.2 (an array of them when repeatable). Domains are not part
+of it (10.7 step 6). A declared copy could only disagree with the options.
+
+9.9.3. `schema <PATH> --schemas` answers with `kind: "schemas"`, `command`, and `schemas`: exactly the JSON Schemas
+the command document's refs name and the ones they refer to through `#/schemas/<Name>`, each compiling under draft
+2020-12. A caller calls a command from its command document and asks for the schemas when it validates or decodes
+`data`.
 
 ### 9.10. Search and extensions
 
@@ -693,12 +730,14 @@ placeholders are substituted (shell pipelines are exempt). Guides SHOULD tell ag
 
 ## 15. Versioning and compatibility
 
-15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.3.0`). A PATCH changes no
+15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.4.0`). A PATCH changes no
 rule. A MINOR adds OPTIONAL members, options, kinds and values, SHOULD and MAY rules, and MUST rules that bind only
-documents that declare it; for those documents it may withdraw a core code whose use the previous minor only
-recommended; and it relaxes a rule only where every answer it then permits is one callers already handle.
-A MAJOR (`atip/2`) removes or renames a member, option, core code or kind, changes a meaning, or adds a MUST an
-existing tool can fail. A tool that conforms to `1.x` keeps conforming as a `1.x` tool. [Appendix A D20]
+documents that declare it. For those documents it may withdraw a core code whose use the previous minor only
+recommended, and change the shape of the self-description (9) when a caller of an earlier minor rejects the changed
+document as a wrong shape (15.4) rather than misreading it. It relaxes a rule only where every answer it then permits
+is one callers already handle. A MAJOR (`atip/2`) removes or renames a member, option, core code or kind, changes a
+meaning, or adds a MUST an existing tool can fail. A tool that conforms to `1.x` keeps conforming as a `1.x` tool.
+[Appendix A D20, D38]
 
 15.2. `meta.toolVersion` says nothing about compatibility; the self-description's version is the declared minor. Every
 output has its own `schemaVersion` `<major>.<minor>`: an added member or value bumps the minor, a removed or changed
@@ -711,8 +750,9 @@ S1), recorded in the tool's changelog. A name is never reused with another meani
 MUST NOT fail a document for an unknown *string* in a member with listed values; it never infers that what it did not
 understand is satisfied, done or safe. A non-string listed value, or a missing required member, is a wrong shape.
 An unknown error code is read by its exit, `retryable`, registry entry and, in a 1.3 document, its condition; a
-condition word the caller does not know (a later minor's) leaves it with the exit and `retryable`.
-[Appendix A D20, D28, D29]
+condition word the caller does not know (a later minor's) leaves it with the exit and `retryable`. In a 1.4
+self-description an absent member has its default (9.5), and an option name that names no tree option leaves that
+option out. [Appendix A D20, D28, D29]
 
 | Unknown string in | The caller |
 |---|---|
@@ -730,26 +770,33 @@ condition word the caller does not know (a later minor's) leaves it with the exi
 never written. A tool that declares 1.1 or later sets `contract` and `contractVersion` on every envelope and stream
 start line. One build declares one minor and emits nothing a later one added. [Appendix A D20, D27]
 
-15.6. **Published schemas** are closed and describe the current minor; members added after 1.0 carry `x-atip-since`.
-A caller that validates reads them open (`additionalProperties: false` dropped) against its view of the document
-(unknown strings handled as 15.4, the completeness keywords `minItems`, `contains`, `if`/`then`/`else` dropped) and
-rejects only a view that fails. `$id`s stay under `https://atip.dev/1/`. [Appendix A D20, D28]
+15.6. **Published schemas** are closed and cover every minor of this major; members added after 1.0 carry
+`x-atip-since`, and members a 1.4 document no longer carries carry `x-atip-until: "1.3"`. A member a 1.4 document
+omits at its default is not `required` and states its `default`, although a document of an earlier minor carries it
+(15.7). A caller that validates reads them open (`additionalProperties: false` dropped) against its view of the
+document (unknown strings handled as 15.4, the completeness keywords `minItems`, `contains`, `if`/`then`/`else`
+dropped) and rejects only a view that fails. `$id`s stay under `https://atip.dev/1/`. [Appendix A D20, D28, D38]
 
-15.7. **Earlier minors.** A tool that declares 1.0, 1.1 or 1.2 is held to that minor's last release text (tags
-`v1.0.0`, `v1.1.2`, `v1.2.1`). A caller reads every minor; for it, a document of an earlier minor differs thus:
+15.7. **Earlier minors.** A tool that declares 1.0, 1.1, 1.2 or 1.3 is held to that minor's last release text (tags
+`v1.0.0`, `v1.1.2`, `v1.2.1`, `v1.3.1`). A caller reads every minor; for it, a document of an earlier minor differs
+thus:
 
-| Declared | Differs from 1.3 |
+| Declared | Differs from 1.4 |
 |---|---|
 | 1.0 | `contract` may be absent outside `schema`; no reasons, warning registry, bracketed paths or map-key selection; warning codes in the error registry; a hint may be prose starting with the tool name |
 | 1.0, 1.1 | a cursor also binds `--json` and `--all`, and need not bind `env` values (a variable changed between pages may change the listing silently); `--fields` may need `--json`; `limit`, `cursor`, `all`, `fields` may be document keys |
 | 1.1, 1.2 | warning codes may be in the error registry only |
 | 1.2 | `STOPPED_MIDWAY` is a core code (exit 1, not retryable, `reason` the refused code) |
 | 1.0-1.2 | code names need not follow 7.2 |
+| 1.0-1.3 | the self-description carries every member, defaults included, and `path` beside `command`; a command lists every option it accepts and every code it can emit; it embeds its JSON Schemas in `schemas` (refs resolve in the command document) and declares the fragment schema as `input.schemaRef`; the tree has no `options` and there is no `--schemas`; documents may contain insignificant whitespace; `--help --json` may answer with the `schema` document |
 
-[Appendix A D20, D27, D32, D33]
+[Appendix A D20, D27, D32, D33, D38]
 
-15.8. **1.3 and callers.** 1.3 adds no member, kind or value; its MUSTs 7.2.3 and 7.5.2 bind only 1.3 documents,
-and what it relaxes against 1.2 and why a 1.2 caller is unaffected is recorded in Appendix A D36.
+15.8. **1.4 and callers.** 1.4 changes the shape of the self-description for documents that declare it: tree, group
+and command documents leave out `path` and default-valued members, and a command document its JSON Schemas, the
+options and codes it implies and the shared options' definitions. A caller of 1.3 or earlier rejects such a document
+as a wrong shape (15.4), since members its minor requires are absent, and so never misreads it; it reads every other
+1.4 document, which keeps its shape and is only compact. [Appendix A D38]
 
 ## 16. Security
 
@@ -876,6 +923,10 @@ sections of this version.
 | # | Owner decision 2026-11-03, version 1.3.1, a patch (15.1) from implementer feedback | Where |
 |---|---|---|
 | D37 | The conformance checker's description follows the reference checker (canon's `atip-check`), answering its L2 questions; `approaches/checker.md` is not normative (3.7), so none of this changes what a tool or caller must do. The async fixture's `worker` names the environment variable the test build reads and the checker sets it to the outcome word; an outcome `outcomes` leaves out makes L2.async unprovided; L2.async always checks the start and that `next[0]` is a read command, and checks the outcomes only when `next[0]` carries `--wait` (without one, only that part is unsupported). A size refusal's `field` is `--input`. Snapshots count files, not directories; the `allowedEffects` glob is defined (`*` one segment, `**` many, `~/` for `HOME`). L2.skills owns "`skills show` writes nothing". A finer replacement of `USAGE` is a registered exit-2 code whose `field` names an argument. A batch constraint on a flag-only argument is given on argv, and one no item can break is skipped. A `notRun` command refused at its start with a registered precondition code is unprovided, any other refusal a fixture error. An unlisted write never makes a check unsupported. L1.tree passes a tree at or above the claimed level and reports that the higher level went unchecked. L2.idempotency leaves out of the repeat comparison only `allowedEffects` paths for a side effect the command's `effectNote` names, and lists them; `appends` never describes an audit line. L2.input-env probes only an option that alone declares its variable. L2.input-fragment, -normalise and -env compare exit, `ok`, `error.code` and `field` and `data` without the paths that differ between two runs of the argv form. L2.input-dash-values tries the next string argument when a precondition refusal leaves a candidate undecided, and passes a refusal that names the argument and echoes the value. The checker reads `--plan-digest=<digest>` as one word. In the spec, one clause: the caller of an `INVALID` with no `field` (a configuration file) changes what `hint` says. | 7.2.2, approaches/checker.md |
+
+| # | Owner decision 2026-11-04, version 1.4.0, a minor (15.1) | Where |
+|---|---|---|
+| D38 | The self-description is read by agents, so it is small and compact, and `--help` and `schema` have distinct roles. For a document that declares 1.4: every JSON document is compact (no whitespace outside strings). A command document is the call surface only: it embeds no JSON Schema; `schema <PATH> --schemas` returns exactly the schemas its refs reach, resolved there. The input fragment schema is no longer declared but derived from the options and 9.7.2, because it is fully determined by them and a declared copy could only disagree (1.3's Annex S2 rule 10 existed to keep the two equal). Options that commands share are defined once in the tree's `options` and a command names them; a command does not list the reserved options its document implies (`--json`; `--input` with `input`; `--fields` with an output's `fields`; `--commit` and `--plan-digest` for a destructive command of an L2 tool) nor the codes its features imply (`USAGE`, `INTERNAL`, `INPUT_*`, `BATCH_INCOMPLETE`, `PLAN_STALE`, `OPERATION_REUSED`, `CURSOR_INVALID`). Paging options stay listed: `--limit` has a per-command default and bound and `--all` is optional, so the list is the declaration. Members at their default are absent (`required`, `repeatable`, `variadic`, `flagOnly`, `async` false; `default` null, false or 0; `valueType` string; `valueName` the upper-cased name; an output's `kind` report and `schemaVersion` 1.0; empty lists), and `path` (the words of `command`) is gone. A shared option is named rather than left implicit so that a command document alone says which options it accepts. `--help` is text for people; `--help --json` refuses with `USAGE` and a hint to `schema`, so that JSON mode always prints an envelope and no command has two machine descriptions. Compatibility: these MUSTs bind only 1.4 documents; a caller of 1.3 or earlier rejects a 1.4 tree, group or command document as a wrong shape (15.4) because `path` and other members its minor requires are absent, so it fails closed and never misreads one; 15.1's MINOR row now allows exactly that, and every other document keeps its shape. Measured on canon's `finding close` answer: 10,876 bytes pretty and 6,732 compact in its 1.0 form, 3,088 in the 1.4 form, its JSON Schemas (1,672 bytes) moved to `--schemas`. | 4.4.1, 5.1, 7.3.1, 9, 15.1, 15.4, 15.6, 15.7, 15.8, Annex S2 |
 
 ## Appendix B. Prior art
 

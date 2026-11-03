@@ -1,7 +1,7 @@
 # Rust: clap stays the source, the self-description is generated
 
 Not normative. How a Rust tool built on clap 4 derive, such as canon and lute, can become ATIP conformant without a second
-description of their command trees. Section numbers ("spec 10.7") refer to `spec/atip-1.md`, version 1.3.0.
+description of their command trees. Section numbers ("spec 10.7") refer to `spec/atip-1.md`, version 1.4.0.
 
 ## 1. The principle
 
@@ -16,7 +16,7 @@ already works this way; the shared crate makes the projection and the wire types
 | canon file | What it does today | Change for atip/1 |
 |---|---|---|
 | `spec.rs` | Walks `cli::command()`; per option `name`, `kind` (`flag`/`count`/`value`), `short`, `aliases`, `valueName`, `required`, `repeatable`, `possibleValues`, `default` (strings), `help`, `env`, `conflictsWith`, `requires`; per leaf `effect`, `idempotency`, `exits`, `errorCodes`, `requiredOneOf`, `outputs`, `inputs`, `examples`. Reads `requires` from clap's `Debug` text because `Arg::requires` has no getter, pinned by a test. Writes `docs/cli/canon.cli.json`; `tests/cli_spec.rs` byte-diffs it. | `kind` → `valueType` (§4); typed `default` (§5); `conflictsWith`, `requires` and `requiredOneOf` → `constraints` (§4.2); `about` → `summary`; `errorCodes` → `errors`; `roles` → `x-canon`; drop `aliases`, `exits`, `nodeKind`, `supportsJson`; `flagOnly` on `repo`, `as`, `json`, `input`, `commit`, `plan-digest`. Moves into the shared crate. |
-| `schema.rs` | `META` (effect, effectNote, roles, exits) per leaf; runtime `schema` answers: a flat leaf list, a full leaf node, `--errors`, `--error`, `--as` filter. | Tree with groups and `level`; `schema <group>` answers a `group`; command answers embed `schemas` (today they live only in `canon.cli.json`). `--as` stays (explicit filter, spec 9.2). |
+| `schema.rs` | `META` (effect, effectNote, roles, exits) per leaf; runtime `schema` answers: a flat leaf list, a full leaf node, `--errors`, `--error`, `--as` filter. | Tree with groups and `level`; `schema <group>` answers a `group`; command answers embed `schemas` for a 1.3 tool (today they live only in `canon.cli.json`), and `schema <path> --schemas` serves them for a 1.4 tool (§5). `--as` stays (explicit filter, spec 9.2). |
 | `spec_facts.rs` | `FACTS`: outputs and idempotency per leaf. | Merges with `META` into one table (§3.2). |
 | `reports.rs` | `trait Report: Serialize + JsonSchema` with a default `schemaVersion` `1.0`; schemars 1.2. | Unchanged; the shared crate re-exports the trait. |
 | `json_out.rs` | `Meta {command, schemaVersion, canonVersion, context{role,actor,repo}, next, warnings, …}` plus flattened extras (`returned`, `total`, `hasMore`, `nextCursor`, `unchanged`, `waitingOn`, `provenance`); compact one-line output; debug builds validate every emitted envelope against its schema (`validate`, `witness`). | `canonVersion` → `toolVersion`, add `tool`, `contract`, `output`; nulls in `context` omitted; paging extras → `meta.page`; `unchanged` and `waitingOn` → reports (a minor bump each); warnings `{code, message}`; `next` argv gains `--json` in JSON mode (spec 6.8); `meta.command` omitted when no word resolved (canon prints `"canon"`). Keep the debug validation. |
@@ -39,7 +39,7 @@ atip
 ├── error      Code (registry row with its reasons), Condition, ReasonInfo, WarningInfo, CliError (builder), core codes, text rendering (approaches/implementation.md §6)
 ├── fieldpath  the parser and writer of field paths: dotted names, `[]`, bracketed keys (spec 6.10, Annex F1, F3); used by `--fields` and the projection
 ├── spec       CommandMeta table, project(&clap::Command, &Table) -> Vec<Node>, valueType, typed defaults, constraints
-├── schema     the `schema` subcommand: Args (path, --errors, --error, --warnings, --warning, --search, --json) and its handler
+├── schema     the `schema` subcommand: Args (path, --errors, --error, --warnings, --warning, --search, --schemas, --json) and its handler
 ├── input      InputArgs (--input): read, frame, fragment-validate, conflict-check, merge, batch runner (spec 11)
 ├── safety     SafetyArgs (--commit, --plan-digest), Plan, Effect, digest (JCS + SHA-256), commit `next` builder
 ├── stream     StreamWriter: start line, event lines, end line (spec 13)
@@ -324,10 +324,11 @@ catches).
 
 ## 5. Report, artifact, stream and input schemas
 
-Reports derive `schemars::JsonSchema` (canon does, schemars 1.2). The `schema` command's `schemas` member is each
-output's schema with its `$defs` lifted to sibling names, `$ref`s rewritten to `#/schemas/<Name>`, and each lifted
-schema's own `$id` and `$schema` removed: canon's report schemas carry `$id: "urn:canon:report:…"`, which would
-make `#/schemas/…` resolve against that URN instead of the command document (found by `scripts/check.ts` on the
+Reports derive `schemars::JsonSchema` (canon does, schemars 1.2). For a 1.3 tool the `schema` command's `schemas`
+member is each output's schema with its `$defs` lifted to sibling names, `$ref`s rewritten to `#/schemas/<Name>`,
+and each lifted schema's own `$id` and `$schema` removed: canon's report schemas carry
+`$id: "urn:canon:report:…"`, which would make `#/schemas/…` resolve against that URN instead of the command document
+(found by `scripts/check.ts` on the
 translated `purge` example). Artifacts have a JSON representation type of their own (`skills show` → `Guide`);
 streams have an event type and a result type (spec 9.9). A record schema of an output with `fields` must be
 projectable (Annex F5); schemars emits `anyOf: [{$ref}, {type: null}]` for `Option<T>`, which is allowed.
@@ -350,11 +351,20 @@ Rust tool generates it from one of two settings, chosen per output:
 Either way L1.output-data (approaches/checker.md §6) checks the generated schema against real output, and one output
 does not mix the two views.
 
-The input **fragment** schema (spec 9.9.2) is generated from the clap node: one property per option that is not
-flag-only (camelCase name; type from valueType in its encoded form, so an integer is
+For a 1.3 tool the input **fragment** schema (spec 9.9.2) is generated from the clap node: one property per option
+that is not flag-only (camelCase name; type from valueType in its encoded form, so an integer is
 `{"type": ["integer","string"], "pattern": "^-?(0|[1-9][0-9]*)$"}`; `type: array` for repeatable options except
 `count`), `operands` typed per operand, `additionalProperties: false`, and **no `required`**. canon's published
 `FindingCloseInput` already accepts `round` as integer or string; it has to drop its `required` list.
+
+**The 1.4 form.** A tool that declares 1.4 projects the same typed nodes, and one serializer writes the document of
+spec 9 (approaches/implementation.md §8). It omits every member at its default and the options and codes the document
+implies, and prints compact JSON. It collects the shared options from the nodes: an option with the same definition
+on two or more commands moves into the tree's `options`, and each command names it. The map above is no longer a
+member of the command document: `schema <path> --schemas --json` serves the schemas that the command's refs reach and
+those they reference, with the same lifting of `$defs`. No fragment schema is generated, since a reader derives it
+from the options (spec 9.9.2). `--help --json` is refused with `USAGE` (spec 4.4.1), so `schema` is the only JSON
+self-description.
 
 ## 6. `--input` in Rust
 

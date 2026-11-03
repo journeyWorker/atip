@@ -26,6 +26,15 @@
 // warning code of an envelope to be in the warning registry (7.5.2). Documents of an earlier minor are held to the
 // rules of that minor as before.
 //
+// 1.4 changes the form of the self-description (spec 9, 15.7), so the schema no longer requires what a 1.4 document
+// leaves out. A document of 1.0-1.3 is held to what it carried before (`legacyProblems`: `path`, the members at their
+// default, `schemas`, `input.option` and `input.schemaRef`, every option and code it accepts). A document that declares 1.4
+// is stored compact (spec 5.1), carries no member at its default and none that `x-atip-until` retires, lists neither an
+// implied option nor an implied code, names only tree options (`resolveCommand`), and is read through the full option
+// set (own, named and implied, defaults applied) by every rule of Annex S2; its fragment schema is derived from that set
+// (`deriveFragment`, spec 9.9.2) and its refs resolve in the schemas answer of the command
+// (examples/schema-schemas-<tool>-<command words joined by ->.json), which holds exactly what they reach (spec 9.9.3).
+//
 // The command documents and registries of the valid examples (examples/schema-*.json) are the reference that
 // reports, inputs and streams are checked against. Every document is validated against its JSON Schema before
 // it is read, so the types below describe documents that already passed that schema.
@@ -36,11 +45,25 @@ import { basename, join } from "node:path"
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 type JsonObject = { [key: string]: JsonValue }
 type SchemaNode = JsonObject | boolean
+// A command document as every rule reads it, after `resolveCommand`: the full operand and option set, defaults applied.
 type Arg = {
   name: string
   valueType: string
   required: boolean
   default: JsonValue
+  repeatable: boolean
+  variadic: boolean
+  possibleValues?: string[]
+  flagOnly: boolean
+  short?: string
+  domain?: JsonObject
+}
+// An argument as its document prints it: in a 1.4 document every member at its default is absent (spec 9.5).
+type RawArg = {
+  name: string
+  valueType?: string
+  required?: boolean
+  default?: JsonValue
   repeatable?: boolean
   variadic?: boolean
   possibleValues?: string[]
@@ -51,7 +74,26 @@ type Arg = {
 type Constraint = { rule: string; names?: string[]; if?: { name: string; in?: JsonValue[] }; then?: string[]; code?: string }
 type Validator = { arguments: string[]; code: string; description: string; rejects: string[] }
 type Fields = { records: string; paths: string[]; keep?: string[]; default?: string[] }
-type Output = { kind: string; schemaRef: string; schemaVersion: string; eventRef?: string; batch?: boolean; when?: string; fields?: Fields }
+type RawOutput = { kind?: string; schemaRef: string; schemaVersion?: string; eventRef?: string; batch?: boolean; when?: string; fields?: Fields }
+type Output = RawOutput & { kind: string; schemaVersion: string }
+type RawInput = { option?: string; schemaRef?: string; argumentsRef?: string; batch?: boolean; maxBytes: number; maxItems?: number; example: JsonObject }
+type RawCommandDoc = {
+  command: string
+  path?: string[]
+  effect: string
+  async?: boolean
+  operands?: RawArg[]
+  options?: (RawArg | string)[]
+  constraints?: Constraint[]
+  validators?: Validator[]
+  errors?: string[]
+  outputs: RawOutput[]
+  input?: RawInput
+  examples: string[]
+  schemas?: Record<string, SchemaNode>
+}
+// `errors` holds every code the command can emit (implied ones included), `named` the tree options it names, and
+// `fragment` is the derived fragment schema of a 1.4 command with input.
 type CommandDoc = {
   command: string
   path: string[]
@@ -61,18 +103,21 @@ type CommandDoc = {
   validators?: Validator[]
   errors: string[]
   outputs: Output[]
-  input?: { schemaRef: string; argumentsRef?: string; batch: boolean; maxItems?: number; example: JsonObject }
+  input?: RawInput & { batch: boolean }
   examples: string[]
   schemas: Record<string, SchemaNode>
+  named: string[]
+  fragment?: JsonObject
 }
-type TreeEntry = { command: string; path: string[] }
+type TreeEntry = { command: string; path?: string[]; kind?: string }
 type Reason = { reason: string }
 type RegistryEntry = { code: string; exit: number; retryable: boolean; reasons?: Reason[] }
 type WarningEntry = { code: string }
 type SchemaData =
-  | ({ kind: "command" } & CommandDoc)
-  | { kind: "tree"; query?: string; commands: TreeEntry[] }
-  | { kind: "group"; command: string; path: string[]; commands: TreeEntry[] }
+  | ({ kind: "command" } & RawCommandDoc)
+  | { kind: "tree"; level: string; query?: string; options?: RawArg[]; commands: TreeEntry[] }
+  | { kind: "group"; command: string; path?: string[]; commands: TreeEntry[] }
+  | { kind: "schemas"; command: string; schemas: Record<string, SchemaNode> }
   | { kind: "errors"; errors: RegistryEntry[] }
   | { kind: "error"; error: RegistryEntry }
   | { kind: "warnings"; warnings: WarningEntry[] }
@@ -154,7 +199,7 @@ const openSchema = (name: string): ValidateFunction => {
 }
 
 /** The contract minors this repository describes; a tool declares one of them (spec 15.5). */
-const MINORS = ["1.0", "1.1", "1.2", "1.3"]
+const MINORS = ["1.0", "1.1", "1.2", "1.3", "1.4"]
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 // The core codes (spec 7.3.1), and the ones every tool registers.
@@ -222,11 +267,11 @@ function ajvErrors(v: ValidateFunction): string {
 const isObject = (v: unknown): v is JsonObject => typeof v === "object" && v !== null && !Array.isArray(v)
 const refName = (ref: string) => ref.replace("#/schemas/", "")
 const camel = (kebab: string) => kebab.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
-const hasSchema = (doc: CommandDoc, ref: string) => Object.prototype.hasOwnProperty.call(doc.schemas, refName(ref))
+const hasSchema = (doc: { schemas: Record<string, SchemaNode> }, ref: string) => Object.prototype.hasOwnProperty.call(doc.schemas, refName(ref))
 
-/** A validator for one named schema of a command document; `#/schemas/X` resolves against the document. */
+/** A validator for one named schema; `#/schemas/X` resolves against `doc.schemas`. */
 let compiled = 0
-function commandSchema(doc: CommandDoc, ref: string, mutate?: (schemas: Record<string, SchemaNode>) => void): ValidateFunction {
+function commandSchema(doc: { schemas: Record<string, SchemaNode> }, ref: string, mutate?: (schemas: Record<string, SchemaNode>) => void): ValidateFunction {
   const schemas = structuredClone(doc.schemas)
   mutate?.(schemas)
   return ajv.compile({ $id: `https://atip.dev/check/${++compiled}`, $ref: ref, schemas })
@@ -816,7 +861,7 @@ function inlineDocuments(doc: CommandDoc, text: string, where: string, problems:
     if (!doc.input.batch) return void problems.push(`${where}: a batch, but ${doc.command} takes no batch (spec 10.4)`)
     if (value.length > (doc.input.maxItems ?? 0)) problems.push(`${where}: a batch over maxItems`)
   }
-  const fragment = commandSchema(doc, doc.input.schemaRef)
+  const fragment = fragmentValidator(doc)
   return (Array.isArray(value) ? value : [value]).map((item, i) => {
     const at = Array.isArray(value) ? `${where} /${i}` : where
     if (!fragment(item)) problems.push(`${at}: fragment: ${ajvErrors(fragment)}`)
@@ -1063,8 +1108,302 @@ function projectedSchema(doc: CommandDoc, output: Output, trie: Trie): ValidateF
   })
 }
 
+// ---- the 1.4 form of a command document (spec 9.3, 9.5, 9.9.2, Annex S2 rules 16 and 17) ----
+/** The tree an example tool prints: its level (spec 11.4) and the options its commands share (spec 9.3). */
+type Tree = { level: string; options: Map<string, RawArg> }
+const trees = new Map<string, Tree>()
+/** The schemas answer of each command, by `<tool> <command>` (spec 9.9.3). */
+const schemasAnswers = new Map<string, Record<string, SchemaNode>>()
+const pathOf = (x: { command: string; path?: string[] }) => x.path ?? x.command.split(" ")
+
+/** What an argument's `default` is when its document leaves it out (spec 9.5): `false` for a switch, `0` for a count. */
+const defaultFor = (valueType: string): JsonValue => (valueType === "switch" ? false : valueType === "count" ? 0 : null)
+
+/** An argument with every member its document leaves at the default stated (spec 9.5); a count is repeatable by definition. */
+function fullArg(a: RawArg): Arg {
+  const valueType = a.valueType ?? "string"
+  return {
+    ...a,
+    valueType,
+    required: a.required ?? false,
+    repeatable: valueType === "count" ? true : (a.repeatable ?? false),
+    variadic: a.variadic ?? false,
+    flagOnly: a.flagOnly ?? false,
+    default: a.default === undefined ? defaultFor(valueType) : a.default,
+  }
+}
+
+/** The reserved options a 1.4 document implies, and so does not list (spec 9.5). */
+const IMPLIED_OPTIONS: Record<string, RawArg> = {
+  json: { name: "json", valueType: "switch", flagOnly: true },
+  input: { name: "input", flagOnly: true },
+  fields: { name: "fields", flagOnly: true },
+  commit: { name: "commit", valueType: "switch", flagOnly: true },
+  "plan-digest": { name: "plan-digest", flagOnly: true },
+}
+function impliedOptionNames(doc: RawCommandDoc, level: string): string[] {
+  return [
+    "json",
+    ...(doc.input ? ["input"] : []),
+    ...(doc.outputs.some((o) => o.fields) ? ["fields"] : []),
+    ...(doc.effect === "destructive" && level === "L2" ? ["commit", "plan-digest"] : []),
+  ]
+}
+
+/** The error codes a 1.4 document implies, and so does not list (spec 9.5), given its full option set. */
+function impliedCodes(doc: RawCommandDoc, optionNames: string[]): string[] {
+  return [
+    "USAGE",
+    "INTERNAL",
+    ...(doc.input ? ["INPUT_INVALID", "INPUT_CONFLICT", "INPUT_TOO_LARGE"] : []),
+    ...(doc.input?.batch ? ["BATCH_INCOMPLETE"] : []),
+    ...(optionNames.includes("commit") ? ["PLAN_STALE"] : []),
+    ...(optionNames.includes("operation") ? ["OPERATION_REUSED"] : []),
+    ...(optionNames.includes("cursor") ? ["CURSOR_INVALID"] : []),
+  ]
+}
+
+/**
+ * The command document as every rule reads it. Before 1.4 it is the document itself with its defaults stated. In 1.4
+ * its options are the implied reserved ones, the tree options it names and its own, its `errors` add the implied codes,
+ * and its schemas are those of its schemas answer. Problems with the names are reported here.
+ */
+function resolveCommand(raw: RawCommandDoc, tool: string, v14: boolean, problems: string[]): CommandDoc {
+  const tree = trees.get(tool)
+  const options: Arg[] = []
+  const named: string[] = []
+  const given = new Set<string>()
+  for (const o of raw.options ?? []) {
+    if (typeof o !== "string") {
+      if (v14 && given.has(o.name)) problems.push(`option --${o.name} is given twice in the options of ${raw.command} (Annex S2 rule 17)`)
+      else options.push(fullArg(o))
+      given.add(o.name)
+    } else if (v14) {
+      const shared = tree?.options.get(o)
+      if (given.has(o)) problems.push(`option --${o} is given twice in the options of ${raw.command} (Annex S2 rule 17)`)
+      else if (!shared) problems.push(`option name ${o} in ${raw.command} names no option of the tree of ${tool} (spec 9.5, Annex S2 rule 17)`)
+      else {
+        options.push(fullArg(shared))
+        named.push(o)
+      }
+      given.add(o)
+    }
+  }
+  let errors = raw.errors ?? []
+  if (v14) {
+    for (const name of impliedOptionNames(raw, tree?.level ?? "L1")) if (!given.has(name)) options.push(fullArg(IMPLIED_OPTIONS[name]))
+    errors = [...new Set([...errors, ...impliedCodes(raw, options.map((o) => o.name))])]
+  }
+  return {
+    command: raw.command,
+    path: pathOf(raw),
+    operands: (raw.operands ?? []).map(fullArg),
+    options,
+    constraints: raw.constraints,
+    validators: raw.validators,
+    errors,
+    outputs: raw.outputs.map((o) => ({ ...o, kind: o.kind ?? "report", schemaVersion: o.schemaVersion ?? "1.0" })),
+    input: raw.input && { ...raw.input, batch: raw.input.batch ?? false },
+    examples: raw.examples,
+    schemas: v14 ? (schemasAnswers.get(`${tool} ${raw.command}`) ?? {}) : (raw.schemas ?? {}),
+    named,
+    fragment: v14 && raw.input ? deriveFragment(raw, tree?.options ?? new Map()) : undefined,
+  }
+}
+
+const INTEGER_STRING = "^-?(0|[1-9][0-9]*)$"
+const NUMBER_STRING = "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+/** The `--input` values of spec 9.7.2 for one argument's valueType, as JSON Schema. */
+function documentValueSchema(a: Arg): JsonObject {
+  switch (a.valueType) {
+    case "switch": return { type: "boolean" }
+    case "count": return { type: "integer", minimum: 0 }
+    case "integer": return { anyOf: [{ type: "integer" }, { type: "string", pattern: INTEGER_STRING }] }
+    case "number": return { anyOf: [{ type: "number" }, { type: "string", pattern: NUMBER_STRING }] }
+    case "enum": return { enum: a.possibleValues ?? [] }
+    case "json": return { not: { type: "null" } }
+    default: return { type: "string" }
+  }
+}
+
+/**
+ * The fragment schema of one `--input` document, derived as spec 9.9.2 says: an object with no `required` and
+ * `additionalProperties: false` whose properties are `operands` (an array of operand values, at least one, at most
+ * one per operand unless the last is variadic) and the camelCase name of every option that is not flag-only, each
+ * admitting the `--input` values of 9.7.2 (an array of them when repeatable). Domains are not part of it.
+ */
+function deriveFragment(doc: RawCommandDoc, treeOptions: Map<string, RawArg>): JsonObject {
+  const operands = (doc.operands ?? []).map(fullArg)
+  const properties: JsonObject = {}
+  const last = operands.at(-1)
+  if (last) {
+    const fixed = last.variadic ? operands.slice(0, -1) : operands
+    properties.operands = {
+      type: "array",
+      minItems: 1,
+      ...(last.variadic ? {} : { maxItems: operands.length }),
+      ...(fixed.length ? { prefixItems: fixed.map(documentValueSchema) } : {}),
+      items: last.variadic ? documentValueSchema(last) : false,
+    }
+  }
+  for (const o of doc.options ?? []) {
+    const raw = typeof o === "string" ? treeOptions.get(o) : o
+    if (!raw) continue
+    const a = fullArg(raw)
+    if (a.flagOnly) continue
+    const value = documentValueSchema(a)
+    properties[camel(a.name)] = a.repeatable && a.valueType !== "count" ? { type: "array", items: value } : value
+  }
+  return { type: "object", additionalProperties: false, properties }
+}
+
+/** The validator of a command's fragment schema: derived in 1.4, the declared `input.schemaRef` before. */
+const fragmentValidators = new WeakMap<CommandDoc, ValidateFunction>()
+function fragmentValidator(doc: CommandDoc): ValidateFunction {
+  let v = fragmentValidators.get(doc)
+  if (!v) {
+    v = doc.fragment ? ajv.compile(doc.fragment) : commandSchema(doc, doc.input?.schemaRef ?? "")
+    fragmentValidators.set(doc, v)
+  }
+  return v
+}
+
+/** The refs a command document names (spec 9.9.3); before 1.4 also its declared fragment schema. */
+const refsOf = (doc: CommandDoc): string[] =>
+  [...doc.outputs.flatMap((o) => [o.schemaRef, o.eventRef]), doc.input?.schemaRef, doc.input?.argumentsRef].filter((r): r is string => typeof r === "string")
+
+/**
+ * The schemas the refs reach, directly and through `#/schemas/<Name>` references (spec 9.9.3): those `schemas` holds,
+ * and the names it lacks.
+ */
+function reachedSchemas(schemas: Record<string, SchemaNode>, refs: string[]): { reached: Set<string>; missing: Set<string> } {
+  const reached = new Set<string>()
+  const missing = new Set<string>()
+  const visit = (node: JsonValue) => {
+    if (Array.isArray(node)) return node.forEach(visit)
+    if (!isObject(node)) return
+    for (const [k, v] of Object.entries(node)) {
+      if (k === "$ref" && typeof v === "string" && v.startsWith("#/schemas/")) enter(refName(v))
+      else visit(v)
+    }
+  }
+  const enter = (name: string) => {
+    if (reached.has(name) || missing.has(name)) return
+    if (!Object.prototype.hasOwnProperty.call(schemas, name)) return void missing.add(name)
+    reached.add(name)
+    visit(schemas[name])
+  }
+  refs.forEach((r) => enter(refName(r)))
+  return { reached, missing }
+}
+
+/** A schemas answer (spec 9.9.3): it holds every schema the command's refs reach, each compiles, and nothing else is held. */
+function schemasAnswerProblems(data: { command: string; schemas: Record<string, SchemaNode> }, tool: string, problems: string[]) {
+  const doc = commandDocs.get(`${tool} ${data.command}`)
+  if (!doc) return void problems.push(`no command document of ${data.command} among the examples of ${tool}, so its refs are unknown (spec 9.9.3)`)
+  const { reached, missing } = reachedSchemas(data.schemas, refsOf(doc))
+  for (const name of missing) problems.push(`schema ${name}, which the refs of ${data.command} reach, is not in its schemas answer (spec 9.9.3)`)
+  for (const name of Object.keys(data.schemas)) if (!reached.has(name)) problems.push(`schemas.${name} is reached by no ref of ${data.command} (spec 9.9.3)`)
+  for (const name of Object.keys(data.schemas)) {
+    try {
+      commandSchema(data, `#/schemas/${name}`)
+    } catch (e) {
+      const message = (e as Error).message.split("\n")[0]
+      if (!missing.size || !message.includes("resolve reference")) problems.push(`schemas.${name} does not compile: ${message}`)
+    }
+  }
+}
+
+// The schema's own statement of the defaults and of the members only earlier minors carry (spec 15.6).
+const schemaMembers = (def: string): Record<string, JsonObject> => (isObject(docDefs[def]?.properties) ? (docDefs[def].properties as Record<string, JsonObject>) : {})
+
+/**
+ * Annex S2 rules 16 and 17 for one object of a 1.4 document, `def` its entry in schema-doc.schema.json: it carries no
+ * member that `x-atip-until` retires and none whose value is the default the schema states (or `defaults` overrides).
+ */
+function v14MemberProblems(def: string, node: object, at: string, problems: string[], defaults: Record<string, JsonValue> = {}) {
+  for (const [k, member] of Object.entries(schemaMembers(def)))
+    if (member["x-atip-until"] !== undefined && k in node) problems.push(`${at}: ${k} is only in documents of 1.0-1.3, and a 1.4 document does not carry it (spec 15.6, Annex S2 rule 16)`)
+  for (const [k, v] of Object.entries(node)) {
+    const d = k in defaults ? defaults[k] : schemaMembers(def)[k]?.default
+    if (d !== undefined && jsonEqual(v as JsonValue, d)) problems.push(`${at}: ${k} is ${JSON.stringify(v)}, its default, so a 1.4 document leaves it out (spec 9.5, Annex S2 rule 17)`)
+  }
+}
+
+/** `v14MemberProblems` for an operand or an option: its `default`, `valueName` and (on a count) `repeatable` have their own defaults. */
+function argumentDefaultProblems(def: "operand" | "option", a: RawArg, at: string, problems: string[]) {
+  const valueType = a.valueType ?? "string"
+  v14MemberProblems(def, a, at, problems, { default: defaultFor(valueType), valueName: a.name.toUpperCase().replace(/-/g, "_") })
+  if (valueType === "count" && a.repeatable !== undefined) problems.push(`${at}: a count is repeatable by definition, and a 1.4 document does not say so (spec 9.5, Annex S2 rule 17)`)
+}
+
+/** Annex S2 rules 4, 16 and 17 for a command document that declares 1.4. */
+function checkV14Command(raw: RawCommandDoc, doc: CommandDoc, tool: string, problems: string[]) {
+  const tree = trees.get(tool)
+  if (!tree) problems.push(`no tree example of ${tool}, so the shared and implied options of ${raw.command} cannot be read (spec 9.3)`)
+  if (!schemasAnswers.has(`${tool} ${raw.command}`)) problems.push(`no schemas answer example of ${raw.command}, where its refs resolve (spec 9.9.3)`)
+  v14MemberProblems("command", raw, raw.command, problems)
+  raw.outputs.forEach((o, i) => v14MemberProblems("output", o, `${raw.command} output ${i}`, problems))
+  if (raw.input) v14MemberProblems("input", raw.input, `${raw.command} input`, problems)
+  for (const a of raw.operands ?? []) argumentDefaultProblems("operand", a, `${raw.command} operand ${a.name}`, problems)
+  for (const o of raw.options ?? []) if (typeof o !== "string") argumentDefaultProblems("option", o, `${raw.command} option ${o.name}`, problems)
+  // Spec 9.5: the reserved options the document implies are not listed, and those it does not imply are not offered.
+  const implied = impliedOptionNames(raw, tree?.level ?? "L1")
+  for (const o of raw.options ?? []) {
+    const name = typeof o === "string" ? o : o.name
+    if (implied.includes(name)) problems.push(`${raw.command} lists --${name}, which its document implies (spec 9.5, Annex S2 rule 4)`)
+    else if (name === "input" || name === "fields") problems.push(`${raw.command} lists --${name}, but its document declares no ${name === "input" ? "input" : "output with fields"} (spec 9.5)`)
+  }
+  const impliedErrors = impliedCodes(raw, doc.options.map((o) => o.name))
+  for (const code of raw.errors ?? [])
+    if (impliedErrors.includes(code)) problems.push(`${raw.command} lists ${code} in errors, which its document implies (spec 9.5, Annex S2 rule 4)`)
+}
+
+// Members a document of 1.0-1.3 carries and the schema no longer requires, because a 1.4 document leaves them out
+// (spec 15.6, 15.7): the `required` lists of the schema before 1.4.
+const LEGACY_REQUIRED: Record<string, string[]> = {
+  treeEntry: ["path", "kind"],
+  group: ["path"],
+  command: ["path", "operands", "options", "errors", "schemas"],
+  operand: ["valueName", "valueType", "required", "variadic", "default"],
+  option: ["valueType", "required", "repeatable", "default"],
+  output: ["kind", "schemaVersion"],
+  input: ["option", "schemaRef", "batch"],
+}
+
+/** A document of 1.0-1.3 keeps every member it carried before 1.4, and uses nothing that is since 1.4. */
+function legacyProblems(data: SchemaData, minor: string, problems: string[]) {
+  const need = (def: string, node: object, at: string) => {
+    for (const k of LEGACY_REQUIRED[def]) if (!(k in node)) problems.push(`${at} lacks ${k}, which a document of 1.0-1.3 carries (spec 15.7)`)
+  }
+  const since14 = (what: string) => problems.push(`${what} is since 1.4, but the document declares ${minor} (Annex S2 rule 16)`)
+  if (data.kind === "schemas") since14("data.kind schemas")
+  if (data.kind === "tree" && data.options) since14("the tree's options")
+  if (data.kind === "group") need("group", data, `group ${data.command}`)
+  if (data.kind === "tree" || data.kind === "group") for (const e of data.commands) need("treeEntry", e, `tree entry ${e.command}`)
+  if (data.kind !== "command") return
+  const at = data.command
+  need("command", data, at)
+  for (const a of data.operands ?? []) need("operand", a, `${at} operand ${a.name}`)
+  for (const o of data.options ?? []) {
+    if (typeof o === "string") {
+      since14(`the option name ${o} in ${at}`)
+      continue
+    }
+    need("option", o, `${at} option ${o.name}`)
+    if (o.valueType !== "switch" && o.valueType !== "count" && !("valueName" in o)) problems.push(`${at} option ${o.name} lacks valueName, which a document of 1.0-1.3 carries (spec 15.7)`)
+  }
+  data.outputs.forEach((o, i) => need("output", o, `${at} output ${i}`))
+  if (data.input) need("input", data.input, `${at} input`)
+  // Annex S2 rule 5 before 1.4: `input` is present exactly when `--input` is listed.
+  const listsInput = (data.options ?? []).some((o) => typeof o !== "string" && o.name === "input")
+  if (listsInput !== (data.input !== undefined)) problems.push(`${at}: input is present exactly when --input is listed (Annex S2 rule 5)`)
+}
+
 // ---- self-description (Annex S2) ----
-function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11: boolean, v12: boolean) {
+function checkCommandDoc(raw: RawCommandDoc, tool: string, problems: string[], v11: boolean, v12: boolean, v14: boolean) {
+  const doc = resolveCommand(raw, tool, v14, problems)
+  if (v14) checkV14Command(raw, doc, tool, problems)
   const all = [...doc.operands, ...doc.options]
   // Rule 9: names and short letters are unique.
   const names = new Set<string>()
@@ -1079,7 +1418,7 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
   // Rule 2: refs resolve by membership; every schema compiles; outputs do not share a schemaRef.
   const refs = [...doc.outputs.flatMap((o) => [o.schemaRef, o.eventRef]), doc.input?.schemaRef, doc.input?.argumentsRef]
   for (const ref of refs) if (ref && !hasSchema(doc, ref)) problems.push(`${ref} does not resolve in schemas`)
-  for (const name of Object.keys(doc.schemas)) {
+  if (!v14) for (const name of Object.keys(doc.schemas)) {
     try {
       commandSchema(doc, `#/schemas/${name}`)
     } catch (e) {
@@ -1125,7 +1464,7 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
     if (earlier !== undefined) problems.push(`constraint ${index} repeats constraint ${earlier} (spec 9.8.1)`)
     else relations.set(key, index)
   }
-  // Rule 4: a command lists the reserved code of each feature it offers (7.3.1).
+  // Rule 4: before 1.4 a command lists the reserved code of each feature it offers (7.3.1); a 1.4 document lists none (above).
   const has = (name: string) => doc.options.some((o) => o.name === name)
   const featureCodes: [boolean, string[]][] = [
     [doc.input !== undefined, ["INPUT_INVALID", "INPUT_CONFLICT", "INPUT_TOO_LARGE"]],
@@ -1134,7 +1473,7 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
     [has("operation"), ["OPERATION_REUSED"]],
     [has("cursor"), ["CURSOR_INVALID"]],
   ]
-  for (const [offered, codes] of featureCodes) if (offered) for (const c of codes) if (!doc.errors.includes(c)) problems.push(`${doc.command} offers the feature of ${c} but does not list it in errors (spec 7.3.1)`)
+  if (!v14) for (const [offered, codes] of featureCodes) if (offered) for (const c of codes) if (!doc.errors.includes(c)) problems.push(`${doc.command} offers the feature of ${c} but does not list it in errors (spec 7.3.1)`)
   // Rule 13: stateless validators (9.8.2).
   for (const v of doc.validators ?? []) {
     for (const n of v.arguments) if (!names.has(n)) problems.push(`validator names unknown argument ${n}`)
@@ -1162,8 +1501,8 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
     if (v12 && FLAG_ONLY_SINCE_12.includes(o.name) && o.flagOnly !== true)
       problems.push(`--${o.name} must be flagOnly in a document that declares 1.2 (spec 10.6, Annex S2 rule 8)`)
   }
-  // Rule 10: the fragment contract.
-  if (doc.input) {
+  // Rule 10: before 1.4 the declared fragment contract; in 1.4 the schema is derived (9.9.2).
+  if (doc.input && !v14) {
     const fragment = deref(doc.schemas, doc.schemas[refName(doc.input.schemaRef)])
     if (!isObject(fragment)) problems.push("the fragment schema is not an object schema")
     else {
@@ -1218,31 +1557,11 @@ function checkCommandDoc(doc: CommandDoc, tool: string, problems: string[], v11:
   // Rules 7 and 12.
   for (const example of doc.examples) parseInvocation(doc, tool, example, problems)
   if (doc.input) {
-    const fragment = commandSchema(doc, doc.input.schemaRef)
+    const fragment = fragmentValidator(doc)
     if (!fragment(doc.input.example)) problems.push(`input.example fails the fragment schema: ${ajvErrors(fragment)}`)
     checkArguments(doc, documentArgs(doc, doc.input.example, "/input/example", problems), "input.example", problems)
   }
 }
-
-// ---- the valid command documents and registries of the examples, by tool ----
-const exampleDir = join(repo, "examples")
-const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"))
-const commandDocs = new Map<string, CommandDoc>()
-const registries = new Map<string, RegistryEntry[]>()
-const warningRegistries = new Map<string, WarningEntry[]>()
-/** The minor each example tool's build declares, from its schema answers (the fixture's claim, spec 15.5). */
-const toolMinors = new Map<string, string>()
-for (const f of readdirSync(exampleDir).filter((f) => f.startsWith("schema-") && f.endsWith(".json"))) {
-  const answer = readJson(join(exampleDir, f)) as { data: SchemaData; meta: Meta }
-  if (answer.data.kind === "command") commandDocs.set(`${answer.meta.tool} ${answer.data.command}`, answer.data)
-  if (answer.data.kind === "errors") registries.set(answer.meta.tool, answer.data.errors)
-  if (answer.data.kind === "warnings") warningRegistries.set(answer.meta.tool, answer.data.warnings)
-  toolMinors.set(answer.meta.tool, answer.meta.contractVersion ?? "1.0")
-}
-/** The registry entry of an error code: the tool's own row (with its reasons), else the reserved code's (7.3.1). */
-const registered = (tool: string, code: string): RegistryEntry | undefined =>
-  registries.get(tool)?.find((e) => e.code === code) ?? (RESERVED[code] ? { code, ...RESERVED[code] } : undefined)
-const warningRegistered = (tool: string, code: string) => warningRegistries.get(tool)?.some((e) => e.code === code) ?? false
 
 // ---- the contract minor a document declares (spec 15.5, Annex S2 rule 16) ----
 const declaredMinor = (meta: Meta) => meta.contractVersion ?? "1.0"
@@ -1257,8 +1576,34 @@ function minorOf(meta: { contractVersion?: string }, problems: string[]): boolea
 const declares12 = (meta: Meta) => MINORS.indexOf(declaredMinor(meta)) >= MINORS.indexOf("1.2")
 /** Whether the document declares 1.3 or later, so that the rules 1.3 adds for its own documents apply (7.2.3, 7.5.2). */
 const declares13 = (meta: Meta) => MINORS.indexOf(declaredMinor(meta)) >= MINORS.indexOf("1.3")
+/** Whether the document declares 1.4 or later: compact, the 1.4 form of the self-description (spec 5.1, 9). */
+const declares14 = (meta: Meta) => MINORS.indexOf(declaredMinor(meta)) >= MINORS.indexOf("1.4")
 const since11 = (allowed: boolean, what: string, problems: string[]) =>
   allowed || problems.push(`${what} is since 1.1, but the document declares contract 1.0 (Annex S2 rule 16)`)
+
+// ---- the valid command documents, trees, schemas answers and registries of the examples, by tool ----
+const exampleDir = join(repo, "examples")
+const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"))
+const commandDocs = new Map<string, CommandDoc>()
+const registries = new Map<string, RegistryEntry[]>()
+const warningRegistries = new Map<string, WarningEntry[]>()
+/** The minor each example tool's build declares, from its schema answers (the fixture's claim, spec 15.5). */
+const toolMinors = new Map<string, string>()
+const answers = readdirSync(exampleDir)
+  .filter((f) => f.startsWith("schema-") && f.endsWith(".json"))
+  .map((f) => readJson(join(exampleDir, f)) as { data: SchemaData; meta: Meta })
+for (const { data, meta } of answers) {
+  if (data.kind === "tree" && !data.query) trees.set(meta.tool, { level: data.level, options: new Map((data.options ?? []).map((o) => [o.name, o])) })
+  if (data.kind === "schemas") schemasAnswers.set(`${meta.tool} ${data.command}`, data.schemas)
+  if (data.kind === "errors") registries.set(meta.tool, data.errors)
+  if (data.kind === "warnings") warningRegistries.set(meta.tool, data.warnings)
+  toolMinors.set(meta.tool, declaredMinor(meta))
+}
+for (const { data, meta } of answers) if (data.kind === "command") commandDocs.set(`${meta.tool} ${data.command}`, resolveCommand(data, meta.tool, declares14(meta), []))
+/** The registry entry of an error code: the tool's own row (with its reasons), else the reserved code's (7.3.1). */
+const registered = (tool: string, code: string): RegistryEntry | undefined =>
+  registries.get(tool)?.find((e) => e.code === code) ?? (RESERVED[code] ? { code, ...RESERVED[code] } : undefined)
+const warningRegistered = (tool: string, code: string) => warningRegistries.get(tool)?.some((e) => e.code === code) ?? false
 
 /**
  * Spec 7.2.3, for a document that declares 1.3: an error code of a registry is a core code or follows the grammar of
@@ -1283,7 +1628,7 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
     // Report the errors of the branch `data.kind` selects, not of every oneOf branch.
     const data = answer && typeof answer === "object" && "data" in answer ? answer.data : undefined
     const kind = data && typeof data === "object" && "kind" in data ? data.kind : undefined
-    const branch = typeof kind === "string" && ["tree", "group", "command", "errors", "error", "warnings", "warning"].includes(kind)
+    const branch = typeof kind === "string" && ["tree", "group", "command", "schemas", "errors", "error", "warnings", "warning"].includes(kind)
       ? ajv.compile({ $ref: `https://atip.dev/1/schema-doc.schema.json#/$defs/${kind}` })
       : undefined
     const detail = branch && !branch(data) ? `/data: ${ajvErrors(branch)}` : ajvErrors(V.schemaDoc)
@@ -1291,28 +1636,44 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
   }
   const { data, meta } = value as { data: SchemaData; meta: Meta }
   const v11 = minorOf(meta, problems)
+  const v14 = declares14(meta)
   checkMeta(meta, v11, problems)
   if (meta.schemaVersion !== declaredMinor(meta))
     problems.push(`a schema answer's schemaVersion ${meta.schemaVersion} is not its contract version ${declaredMinor(meta)} (spec 9.1.2)`)
   if (data.kind === "warnings" || data.kind === "warning") since11(v11, `data.kind ${data.kind}`, problems)
+  if (!v14) legacyProblems(data, declaredMinor(meta), problems)
+  if (data.kind === "schemas") schemasAnswerProblems(data, meta.tool, problems)
   if (data.kind === "command") {
     for (const o of data.outputs)
       for (const p of [...(o.fields?.paths ?? []), ...(o.fields?.keep ?? []), ...(o.fields?.default ?? [])])
         if (parseFieldPath(p)?.some((s) => s.bracket)) since11(v11, `the bracketed field path ${p}`, problems)
-    checkCommandDoc(data, meta.tool, problems, v11, declares12(meta))
+    checkCommandDoc(data, meta.tool, problems, v11, declares12(meta), v14)
   }
-  if (data.kind === "group" && data.command !== data.path.join(" ")) problems.push(`group ${data.command} is not its path ${data.path.join(" ")}`)
+  if (data.kind === "group" && data.command !== pathOf(data).join(" ")) problems.push(`group ${data.command} is not its path ${pathOf(data).join(" ")}`)
+  if (data.kind === "group" && v14) v14MemberProblems("group", data, `group ${data.command}`, problems)
+  if (data.kind === "tree" && v14 && data.options) {
+    const optionNames = data.options.map((o) => o.name)
+    for (const o of data.options) argumentDefaultProblems("option", o, `tree option ${o.name}`, problems)
+    for (const n of new Set(optionNames.filter((n, i) => optionNames.indexOf(n) !== i))) problems.push(`tree option ${n} is defined twice (spec 9.3)`)
+    if (!data.query) {
+      const used = new Set<string>()
+      for (const [key, doc] of commandDocs) if (key.startsWith(`${meta.tool} `)) for (const n of doc.named) used.add(n)
+      for (const n of optionNames) if (!used.has(n)) problems.push(`tree option ${n} is named by no command (Annex S2 rule 17)`)
+    }
+  }
   if (data.kind === "tree" || data.kind === "group") {
-    const parent = data.kind === "group" ? data.path : []
+    const parent = data.kind === "group" ? pathOf(data) : []
     for (const e of data.commands) {
-      if (e.command !== e.path.join(" ")) problems.push(`tree entry ${e.command} is not its path`)
-      if (parent.length && (e.path.length !== parent.length + 1 || parent.some((p, i) => e.path[i] !== p)))
+      const path = pathOf(e)
+      if (v14) v14MemberProblems("treeEntry", e, `tree entry ${e.command}`, problems)
+      if (e.command !== path.join(" ")) problems.push(`tree entry ${e.command} is not its path`)
+      if (parent.length && (path.length !== parent.length + 1 || parent.some((p, i) => path[i] !== p)))
         problems.push(`${e.command} is not a direct child of ${parent.join(" ")}`)
     }
     if (data.kind === "tree" && !data.query) {
       const seen = new Set<string>()
       for (const e of data.commands) {
-        if (e.path.length > 1 && !seen.has(e.path.slice(0, -1).join(" "))) problems.push(`${e.command} listed before its group`)
+        if (pathOf(e).length > 1 && !seen.has(pathOf(e).slice(0, -1).join(" "))) problems.push(`${e.command} listed before its group`)
         seen.add(e.command)
       }
     }
@@ -1355,7 +1716,7 @@ function checkInput(file: string, value: unknown, problems: string[]) {
   const complete = !basename(file).includes("fragment")
   if (Array.isArray(document) && !doc.input.batch) problems.push(`${doc.command} takes no batch (spec 10.4)`)
   if (Array.isArray(document) && document.length > (doc.input.maxItems ?? 0)) problems.push("batch over maxItems")
-  const fragment = commandSchema(doc, doc.input.schemaRef)
+  const fragment = fragmentValidator(doc)
   // A complete document is validated as an invocation: argumentsRef sees its normalised argument object (S1).
   items.forEach((item, i) => {
     const where = Array.isArray(document) ? `/${i}` : ""
@@ -1578,7 +1939,7 @@ const docDefs = schemaFile("schema-doc.schema.json").$defs
 const prop = (def: JsonObject | undefined, name: string): JsonValue | undefined => (isObject(def?.properties) ? def.properties[name] : undefined)
 const listed = (node: JsonValue | undefined): JsonValue[] => (isObject(node) && Array.isArray(node.enum) ? node.enum : isObject(node) && node.const !== undefined ? [node.const] : [])
 const KNOWN = {
-  kinds: ["tree", "group", "command", "errors", "error", "warnings", "warning"],
+  kinds: ["tree", "group", "command", "schemas", "errors", "error", "warnings", "warning"],
   effects: listed(docDefs.effect),
   idempotency: listed(docDefs.idempotency),
   levels: listed(prop(docDefs.tree, "level")),
@@ -1614,6 +1975,7 @@ const CALLER_COVERED: Record<string, string> = {
   "schema-doc.schema.json#/$defs/warnings/properties/kind": "data.kind: unusable",
   "schema-doc.schema.json#/$defs/warning/properties/kind": "data.kind: unusable",
   "schema-doc.schema.json#/$defs/command/properties/kind": "data.kind: unusable",
+  "schema-doc.schema.json#/$defs/schemas/properties/kind": "data.kind: unusable",
   "schema-doc.schema.json#/$defs/operand/properties/valueType": "valueType: argument left out",
   "schema-doc.schema.json#/$defs/option/properties/valueType": "valueType: argument left out",
   "schema-doc.schema.json#/$defs/jsonType": "domain type: domain left out",
@@ -1694,7 +2056,7 @@ function schemaAnswerView(answer: JsonValue, notes: string[], problems: string[]
   if (Array.isArray(data.commands))
     data.commands = data.commands.filter((e) => {
       if (!isObject(e)) return true
-      if (!knownValue(e.kind, KNOWN.entryKinds, `tree entry ${String(e.command)} kind`, problems, true)) {
+      if (!knownValue(e.kind, KNOWN.entryKinds, `tree entry ${String(e.command)} kind`, problems)) {
         notes.push(`tree entry ${String(e.command)} of unknown kind left out`)
         return false
       }
@@ -1712,7 +2074,7 @@ function schemaAnswerView(answer: JsonValue, notes: string[], problems: string[]
     if (!Array.isArray(list)) continue
     data[key] = list.filter((a) => {
       if (!isObject(a)) return true
-      if (!knownValue(a.valueType, types, `argument ${String(a.name)} valueType`, problems, true)) {
+      if (!knownValue(a.valueType, types, `argument ${String(a.name)} valueType`, problems)) {
         notes.push(`argument ${String(a.name)} of unknown valueType ${String(a.valueType)} is unusable${a.required === true ? ", so the command is unusable" : ""}`)
         return false
       }
@@ -1729,14 +2091,14 @@ function schemaAnswerView(answer: JsonValue, notes: string[], problems: string[]
       notes.push(`constraint rule ${String(c.rule)} is unknown: left out of the caller's checks, the tool still enforces it`)
       return false
     })
-  if (isObject(data.input) && !knownValue(data.input.option, KNOWN.inputOptions, "input.option", problems, true)) {
+  if (isObject(data.input) && !knownValue(data.input.option, KNOWN.inputOptions, "input.option", problems)) {
     notes.push(`input.option ${String(data.input.option)} is unknown: input left out, argv only`)
     delete data.input
     if (Array.isArray(data.options)) data.options = data.options.filter((o) => !(isObject(o) && o.name === "input"))
   }
   if (Array.isArray(data.outputs))
     data.outputs = data.outputs.filter((o) => {
-      if (!isObject(o) || knownValue(o.kind, KNOWN.outputKinds, `output ${String(o.schemaRef)} kind`, problems, true)) return true
+      if (!isObject(o) || knownValue(o.kind, KNOWN.outputKinds, `output ${String(o.schemaRef)} kind`, problems)) return true
       notes.push(`output ${String(o.schemaRef)} of unknown kind ${String(o.kind)} left out`)
       return false
     })
@@ -1824,6 +2186,22 @@ function checkMarkers(name: string, text: string, problems: string[]) {
   if (doc.meta) marked(doc.meta, "the document", doc.meta.tool)
 }
 
+/**
+ * Spec 5.1: every JSON document of a 1.4 tool is compact. The example file is exactly `JSON.stringify(JSON.parse(line))`
+ * for each document (one per line in a stream), member order kept, each followed by one newline. A document that declares
+ * 1.4 or later is held to it; earlier ones are not (the schema answers of canon, ledger and tally stay as they were).
+ */
+function compactProblems(name: string, text: string, problems: string[]) {
+  const documents = name.endsWith(".ndjson") ? text.split("\n").filter((l) => l !== "") : [text.replace(/\n$/, "")]
+  const first = JSON.parse(documents[0]) as { contractVersion?: string; meta?: Meta }
+  const minor = first.contractVersion ?? first.meta?.contractVersion ?? "1.0"
+  if (MINORS.indexOf(minor) < MINORS.indexOf("1.4")) return
+  const expected = documents.map((d) => `${JSON.stringify(JSON.parse(d))}\n`).join("")
+  if (text === expected) return
+  const at = [...text].findIndex((c, i) => c !== expected[i])
+  problems.push(`the file is not compact JSON: it differs from JSON.stringify(JSON.parse(line)) at offset ${at < 0 ? text.length : at}, which a document that declares 1.4 must be (spec 5.1)`)
+}
+
 function check(path: string): string[] {
   const problems: string[] = []
   const name = basename(path)
@@ -1834,6 +2212,7 @@ function check(path: string): string[] {
     else if (name.startsWith("input-")) checkInput(path, readJson(path), problems)
     else checkEnvelope(readJson(path), problems)
     if (!name.startsWith("caller-") && !name.startsWith("input-")) checkMarkers(name, readFileSync(path, "utf8"), problems)
+    if (!name.startsWith("caller-") && !name.startsWith("input-")) compactProblems(name, readFileSync(path, "utf8"), problems)
   } catch (e) {
     problems.push(`not parseable: ${(e as Error).message}`)
   }

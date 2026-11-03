@@ -1,7 +1,7 @@
 # TypeScript and Effect 4: spec-first commands
 
 Not normative. How a TypeScript tool built on Effect 4 can become ATIP conformant, and what the shared package
-`@journeykit/atip` should look like. Section numbers ("spec 10.7") refer to `spec/atip-1.md`, version 1.3.0.
+`@journeykit/atip` should look like. Section numbers ("spec 10.7") refer to `spec/atip-1.md`, version 1.4.0.
 
 ## 1. Where a TypeScript tool starts
 
@@ -168,8 +168,8 @@ with no value, is `USAGE` with `field` `--input` (spec 10.2), raised by the argv
    `Schema.Union([Schema.Int, Schema.NumberFromString.check(Schema.isInt())])` or the equivalent codec; a test
    pins the exact combinators):
    - the **argv decoder** keeps every field, flag-only ones included (`repo`, `as`), because argv may carry them;
-   - the **fragment** schema (spec 9.9.2) additionally drops the flag-only fields and is what `input.schemaRef`
-     publishes (`Schema.toJsonSchemaDocument` of it).
+   - the **fragment** schema (spec 9.9.2) additionally drops the flag-only fields and, for a 1.3 tool, is what
+     `input.schemaRef` publishes (`Schema.toJsonSchemaDocument` of it); a 1.4 tool publishes nothing of it (item 9).
    Each source is decoded by its own decoder; the two results are merged with provenance (spec 10.7 step 4).
    Field checks inside the domain profile (spec 9.7.4, Annex V1) become the argument's `domain` and are applied only to the
    merged arguments, by the argument schema (§3.3 lists the mapping). Neither source decoder carries them.
@@ -197,9 +197,10 @@ with no value, is `USAGE` with `field` `--input` (spec 10.2), raised by the argv
    `defineError` reachable from `commands`, with their `reasons`; warnings and warning from every `defineWarning`
    reachable the same way.
 6. **Output JSON Schemas.** `Schema.toJsonSchemaDocument(schema)` (draft 2020-12) of every output, with
-   `definitions` lifted into the command document's `schemas` and refs rewritten to `#/schemas/<Name>`. An
-   artifact output declares its JSON representation Schema (`skills show` → `Guide`), a stream output its event
-   and result Schemas. A test that pins a published report schema compares it by meaning, never byte for byte:
+   `definitions` lifted into the command document's `schemas` (for a 1.3 tool; item 9 for 1.4) and refs rewritten to
+   `#/schemas/<Name>`. An artifact output declares its JSON representation Schema (`skills show` → `Guide`), a stream
+   output its event and result Schemas. A test that pins a published report schema compares it by meaning, never
+   byte for byte:
    Effect 4.1 writes a nullable member as `anyOf: [X, {"type": "null"}]` where a hand-written schema says
    `type: [..., "null"]` (both are the nullable forms of Annex F5), and gives `Schema.Int` a `maximum`, which the
    safe-integer rule of Annex V3 already implies. Neither is a contract promise about bytes.
@@ -216,6 +217,14 @@ with no value, is `USAGE` with `field` `--input` (spec 10.2), raised by the argv
    ignores commas inside brackets. In a tool that declares 1.1, a map the output schema declares (`Schema.Record`) has selectable keys and is a cut
    node; a tool that declares 1.0 keeps it whole. A
    test round-trips every path of the examples and one with a quote, a backslash and a comma in the key.
+9. **The 1.4 form.** A tool that declares 1.4 maps the same declarations, and one serializer writes the document of
+   spec 9 (approaches/implementation.md §8): it omits every member at its default and the options and codes the
+   document implies, and prints compact JSON. It collects the shared options from the declarations, an option with
+   the same definition on two or more commands going into the tree's `options` and each command naming it. The
+   lifted `schemas` of item 6 are served by `schema <path> --schemas --json`, holding the schemas the command's refs
+   reach and those they reference, and the command document has no `schemas`, `path`, `input.schemaRef` or
+   `input.option`. The fragment schema of item 1 is not published: a reader derives it from the options (spec
+   9.9.2), and `defineTool` keeps using it to decode documents. `--help --json` is refused with `USAGE` (spec 4.4.1).
 
 ### 3.3 Schema → self-description mapping
 
