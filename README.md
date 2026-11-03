@@ -98,7 +98,7 @@ just test       # cargo test --workspace
 just lint       # cargo clippy --workspace --all-targets -D warnings, and scripts/check_visibility.sh
 just fmt        # cargo fmt (just fmt-check fails instead of rewriting)
 just validate   # scripts/validate.sh: examples, schemas, spec references, plan digest vectors, regex parity
-just check      # the checker, `atip check` at L0, on its own fake tool
+just check      # the checker, `atip check` at L0, on its own fake tool, in the default mode and with `--deep` (check-interface, check-deep)
 just ci         # everything .github/workflows/ci.yml runs
 ```
 

@@ -15,7 +15,7 @@ The reference checker is a Rust binary named `atip`. It is built first inside ca
 published on its own, so that no tool needs canon to run it.
 
 ```
-atip check --bin <PATH> --level <L0|L1|L2> --fixture <FILE> [--contract <MAJOR.MINOR>] [--json]
+atip check --bin <PATH> --level <L0|L1|L2> --fixture <FILE> [--contract <MAJOR.MINOR>] [--deep] [--json]
 atip check --bin target/release/canon --level L2 --fixture checker-fixture.json
 ```
 
@@ -23,6 +23,8 @@ atip check --bin target/release/canon --level L2 --fixture checker-fixture.json
   when it is below the claimed level (levels are cumulative, so a tree at L2 meets an L1 claim; L1.tree, whose
   report then says that the higher level went unchecked).
 - `--fixture` is the tool's fixture file (§5): the state and the invocations the stateful checks need.
+- `--deep` runs every check of the level (§3.1). Without it, `atip check` runs only the interface checks: a few launches of the binary on one
+  shared copy of the fixture state, for the CI run that needs the smoke test. `--level` stays the claimed level in both modes.
 - `--contract` is the claimed minor (spec 15.5): `1.0`, `1.1`, `1.2`, `1.3` or `1.4`. It defaults to the fixture's
   `contractVersion`, and to `1.0` when the fixture has none; given with a fixture member that says otherwise it
   refuses with `USAGE`. The checker checks that every document declares that minor and carries nothing a later minor
@@ -62,6 +64,9 @@ support, so a cycle of entailments with no passed rule in it is `unprovided`, ne
 reported as `pass`, because nothing exercised the rule itself. A logically redundant constraint ("`--a` requires
 `--b`" when `--b` is already required) is legal (spec 9.8), and no fixture could isolate it.
 
+A default run (§3.1) judges the interface checks only, so its "passed" is not this verdict: its report says `mode: interface` and its
+summary "interface checks passed", and only a `--deep` run shows that the level is met.
+
 Before generating witnesses, the checker groups constraints that are **equivalent**: rules with the same set of
 violating invocations, computed over the finite table of which named arguments are given and which `in` class
 each value falls in (`atMostOne [a, b]` and "`a` forbids `b`" are equivalent). A group is one test obligation: one
@@ -93,7 +98,7 @@ rule's check, not by the schema check.
   check says otherwise, and the fixture's timeout (default 30 s; a check that exceeds it is `fail` with the reason,
   so a slow tool is not mistaken for a wrong one). A sequence is one invocation, or a run of invocations that
   depend on each other's state and so share one copy: a start and the `next` waits that follow it, a page and
-  the next page it points to, the two runs of an idempotency check, a preview and its commit.
+  the next page it points to, the two runs of an idempotency check, a preview and its commit. The calls of an interface run (§3.1) all share one copy.
 - A check that needs a terminal on stdin or stdout (L0.no-prompt, L2.input-tty, the pty variation of
   L0.no-env-switch) runs the binary under a pseudo-terminal. Output and input settings are separate: output is
   untranslated (`OPOST` off, so no `ONLCR`, and a `\n` the tool writes arrives as `\n`, not `\r\n`); input is
@@ -108,6 +113,77 @@ rule's check, not by the schema check.
   is not looked up in the registry.
 - Telemetry opt-outs are **not** set: a write the tool does on its own is what the effects check (§4) must see.
 - Asynchronous checks use the fixture's controllable worker (§5), never wall-clock races.
+
+### 3.1 Modes
+
+`atip check` runs in one of two modes. A full run is hundreds of launches of the binary at L1 and about a thousand at L2 (each call in a copy of
+the fixture state, and after every refusal a probe launch), which is minutes of CPU for a large binary; most CI runs need only the interface smoke test.
+
+- **Default: interface mode.** The checks that judge a document the tool prints for an ordinary call: the envelope, the exit status, the names of
+  the error codes and the registry the tool lists, `next`, the shape of the `schema` document, one document in JSON mode, no prompt. It makes
+  at most ten launches of the binary, all in **one shared copy** of the fixture state (the one-copy-per-sequence rule above does not apply to it). The report says
+  `mode: interface` and lists the checks of the level it did not run in `deepChecks`; its verdict is "interface checks passed (--deep for the
+  rest)", never that the level is met.
+- **`--deep`.** Every check of the level, as §3 and §6 describe: a fresh copy per sequence, the probes of every command, option and code, the
+  runs on a terminal. The report says `mode: deep` and is the full report of the level.
+
+The calls of an interface run, in order: `--version`; `nosuch-xyz --json`; `nosuch-xyz`; `--json`; `schema --errors --json`; `schema --warnings --json`;
+`schema --json`; `<probe> --json` (when the fixture has a probe); from L1 `--help`; last, the control run (stdin at end-of-file) of the first
+`missingValue` invocation of the fixture. One copy serves them all because none of them writes, by construction: `--version`, a refusal (the unknown
+command, the bare call, the `missingValue` call, which is refused) and `schema` change nothing by the contract (spec 8.2, 9.2), and the probe is a
+command that runs without state. The one call that might write if the tool broke the contract, the `missingValue` control, runs last, so that no other call
+is judged after it. An interface run does not measure what a call changed and runs no probe after a refusal: the checks that would see a write
+(L0.refusal-effects, L1.no-state, L2.effects) are deep.
+
+An interface check judges the documents of those calls (and the same rules over every document the run printed). Some of them judge a part of their rule
+without `--deep`, as the last column says; the rest of the rule is `--deep`'s. Without `--deep`, L0.no-prompt passes when the control run of the
+`missingValue` invocation refuses (exit 2) and does not run over the time limit; it cannot tell whether the call would prompt on a terminal.
+
+| Interface check | What `--deep` adds |
+|---|---|
+| L0.version | |
+| L0.version-format | |
+| L0.unknown-command | |
+| L0.unknown-command-text | |
+| L0.text-error-form | |
+| L0.bare | |
+| L0.ok-exit | |
+| L0.no-null | |
+| L0.envelope | |
+| L0.compact | |
+| L0.one-document | the `ok` invocations of the fixture's commands |
+| L0.contract | |
+| L0.contract-version | |
+| L0.stderr-result | |
+| L0.stderr-quiet | |
+| L0.next | |
+| L0.no-prompt | the run on a terminal, and the `missingValue` invocations after the first |
+| L0.registry | `schema --error <CODE>` and `schema --warning <CODE>` for each code the tool lists |
+| L0.usage-hint | |
+| L0.hint-form | |
+| L1.tree | |
+| L1.registry | the error codes of each command document |
+| L1.reasons | `schema --error <CODE>` for each code the tool lists |
+| L1.reasons-reserved | |
+| L1.warnings | `schema --warning NOSUCH_XYZ` |
+| L1.depth | |
+| L1.next | running the `next` entries of read commands |
+| L1.help-line | |
+| L2.help-guide | |
+
+Every other check is deep: it enumerates over the commands, options or codes of the tool, or probes with a generated invocation, a different environment or
+a terminal, or reads what a call changed. Those are, at L0, L0.unknown-option, L0.json-mode-preparse, L0.after-dashdash, L0.no-env-switch,
+L0.no-env-switch-text, L0.page, L0.refusal-effects, L0.global-on-group; at L1, L1.no-state, L1.walk, L1.quoted-path, L1.schema-errors,
+L1.reserved-applicable, L1.codes-known, L1.groups-not-runnable, L1.grammar, L1.one-meaning, L1.one-meaning-values, L1.examples, L1.example-runs,
+L1.constraints, L1.domains, L1.patterns, L1.numbers, L1.validators, L1.check-order, L1.output-data, L1.hint-command, L1.defaults, L1.deterministic, L1.paging,
+L1.fields; at L2, L2.input-present, L2.input-example, L2.input-refusals, L2.input-tty, L2.input-usage, L2.input-reasons, L2.input-fragment,
+L2.input-normalise, L2.input-conflict, L2.input-env, L2.input-pointer, L2.input-dash-values, L2.batch-preflight, L2.batch-incomplete, L2.batch-ok,
+L2.idempotency, L2.destructive-safety, L2.destructive-preview, L2.destructive-preview-stdin, L2.destructive-stale, L2.destructive-half,
+L2.destructive-commit, L2.async, L2.operation-key, L2.stream, L2.skills, L2.guide-commands, L2.search, L2.effects.
+
+The classification is one table in the checker (`checks::INTERFACE`); a check missing from it is deep, so a new check costs nothing in the default mode
+until it is listed. L1.schemas and L1.help-json, which the checks for contract 1.4 add, are interface checks: they judge the document of one call
+(`schema --schemas --json`, `--help --json`).
 
 ## 4. The effects check
 
