@@ -11,6 +11,7 @@ use super::documents::{self, Answer, HelpJsonAnswers};
 use super::l1::{names_argument, refusal_text};
 use super::rules;
 use super::{Conditions, End, Finding, Judge};
+use crate::claim::Claim;
 use crate::exec::Exit;
 use crate::l1::invocation::{self, Args};
 use crate::l1::model::{CommandDoc, Constraint};
@@ -252,8 +253,9 @@ fn constraint_fields<'c>(
 
 impl<'a> Judge<'a> {
     /// The `field` of a constraint's refusal (spec 9.8.1, implementation.md 2) of the invocation `call` that breaks the rules `members` of `doc` alone, read from the
-    /// failure it printed, for a claim of 1.3 or later (a claim below 1.3 was never judged on it): it names an argument of a rule that the caller can add or remove to satisfy it
-    /// (`field-qualifies`, a MUST), and it is the argument the table of implementation.md 2 names (`field-follows-the-rule`, a recommendation: another qualifying argument is an advisory).
+    /// failure it printed, for a claim of 1.2 or later (the per-rule table of `field` is 1.2's; a claim of 1.1 or 1.0 is not judged on it): it names an argument of a rule that the
+    /// caller can add or remove to satisfy it (`field-qualifies`, a MUST), and it is the argument the table of implementation.md 2 names (`field-follows-the-rule`: a MUST at a claim of
+    /// exactly 1.2, where the table is a rule of the spec; a recommendation from 1.3, where another qualifying argument is only an advisory).
     pub(crate) fn judge_constraint_field(
         &self,
         c: &mut Conditions<'a>,
@@ -262,7 +264,7 @@ impl<'a> Judge<'a> {
         words: &[String],
         call: usize,
     ) {
-        if !self.claim.declares_1_3() {
+        if !self.claim.at_least(Claim::V1_2) {
             return;
         }
         let Ok(parsed) = invocation::parse(doc, words) else {
@@ -315,7 +317,11 @@ impl<'a> Judge<'a> {
                 tables.join(" or ")
             )
         };
-        c.recommends("field-follows-the-rule", names(&tables), why);
+        if self.claim.is_1_2() {
+            c.holds_at(call, "field-follows-the-rule", names(&tables), why);
+        } else {
+            c.recommends("field-follows-the-rule", names(&tables), why);
+        }
     }
 }
 

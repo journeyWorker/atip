@@ -62,7 +62,7 @@ fn proves(id: &str) {
                     document["ok"].as_bool(),
                     document["error"]["code"].as_str()
                 ),
-                (Some(1), Some(false), Some("LEVEL_NOT_MET")),
+                (Some(1), Some(false), Some("LEVEL_FAILED")),
                 "{}: {}",
                 case.condition,
                 output.stdout

@@ -219,7 +219,7 @@ fn atip_check_deep_11_the_interface_run_of_l1_and_l2_adds_the_tree_and_help_in_t
         "L2 makes no launch that L1 does not"
     );
     let error = &output.envelope()["error"];
-    assert_eq!(error["code"], "LEVEL_NOT_MET");
+    assert_eq!(error["code"], "LEVEL_FAILED");
     assert!(
         error["message"].as_str().is_some_and(
             |message| message.starts_with("the interface checks of L2 failed: 2 MUST checks")
@@ -460,7 +460,7 @@ fn atip_check_deep_17_a_failed_interface_run_exits_1_with_the_interface_checks_a
     let output = harness.check_default(&fixture, true);
     assert_eq!(output.code, Some(1));
     let document = output.envelope();
-    assert_eq!(document["error"]["code"], "LEVEL_NOT_MET");
+    assert_eq!(document["error"]["code"], "LEVEL_FAILED");
     assert_eq!(
         document["error"]["message"],
         "the interface checks of L0 failed: 1 MUST checks fail or are unprovided (L0.bare)"

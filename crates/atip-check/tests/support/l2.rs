@@ -539,9 +539,9 @@ pub fn prove_case(case: &Case) -> Result<Output, String> {
             case.condition
         ));
     }
-    if must && document["error"]["code"] != "LEVEL_NOT_MET" {
+    if must && document["error"]["code"] != "LEVEL_FAILED" {
         return Err(format!(
-            "{}: a MUST failure is LEVEL_NOT_MET",
+            "{}: a MUST failure is LEVEL_FAILED",
             case.condition
         ));
     }

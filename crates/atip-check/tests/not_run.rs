@@ -584,7 +584,7 @@ fn atip_check_116_a_not_run_command_refused_at_its_start_by_a_precondition_is_un
     let document = output.envelope();
     assert_eq!(
         (output.code, document["error"]["code"].as_str()),
-        (Some(1), Some("LEVEL_NOT_MET")),
+        (Some(1), Some("LEVEL_FAILED")),
         "{}",
         output.stdout
     );
@@ -719,7 +719,7 @@ fn atip_check_116_a_not_run_refusal_with_a_code_the_command_document_declares_is
     let output = harness.check_l1(&config, &l1_fixture(&harness, &config));
     assert_eq!(
         (output.code, output.envelope()["error"]["code"].as_str()),
-        (Some(1), Some("LEVEL_NOT_MET")),
+        (Some(1), Some("LEVEL_FAILED")),
         "the control: {}",
         output.stdout.chars().take(400).collect::<String>()
     );

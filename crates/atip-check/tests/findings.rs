@@ -348,7 +348,7 @@ fn atip_check_85_the_results_the_level_and_the_exit_code_are_the_same_with_findi
             output.results(),
         )
     };
-    // A MUST violation fails its check and the level, and exits 1 with LEVEL_NOT_MET.
+    // A MUST violation fails its check and the level, and exits 1 with LEVEL_FAILED.
     let must = harness.check_config(&json!({"contractVersionSays": "1.2"}));
     let (code, passed, results) = verdicts(&must);
     assert_eq!((code, passed), (Some(1), json!(false)));
@@ -358,7 +358,7 @@ fn atip_check_85_the_results_the_level_and_the_exit_code_are_the_same_with_findi
         .map(|(id, _)| id.as_str())
         .collect();
     assert_eq!(failing, ["L0.contract-version"]);
-    assert_eq!(must.envelope()["error"]["code"], "LEVEL_NOT_MET");
+    assert_eq!(must.envelope()["error"]["code"], "LEVEL_FAILED");
     // A SHOULD violation is an advisory: the level is met and the exit is 0.
     let should = harness.check_config(&json!({"versionFormat": "bare"}));
     let (code, passed, results) = verdicts(&should);

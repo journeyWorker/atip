@@ -42,12 +42,12 @@ fn atip_crate12_02_the_checker_declares_its_own_contract_version_apart_from_the_
     assert_eq!(atip::CONTRACT_VERSION, "1.4", "the crate implements 1.4");
     assert_eq!(
         atip_check::output::DECLARED_MINOR,
-        "1.2",
-        "the checker declares 1.2"
+        "1.4",
+        "the checker declares 1.4"
     );
     let line = atip_check::output::success_line(&json!({}), 0);
     let envelope: Value = serde_json::from_str(&line).expect("one JSON line");
-    assert_eq!(envelope["meta"]["contractVersion"], "1.2", "{line}");
+    assert_eq!(envelope["meta"]["contractVersion"], "1.4", "{line}");
     assert!(atip::envelope_problems(&envelope).is_empty(), "{line}");
 }
 

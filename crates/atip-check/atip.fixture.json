@@ -19,12 +19,12 @@
       ]
     }
   },
-  "contractVersion": "1.2",
+  "contractVersion": "1.4",
   "globalOptions": [],
   "probe": "check",
   "registry": [
     {
-      "code": "BINARY_UNUSABLE",
+      "code": "BINARY_INVALID",
       "exit": 2,
       "retryable": false
     },
@@ -51,7 +51,7 @@
       "retryable": false
     },
     {
-      "code": "LEVEL_NOT_MET",
+      "code": "LEVEL_FAILED",
       "exit": 1,
       "retryable": false
     },

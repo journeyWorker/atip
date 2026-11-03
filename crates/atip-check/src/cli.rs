@@ -100,12 +100,13 @@ Modes:
   default  The interface checks of the level: the envelope, the exit status, error codes and the registry, `next`, the shape of the `schema` document, one document in JSON mode, no prompt. About ten launches of the binary on one shared copy of the fixture state (the calls are read-only by construction). Its verdict reads `interface checks passed`, never that the level is met
   --deep   Every check of the level, each call in a fresh copy of the state: the declarations against the behaviour (walk, constraints, domains, validators, check order, paging, input, batch, effects, destructive, notRun), the grammar probes and the run on a terminal. Hundreds of launches at L1, about a thousand at L2
 
-Every MUST check run passing exits 0, a failed check exits 1 (LEVEL_NOT_MET), a refusal exits 2.";
+Every MUST check run passing exits 0, a failed check exits 1 (LEVEL_FAILED), a refusal exits 2.";
 
 /// Parses the arguments after the program name.
 pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
     let mut version = false;
     let mut help = false;
+    let json = atip::wants_json(args);
     let mut position = 0;
     let mut command_at = None;
     while let Some(arg) = args.get(position) {
@@ -128,7 +129,10 @@ pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
         }
         position += 1;
     }
-    if version {
+    // In JSON mode a command word is resolved first (spec 4.4.1): `--version nosuch --json` is `UNKNOWN_COMMAND`, and the refusal of
+    // `--version --json` is the run's to make.
+    let resolve_first = json && command_at.is_some();
+    if version && !resolve_first {
         return Ok(Command::Version);
     }
     let Some(command_at) = command_at else {
@@ -152,6 +156,9 @@ pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
         .expected(COMMANDS)
         .received(word.as_ref())
         .suggestions(close(&word, &COMMANDS)));
+    }
+    if version {
+        return Ok(Command::Version);
     }
     parse_check(&args[command_at + 1..])
 }

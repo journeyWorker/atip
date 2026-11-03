@@ -66,6 +66,27 @@ fn restore_sigpipe() {
 fn execute(args: &[OsString]) -> Result<String, Failure> {
     let json = atip::wants_json(args);
     match cli::parse(args)? {
+        // `--version` and `--help` print text for people; in JSON mode a document that declares 1.4 refuses them (spec 4.4.1), so that JSON
+        // mode always prints an envelope. `atip` has no `schema`, so the hint is the text it points at.
+        Command::Version if json => Err(Failure::new(
+            Code::Usage,
+            "--version prints text; the version is meta.toolVersion of every envelope",
+        )
+        .field("--version")
+        .hint("atip --version")),
+        Command::RootHelp if json => Err(Failure::new(
+            Code::Usage,
+            "--help prints text for people, atip has no machine-readable self-description",
+        )
+        .field("--help")
+        .hint("atip --help")),
+        Command::CheckHelp if json => Err(Failure::new(
+            Code::Usage,
+            "--help prints text for people, atip has no machine-readable self-description",
+        )
+        .in_command("check")
+        .field("--help")
+        .hint("atip check --help")),
         Command::Version => Ok(format!("atip {}", env!("CARGO_PKG_VERSION"))),
         Command::RootHelp => Ok(ROOT_HELP.to_string()),
         Command::CheckHelp => Ok(CHECK_HELP.to_string()),
@@ -105,7 +126,7 @@ fn level_not_met(report: &Report) -> Result<Failure, Failure> {
         Mode::Deep => format!("{} is not met", report.level),
         Mode::Interface => format!("the interface checks of {} failed", report.level),
     };
-    Ok(Failure::new(Code::LevelNotMet, format!("{verdict}: {} MUST checks fail or are unprovided ({})", blocking.len(), blocking.join(", ")))
+    Ok(Failure::new(Code::LevelFailed, format!("{verdict}: {} MUST checks fail or are unprovided ({})", blocking.len(), blocking.join(", ")))
         .in_command("check")
         .hint("Fix every check whose result is fail or unprovided in data.checks, then run atip check again.")
         .with_data(data)
@@ -182,8 +203,8 @@ fn check_binary_with(
         (Some(claim), _) | (None, Some(claim)) => claim,
         (None, None) => Claim::V1_0,
     };
-    let bin = resolve_binary(&args.bin)
-        .map_err(|reason| refuse(Code::BinaryUnusable, reason, "--bin"))?;
+    let bin =
+        resolve_binary(&args.bin).map_err(|reason| refuse(Code::BinaryInvalid, reason, "--bin"))?;
     let scratch_failure = |reason: String| {
         Failure::new(
             Code::Internal,
@@ -194,7 +215,7 @@ fn check_binary_with(
     };
     let from_run = |error: RunError| match error {
         RunError::Spawn(reason) => refuse(
-            Code::BinaryUnusable,
+            Code::BinaryInvalid,
             format!("the binary cannot be started: {reason}"),
             "--bin",
         ),

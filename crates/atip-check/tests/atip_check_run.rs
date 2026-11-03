@@ -153,7 +153,7 @@ fn atip_check_02_a_tool_that_breaks_one_rule_exits_1_with_level_not_met_and_the_
     let document = output.envelope();
     assert_contract_envelope(&output, false);
     assert_eq!(document["ok"], false);
-    assert_eq!(document["error"]["code"], "LEVEL_NOT_MET");
+    assert_eq!(document["error"]["code"], "LEVEL_FAILED");
     assert_eq!(document["error"]["retryable"], false);
     let check = check_of(&document["data"], "L0.no-null");
     assert_eq!(check["result"], "fail");
@@ -252,7 +252,7 @@ fn atip_check_04_a_binary_that_does_not_exist_or_cannot_run_exits_2_with_binary_
                 document["error"]["code"].as_str(),
                 document["error"]["field"].as_str()
             ),
-            (Some("BINARY_UNUSABLE"), Some("--bin")),
+            (Some("BINARY_INVALID"), Some("--bin")),
             "{bin}: {}",
             output.stdout
         );
@@ -332,7 +332,7 @@ fn atip_check_05_text_mode_prints_a_line_per_check_and_a_summary_and_a_failed_le
     );
     assert!(
         failing.stderr.starts_with(
-            "atip: LEVEL_NOT_MET: L0 is not met: 1 MUST checks fail or are unprovided (L0.version)"
+            "atip: LEVEL_FAILED: L0 is not met: 1 MUST checks fail or are unprovided (L0.version)"
         ),
         "{}",
         failing.stderr
@@ -595,7 +595,7 @@ fn atip_check_25_a_fixture_without_a_probe_a_registry_or_commands_leaves_the_che
         let output = harness.check(&fixture, true);
         assert_eq!(output.code, Some(1), "without `{drop}`: {}", output.stdout);
         let document = output.envelope();
-        assert_eq!(document["error"]["code"], "LEVEL_NOT_MET");
+        assert_eq!(document["error"]["code"], "LEVEL_FAILED");
         assert_eq!(unprovided_of(&output), unprovided, "without `{drop}`");
         for id in &unprovided {
             let reason = check_of(&document["data"], id)["reason"]
@@ -887,7 +887,7 @@ fn atip_check_32_level_l2_runs_the_checks_and_is_never_unsupported_and_l9_is_usa
     let output = run("L2");
     assert_eq!(output.code, Some(1), "{}", output.stdout);
     let document = output.envelope();
-    assert_eq!(document["error"]["code"], "LEVEL_NOT_MET");
+    assert_eq!(document["error"]["code"], "LEVEL_FAILED");
     assert_eq!(document["data"]["level"], "L2");
     for level in ["L9", "0", "l0", ""] {
         let output = run(level);
@@ -1370,7 +1370,7 @@ fn atip_check_52_a_violation_seen_is_a_failure_even_when_the_fixture_lacks_the_e
     assert_eq!(result_of(&failed, "L0.after-dashdash"), "unprovided");
     assert_eq!(
         (failed.code, failed.envelope()["error"]["code"].as_str()),
-        (Some(1), Some("LEVEL_NOT_MET"))
+        (Some(1), Some("LEVEL_FAILED"))
     );
 }
 
@@ -1645,7 +1645,7 @@ fn atip_check_76_a_violation_of_a_1_1_check_is_read_in_the_result_as_its_owner_w
         let output = harness.check_config(&config);
         assert_eq!(output.code, Some(1), "{config}: {}", output.stdout);
         let document = output.envelope();
-        assert_eq!(document["error"]["code"], "LEVEL_NOT_MET", "{config}");
+        assert_eq!(document["error"]["code"], "LEVEL_FAILED", "{config}");
         assert!(
             document["error"]["message"]
                 .as_str()

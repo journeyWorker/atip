@@ -191,7 +191,7 @@ fn fails_only(data: &Value, owners: &[String]) -> Result<(), String> {
 }
 
 /// The seeds of `group` planted in one fake: exactly their owners fail, each with the finding kind of its condition, and as they are all MUSTs the run is
-/// `LEVEL_NOT_MET`, exit 1, and the error names every owner.
+/// `LEVEL_FAILED`, exit 1, and the error names every owner.
 fn prove_group(group: &Planted) -> Result<(), String> {
     let harness = Harness::new();
     let mut fixture = harness.l2_fixture(&group.config);
@@ -215,9 +215,9 @@ fn prove_group(group: &Planted) -> Result<(), String> {
         }
     }
     let got = (output.code, document["ok"].as_bool());
-    if got != (Some(1), Some(false)) || document["error"]["code"] != "LEVEL_NOT_MET" {
+    if got != (Some(1), Some(false)) || document["error"]["code"] != "LEVEL_FAILED" {
         return Err(format!(
-            "exit {got:?}, expected LEVEL_NOT_MET\n{}",
+            "exit {got:?}, expected LEVEL_FAILED\n{}",
             output.stdout
         ));
     }
@@ -341,7 +341,7 @@ fn atip_checkl2input_02_a_tree_whose_level_is_l1_fails_l1_tree_at_l2_and_a_write
     let document = output.envelope();
     assert_eq!(
         (output.code, document["error"]["code"].as_str()),
-        (Some(1), Some("LEVEL_NOT_MET")),
+        (Some(1), Some("LEVEL_FAILED")),
         "{}",
         output.stdout
     );
@@ -465,7 +465,7 @@ fn atip_checkl2input_18_a_fixture_without_batch_fails_at_or_first_makes_batch_in
     let document = output.envelope();
     assert_eq!(
         (output.code, document["error"]["code"].as_str()),
-        (Some(1), Some("LEVEL_NOT_MET")),
+        (Some(1), Some("LEVEL_FAILED")),
         "{}",
         output.stdout
     );

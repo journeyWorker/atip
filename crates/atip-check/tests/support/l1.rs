@@ -123,6 +123,17 @@ pub fn l1_cases_1_2() -> Vec<Case> {
             json!({"limitNotFlagOnly": true}),
             None,
         ),
+        // constraints: a refusal's `field` names an argument the caller can add or remove (spec 9.8.1) and, at 1.2, the one the per-rule table names
+        l1_case_1_2(
+            "constraints/field-qualifies",
+            json!({"constraintFieldUnrelated": true}),
+            None,
+        ),
+        l1_case_1_2(
+            "constraints/field-follows-the-rule",
+            json!({"constraintFieldOtherQualifying": true}),
+            None,
+        ),
         // registry: `STOPPED_MIDWAY` is exit 1 and not retryable
         l1_case_1_2(
             "registry/reserved-exit",
