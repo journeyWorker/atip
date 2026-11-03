@@ -620,7 +620,7 @@ fn encoded(value_type: ValueType, members: Option<&[String]>) -> Value {
 fn property(option: &OptionDoc) -> Value {
     let item = encoded(option.value_type, option.possible_values.as_deref());
     let mut schema = if option.repeatable && option.value_type != ValueType::Count {
-        json!({ "type": "array", "items": item })
+        json!({ "type": "array", "minItems": 1, "items": item })
     } else {
         item
     };
@@ -1224,6 +1224,11 @@ mod tests {
         );
         assert_eq!(fragment["properties"]["mode"]["enum"], json!(["a", "b"]));
         assert_eq!(fragment["properties"]["tag"]["type"], json!("array"));
+        assert_eq!(
+            fragment["properties"]["tag"]["minItems"],
+            json!(1),
+            "a repeatable option's document value is a non-empty array (spec 10.5)"
+        );
         assert_eq!(
             (
                 fragment["properties"]["operands"]["minItems"].clone(),
