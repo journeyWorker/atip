@@ -485,6 +485,58 @@ pub fn in_parallel<T: Send>(jobs: Vec<Box<dyn FnOnce() -> T + Send>>) -> Vec<T> 
     results.into_iter().map(|(_, value)| value).collect()
 }
 
+/// One seeded violation: `atip check --level L2` fails the check that owns it and no other, with the finding kind of its condition and the exit its strength says.
+/// The run is returned for a test that has more to say of it.
+pub fn prove_case(case: &Case) -> Result<Output, String> {
+    let owner = owner_of(case.condition);
+    let output = run_case(case, "L2");
+    let document = output.envelope();
+    verdict(&document["data"], &owner).map_err(|why| {
+        format!(
+            "{}: {why}\n{}",
+            case.condition,
+            not_passing(&document["data"])
+        )
+    })?;
+    super::kind_verdict(
+        &document["data"],
+        &owner,
+        case.condition.split('/').nth(1).unwrap_or_default(),
+    )
+    .map_err(|why| format!("{}: {why}", case.condition))?;
+    let must = check_of(&document["data"], &owner)["strength"] == "MUST";
+    let expected = if must {
+        (Some(1), Some(false))
+    } else {
+        (Some(0), Some(true))
+    };
+    let got = (output.code, document["ok"].as_bool());
+    if got != expected {
+        return Err(format!(
+            "{}: exit {got:?}, expected {expected:?}",
+            case.condition
+        ));
+    }
+    if must && document["error"]["code"] != "LEVEL_NOT_MET" {
+        return Err(format!(
+            "{}: a MUST failure is LEVEL_NOT_MET",
+            case.condition
+        ));
+    }
+    if must
+        && !document["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains(&owner)
+    {
+        return Err(format!(
+            "{}: the error names the failing check",
+            case.condition
+        ));
+    }
+    Ok(output)
+}
+
 /// Every case of `cases` whose check is one of `names`: `atip check --level L2` fails that check and no other, with the exit its strength says.
 pub fn proves(cases: Vec<Case>, names: &[&str]) {
     let only = std::env::var("ONLY").unwrap_or_default();
@@ -512,55 +564,7 @@ pub fn proves(cases: Vec<Case>, names: &[&str]) {
     let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = cases
         .into_iter()
         .map(|case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-            Box::new(move || {
-                let owner = owner_of(case.condition);
-                let output = run_case(&case, "L2");
-                let document = output.envelope();
-                verdict(&document["data"], &owner).map_err(|why| {
-                    format!(
-                        "{}: {why}\n{}",
-                        case.condition,
-                        not_passing(&document["data"])
-                    )
-                })?;
-                super::kind_verdict(
-                    &document["data"],
-                    &owner,
-                    case.condition.split('/').nth(1).unwrap_or_default(),
-                )
-                .map_err(|why| format!("{}: {why}", case.condition))?;
-                let must = check_of(&document["data"], &owner)["strength"] == "MUST";
-                let expected = if must {
-                    (Some(1), Some(false))
-                } else {
-                    (Some(0), Some(true))
-                };
-                let got = (output.code, document["ok"].as_bool());
-                if got != expected {
-                    return Err(format!(
-                        "{}: exit {got:?}, expected {expected:?}",
-                        case.condition
-                    ));
-                }
-                if must && document["error"]["code"] != "LEVEL_NOT_MET" {
-                    return Err(format!(
-                        "{}: a MUST failure is LEVEL_NOT_MET",
-                        case.condition
-                    ));
-                }
-                if must
-                    && !document["error"]["message"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .contains(&owner)
-                {
-                    return Err(format!(
-                        "{}: the error names the failing check",
-                        case.condition
-                    ));
-                }
-                Ok(())
-            })
+            Box::new(move || prove_case(&case).map(drop))
         })
         .collect();
     let failures: Vec<String> = in_parallel(jobs)
@@ -854,4 +858,196 @@ pub fn guide_cases() -> Vec<Case> {
             json!({"helpNoSkillsLine": true}),
         ),
     ]
+}
+
+// ---- seeds planted together ----
+
+/// Seeds of distinct owners that one run plants together: their configurations joined, their fixture changes made one after the other.
+pub struct Planted {
+    pub config: Value,
+    pub tweaks: Vec<fn(&mut Value)>,
+    pub owners: Vec<String>,
+    pub conditions: Vec<&'static str>,
+}
+
+/// The name of an executable that carries the knobs of both: `<head>-l2-<knobs of a>` and `<head>-l2-<knobs of b>` make `<head>-l2-<knobs of a>-<knobs of b>`.
+fn joined_alias(a: &str, b: &str) -> Option<String> {
+    if a == b {
+        return Some(a.to_string());
+    }
+    let ((head, knobs_a), (other, knobs_b)) = (a.split_once("-l2-")?, b.split_once("-l2-")?);
+    (head == other).then(|| format!("{head}-l2-{knobs_a}-{knobs_b}"))
+}
+
+/// `config` with the members of `other`; `None` when a member has two values, but for `binAlias`, whose knobs join.
+fn joined_config(config: &Value, other: &Value) -> Option<Value> {
+    let mut joined = config.as_object()?.clone();
+    for (key, value) in other.as_object()? {
+        match joined.get(key).cloned() {
+            None => {}
+            Some(held) if held == *value => {}
+            Some(held) if key == "binAlias" => {
+                let alias = joined_alias(held.as_str()?, value.as_str()?)?;
+                joined.insert(key.clone(), json!(alias));
+                continue;
+            }
+            Some(_) => return None,
+        }
+        joined.insert(key.clone(), value.clone());
+    }
+    Some(Value::Object(joined))
+}
+
+/// `seeds` in as few groups as plant them, no group with two seeds of one owner (`owner` names it) and every group's configuration the join of its seeds'.
+pub fn planted_together(seeds: Vec<Case>, owner: impl Fn(&Case) -> String) -> Vec<Planted> {
+    let mut groups: Vec<Planted> = Vec::new();
+    for seed in seeds {
+        let owner = owner(&seed);
+        let joined = groups.iter().enumerate().find_map(|(index, group)| {
+            if group.owners.contains(&owner) {
+                return None;
+            }
+            joined_config(&group.config, &seed.config).map(|config| (index, config))
+        });
+        if let Some((index, config)) = joined {
+            let group = &mut groups[index];
+            group.config = config;
+            group.tweaks.extend(seed.tweak);
+            group.owners.push(owner);
+            group.conditions.push(seed.condition);
+        } else {
+            groups.push(Planted {
+                config: seed.config,
+                tweaks: seed.tweak.into_iter().collect(),
+                owners: vec![owner],
+                conditions: vec![seed.condition],
+            });
+        }
+    }
+    groups
+}
+
+/// For each group, at `level` with the fixture `fixture_of` makes of its configuration: with every owner forced to pass none fails, and with every condition
+/// switched off none fails (a seed fails its owner and no other check, so what is left failing is a seed the switch did not reach). The failures, one line each.
+pub fn mutations_hold(
+    groups: Vec<Planted>,
+    level: Level,
+    fixture_of: fn(&Harness, &Value) -> Value,
+) -> Vec<String> {
+    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = groups
+        .into_iter()
+        .map(|group| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
+            Box::new(move || {
+                let harness = Harness::new();
+                let mut fixture = fixture_of(&harness, &group.config);
+                for tweak in &group.tweaks {
+                    tweak(&mut fixture);
+                }
+                let args = CheckArgs {
+                    bin: super::l1::l1_bin(&harness, &group.config).into(),
+                    level,
+                    fixture: harness.write("fixture.json", &fixture).into(),
+                    contract: None,
+                };
+                let seeds = group.conditions.join(", ");
+                let owners: Vec<&str> = group.owners.iter().map(String::as_str).collect();
+                let (forced, _) = check_binary_mutated(&args, &owners, &[])
+                    .map_err(|failure| format!("{seeds}: {}", failure.message))?;
+                let (skipped, _) = check_binary_mutated(&args, &[], &group.conditions)
+                    .map_err(|failure| format!("{seeds}: {}", failure.message))?;
+                for owner in owners {
+                    for (report, what) in [
+                        (&forced, "forced to pass"),
+                        (&skipped, "with the conditions switched off"),
+                    ] {
+                        if report.find(owner).map(|check| check.result)
+                            == Some(atip_check::report::CheckResult::Fail)
+                        {
+                            return Err(format!("{seeds}: {what}, {owner} still fails"));
+                        }
+                    }
+                }
+                Ok(())
+            })
+        })
+        .collect();
+    in_parallel(jobs)
+        .into_iter()
+        .filter_map(Result::err)
+        .collect()
+}
+
+/// What [`covers`] proves, with the mutated runs of the seeds that can be planted together made together (two runs for a group, not two for each seed).
+/// Returns the report of the conforming L2 run as JSON (its `checks` as `data.checks`), so that a test can say more of that run without making another.
+pub fn covers_together(cases: Vec<Case>, checks: &[&str], exempt: &[&str]) -> Value {
+    let harness = Harness::new();
+    let config = l2_standard_config();
+    let fixture = harness.l2_fixture(&config);
+    let args = CheckArgs {
+        bin: super::l1::l1_bin(&harness, &config).into(),
+        level: Level::L2,
+        fixture: harness.write("fixture.json", &fixture).into(),
+        contract: None,
+    };
+    let (report, judged) = check_binary_mutated(&args, &[], &[]).expect("a report");
+    assert!(report.passed, "{}", report.text());
+    // The conditions of the L0 and L1 checks are the lower levels' own, and a condition is named after its check: only a check of a lower level that
+    // is named like one of `checks` makes it necessary to run the lower level to tell them apart. (The conditions of `L2.effects` are this level's at every level.)
+    let lower: BTreeSet<&str> = report
+        .checks
+        .iter()
+        .filter_map(|check| {
+            check
+                .id
+                .strip_prefix("L1.")
+                .or_else(|| check.id.strip_prefix("L0."))
+        })
+        .collect();
+    let judged_l1: BTreeSet<String> = if checks.iter().any(|name| lower.contains(name)) {
+        let l1_args = CheckArgs {
+            level: Level::L1,
+            ..args
+        };
+        let (_, judged_l1) = check_binary_mutated(&l1_args, &[], &[]).expect("a report");
+        judged_l1
+            .into_iter()
+            .filter(|condition| !condition.starts_with("effects/"))
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    let judged: BTreeSet<String> = judged
+        .difference(&judged_l1)
+        .filter(|condition| checks.contains(&condition.split('/').next().unwrap_or_default()))
+        .cloned()
+        .collect();
+    let cases: Vec<Case> = cases
+        .into_iter()
+        .filter(|case| checks.contains(&case.condition.split('/').next().unwrap_or_default()))
+        .collect();
+    let named: BTreeSet<String> = cases
+        .iter()
+        .map(|case| case.condition.to_string())
+        .collect();
+    let unplanted: Vec<&String> = judged.difference(&named).collect();
+    let unjudged: Vec<&String> = named.difference(&judged).collect();
+    assert!(
+        unplanted.is_empty(),
+        "judged by a conforming run and not planted by any case: {unplanted:?}"
+    );
+    assert!(
+        unjudged
+            .iter()
+            .all(|condition| exempt.contains(&condition.as_str())),
+        "planted, never judged by a conforming run, and not named as exempt: {unjudged:?}"
+    );
+    let groups = planted_together(
+        representatives(cases, |case| owner_of(case.condition)),
+        |case| owner_of(case.condition),
+    );
+    let failures = mutations_hold(groups, Level::L2, |harness, config| {
+        harness.l2_fixture(config)
+    });
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    serde_json::to_value(&report).expect("the report is JSON")
 }

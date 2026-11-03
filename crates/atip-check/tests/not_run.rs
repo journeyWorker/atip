@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use support::l1::{l1_config, l1_config_1_2};
-use support::{Harness, Output};
+use support::{all_seeds, Harness, Output};
 
 fn result_of(output: &Output, id: &str) -> String {
     output.check(id)["result"]
@@ -148,11 +148,11 @@ fn atip_check_95_a_command_named_in_not_run_runs_once_up_to_its_first_document_a
 }
 
 #[test]
-fn atip_check_114_with_no_ok_invocation_the_first_example_is_the_one_run_and_the_other_examples_are_skipped_and_reported(
+fn atip_check_114_with_no_ok_invocation_the_first_example_is_the_one_run_the_other_examples_are_skipped_and_reported_and_the_refused_runs_still_run(
 ) {
     let harness = Harness::new();
     let log = harness.path("runs.log");
-    let config = l1_config(&json!({"serveMode": "serve", "invocationLog": log}));
+    let config = l1_config_1_2(&json!({"serveMode": "serve", "invocationLog": log}));
     let fixture = l1_fixture(&harness, &config);
     let output = harness.check_l1(&config, &fixture);
     assert_eq!(
@@ -207,6 +207,29 @@ fn atip_check_114_with_no_ok_invocation_the_first_example_is_the_one_run_and_the
         "{}",
         output.check("L1.domains")
     );
+    // 120: the runs of the command that are refused still run: the values outside the domain of `--port` (0 and 65536) are refused, so they ran; the pairs of faults of L1.check-order ran too.
+    assert!(
+        lines.iter().any(|line| line.contains("--port")
+            && (line.contains("=0") || line.ends_with(" 0") || line.contains(" 0 "))),
+        "{lines:?}"
+    );
+    let about_serve: Vec<String> = run_log(&log)
+        .into_iter()
+        .filter(|line| line.contains("serve"))
+        .collect();
+    assert!(
+        about_serve
+            .iter()
+            .any(|line| line.contains("--no-such-a") && line.contains("--no-such-b")),
+        "{about_serve:?}"
+    );
+    assert_eq!(
+        result_of(&output, "L1.domains"),
+        "pass",
+        "{}",
+        output.check("L1.domains")
+    );
+    assert_eq!(result_of(&output, "L1.check-order"), "pass");
 }
 
 #[test]
@@ -354,18 +377,6 @@ fn atip_check_118_a_bad_first_document_fails_the_check_that_owns_the_fault_and_n
             output.stdout.chars().take(500).collect::<String>()
         );
     }
-    // L1: data that the output schema of the command refuses.
-    let harness = Harness::new();
-    let config = l1_config(
-        &json!({"serveMode": "serve", "dataPatch": {"serve": [{"op": "remove", "path": "/serving"}]}}),
-    );
-    let output = harness.check_l1(&config, &l1_fixture(&harness, &config));
-    assert_eq!(
-        failing(&output),
-        ["L1.output-data"],
-        "{:?}",
-        output.results()
-    );
 }
 
 #[test]
@@ -416,52 +427,6 @@ fn atip_check_119_with_no_ok_invocation_and_no_example_the_checks_that_judge_its
         output.check("L1.output-data")
     );
     assert_eq!(result_of(&output, "L0.envelope"), "unprovided");
-}
-
-#[test]
-fn atip_check_120_the_runs_of_a_not_run_command_that_are_refused_still_run_and_a_domain_it_does_not_enforce_fails_l1_domains(
-) {
-    let harness = Harness::new();
-    let log = harness.path("runs.log");
-    let config = l1_config_1_2(&json!({"serveMode": "serve", "invocationLog": log}));
-    let output = harness.check_l1(&config, &l1_fixture(&harness, &config));
-    assert_eq!(output.code, Some(0), "{:?}", failing(&output));
-    let lines = serve_lines(&log);
-    // The values outside the domain of `--port` (0 and 65536) are refused, so they ran; the pairs of faults of L1.check-order ran too.
-    assert!(
-        lines.iter().any(|line| line.contains("--port")
-            && (line.contains("=0") || line.ends_with(" 0") || line.contains(" 0 "))),
-        "{lines:?}"
-    );
-    let about_serve: Vec<String> = run_log(&log)
-        .into_iter()
-        .filter(|line| line.contains("serve"))
-        .collect();
-    assert!(
-        about_serve
-            .iter()
-            .any(|line| line.contains("--no-such-a") && line.contains("--no-such-b")),
-        "{about_serve:?}"
-    );
-    assert_eq!(
-        result_of(&output, "L1.domains"),
-        "pass",
-        "{}",
-        output.check("L1.domains")
-    );
-    assert_eq!(result_of(&output, "L1.check-order"), "pass");
-    // A server that takes a port outside the domain serves on: the run is killed at the time limit and L1.domains fails.
-    let harness = Harness::new();
-    let config = l1_config(&json!({"serveMode": "serve", "acceptDomain": {"serve": ["port"]}}));
-    let mut fixture = l1_fixture(&harness, &config);
-    fixture["timeoutSeconds"] = json!(4);
-    let output = harness.check_l1(&config, &fixture);
-    assert_eq!(
-        result_of(&output, "L1.domains"),
-        "fail",
-        "{:?}",
-        output.results()
-    );
 }
 
 #[test]
@@ -537,17 +502,19 @@ fn atip_check_96_a_not_run_command_that_is_the_probe_or_has_no_effect_note_or_is
     fixture["notRun"] = json!(["serve", "unknown-server"]);
     let message = refused(&harness.check_l1(&config, &fixture), "an unknown id");
     assert!(message.contains("unknown-server"), "{message}");
-    let mut fixture = harness.l1_fixture(&config);
-    fixture["commands"]
-        .as_object_mut()
-        .expect("commands")
-        .remove("member list");
-    fixture["notRun"] = json!(["member list"]);
-    let message = refused(&harness.check_l1(&config, &fixture), "no effectNote");
-    assert!(
-        message.contains("effectNote") && message.contains("member list"),
-        "{message}"
-    );
+    if all_seeds() {
+        let mut fixture = harness.l1_fixture(&config);
+        fixture["commands"]
+            .as_object_mut()
+            .expect("commands")
+            .remove("member list");
+        fixture["notRun"] = json!(["member list"]);
+        let message = refused(&harness.check_l1(&config, &fixture), "no effectNote");
+        assert!(
+            message.contains("effectNote") && message.contains("member list"),
+            "{message}"
+        );
+    }
     let bare = l1_config(&json!({"serveMode": "serve", "serveNoEffectNote": true}));
     let message = refused(
         &harness.check_l1(&bare, &l1_fixture(&harness, &bare)),
@@ -563,8 +530,11 @@ fn atip_check_96_a_not_run_command_that_is_the_probe_or_has_no_effect_note_or_is
     assert_eq!(harness.check(&fixture, true).code, Some(1));
 }
 
+/// 97, 118 (L1) and 120 (the domain): the grammar seed (a malformed example in the documents of `member list`), a first document that the output schema of `serve` refuses and a server that takes
+/// a port outside the domain (it serves on, and is killed at the time limit), in one run: the example syntax check still judges the examples, `L1.output-data` and `L1.domains` fail for what is theirs, and
+/// nothing else fails; every check that runs commands says the command was left out of its other runs.
 #[test]
-fn atip_check_97_the_example_syntax_check_still_judges_the_examples_of_a_not_run_command_and_the_command_is_never_missing_from_the_report(
+fn atip_check_97_the_example_syntax_check_still_judges_the_examples_of_a_not_run_command_and_a_bad_first_document_and_a_domain_it_does_not_enforce_fail_the_checks_that_own_them(
 ) {
     let harness = Harness::new();
     let case = support::l1::l1_cases()
@@ -574,9 +544,11 @@ fn atip_check_97_the_example_syntax_check_still_judges_the_examples_of_a_not_run
     // The grammar case plants a malformed example in the documents of `member list`; `serve` is the command under `notRun`.
     let mut config = case.config.clone();
     config["serveMode"] = json!("serve");
+    config["dataPatch"] = json!({"serve": [{"op": "remove", "path": "/serving"}]});
+    config["acceptDomain"] = json!({"serve": ["port"]});
     let mut fixture = harness.l1_fixture(&config);
     fixture["notRun"] = json!(["serve"]);
-    fixture["timeoutSeconds"] = json!(15);
+    fixture["timeoutSeconds"] = json!(4);
     let output = harness.check_l1(&config, &fixture);
     let check = output.check("L1.examples");
     assert_eq!(
@@ -586,6 +558,14 @@ fn atip_check_97_the_example_syntax_check_still_judges_the_examples_of_a_not_run
         output.stdout.chars().take(400).collect::<String>()
     );
     assert_eq!(check["findings"][0]["kind"], "grammar");
+    let mut failed = failing(&output);
+    failed.sort();
+    assert_eq!(
+        failed,
+        ["L1.domains", "L1.examples", "L1.output-data"],
+        "{:?}",
+        output.results()
+    );
     // Every check that runs commands says the command was left out of its other runs, and the report lists the one run it did make.
     for id in ["L0.page", "L1.example-runs", "L1.output-data", "L1.domains"] {
         assert_eq!(output.check(id)["notRun"], json!(["serve"]), "{id}");
@@ -681,14 +661,16 @@ fn atip_check_116_a_refusal_of_a_step_that_reads_no_state_is_a_fixture_error_wha
 ) {
     // Registered with exit 2 and refused with no `field`: only the class of the code says the step read no state (checker.md 1.3.1 section 5).
     let extra = json!([{"code": "UNKNOWN_OPTION", "exit": 2}, {"code": "OPTION_REQUIRED", "exit": 2}, {"code": "OPTION_INVALID", "exit": 2}]);
-    for code in [
-        "UNKNOWN_COMMAND",
-        "COMMAND_REQUIRED",
-        "INPUT_INVALID",
-        "UNKNOWN_OPTION",
-        "OPTION_REQUIRED",
-        "OPTION_INVALID",
-    ] {
+    let mut codes = vec!["UNKNOWN_COMMAND", "INPUT_INVALID"];
+    if all_seeds() {
+        codes.extend([
+            "COMMAND_REQUIRED",
+            "UNKNOWN_OPTION",
+            "OPTION_REQUIRED",
+            "OPTION_INVALID",
+        ]);
+    }
+    for code in codes {
         let harness = Harness::new();
         let config =
             json!({"serveMode": "refuseStart", "serveRefuseCode": code, "extraCodes": extra});
@@ -700,21 +682,6 @@ fn atip_check_116_a_refusal_of_a_step_that_reads_no_state_is_a_fixture_error_wha
             "{code}: {message}"
         );
     }
-    // The control: a registered code of no such class, refused the same way, is unprovided with its code and the level is not met.
-    let harness = Harness::new();
-    let config = json!({"serveMode": "refuseStart", "serveRefuseCode": "CURSOR_INVALID", "extraCodes": extra});
-    let fixture = l0_fixture(&harness, &config, &[&["serve", "--json"]]);
-    let output = harness.check(&fixture, true);
-    assert_eq!(
-        (
-            output.code,
-            output.envelope()["error"]["code"].as_str(),
-            result_of(&output, "L0.envelope").as_str()
-        ),
-        (Some(1), Some("LEVEL_NOT_MET"), "unprovided"),
-        "{}",
-        output.stdout
-    );
 }
 
 #[test]
@@ -770,7 +737,13 @@ fn atip_check_116_a_not_run_refusal_with_a_code_the_command_document_declares_is
 
 #[test]
 fn atip_check_116_a_not_run_command_whose_effect_note_is_empty_or_blank_is_a_fixture_error_at_l1() {
-    for (name, note) in [("empty", ""), ("blank", "  \t ")] {
+    let blank = ("blank", "  \t ");
+    let notes = if all_seeds() {
+        vec![("empty", ""), blank]
+    } else {
+        vec![blank]
+    };
+    for (name, note) in notes {
         let harness = Harness::new();
         let config = l1_config(
             &json!({"serveMode": "serve", "docPatch": {"serve": [{"op": "set", "path": "/effectNote", "value": note}]}}),

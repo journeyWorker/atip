@@ -10,7 +10,8 @@ use std::collections::BTreeSet;
 use atip_check::app::check_binary_mutated;
 use atip_check::cli::{CheckArgs, Level};
 use support::l1::{l1_bin, l1_cases_1_2, l1_config_1_2, l1_fixture_of};
-use support::{atip_in, kind_verdict, representatives, Case, Harness, Output, ATIP};
+use support::l2::{check_of, mutations_hold, planted_together};
+use support::{all_seeds, atip_in, kind_verdict, representatives, Case, Harness, Output, ATIP};
 
 fn result_of(output: &Output, id: &str) -> String {
     output.check(id)["result"]
@@ -298,6 +299,44 @@ fn in_parallel(jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>>) -> Vec
     failures.into_inner().expect("failures")
 }
 
+/// `atip check --level L1` of the fake tool of `config` in this process: its report as JSON (what `data` is), whether the level is met, and the conditions it judged.
+fn l1_report(config: &Value) -> (Value, bool, BTreeSet<String>) {
+    let harness = Harness::new();
+    let fixture = harness.l1_fixture(config);
+    let args = CheckArgs {
+        bin: l1_bin(&harness, config).into(),
+        level: Level::L1,
+        fixture: harness.write("fixture.json", &fixture).into(),
+        contract: None,
+    };
+    let (report, judged) = check_binary_mutated(&args, &[], &[]).expect("a report");
+    (
+        serde_json::to_value(&report).expect("the report is JSON"),
+        report.passed,
+        judged,
+    )
+}
+
+/// The ids of the checks of a report that are `fail` or `unprovided`.
+fn failing_in(data: &Value) -> Vec<&str> {
+    data["checks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|check| matches!(check["result"].as_str(), Some("fail" | "unprovided")))
+        .filter_map(|check| check["id"].as_str())
+        .collect()
+}
+
+fn ids_in(data: &Value) -> Vec<String> {
+    data["checks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|check| check["id"].as_str().map(str::to_string))
+        .collect()
+}
+
 #[test]
 fn atip_check_103_each_1_2_violation_fails_the_row_that_owns_it_and_no_other_row_at_a_claim_of_1_2()
 {
@@ -333,50 +372,18 @@ fn atip_check_103_each_1_2_violation_fails_the_row_that_owns_it_and_no_other_row
                     if output.code != expected_exit && output.code != Some(0) {
                         return Err(format!("{}: exit {:?}", case.condition, output.code));
                     }
-                    Ok(())
-                })
-            })
-            .collect();
-    let failures = in_parallel(jobs);
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
-#[test]
-fn atip_check_104_the_same_violations_at_a_claim_of_1_1_fail_no_row_and_the_1_2_rows_are_not_run() {
-    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> =
-        representatives(l1_cases_1_2(), owner_of)
-            .into_iter()
-            .map(|case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-                Box::new(move || {
-                    let harness = Harness::new();
-                    let mut config = case.config.clone();
-                    config["claims"] = json!("1.1");
-                    config.as_object_mut().expect("object").remove("binAlias");
-                    let mut fixture = harness.l1_fixture(&config);
-                    if let Some(tweak) = case.tweak {
-                        tweak(&mut fixture);
-                    }
-                    // A 1.1 registry that lists STOPPED_MIDWAY as the tool's own code: any exit, retryable or not.
-                    let output = run_l1(&harness, &config, &fixture);
-                    report_of(&output, &case)?;
-                    let results = output.results();
-                    if results.iter().any(|(id, _)| id == "L1.check-order") {
+                    // At 1.2 the reason of a reserved exit names the code.
+                    if owner_of(&case) == "L1.registry"
+                        && !output.check("L1.registry")["reason"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .contains("STOPPED_MIDWAY")
+                    {
                         return Err(format!(
-                            "{}: L1.check-order is in a 1.1 report",
+                            "{}: the reason does not name STOPPED_MIDWAY",
                             case.condition
                         ));
                     }
-                    let failing = failing(&output);
-                    if !failing.is_empty() {
-                        return Err(format!(
-                            "{}: a 1.1 claim fails {failing:?}\n{}",
-                            case.condition,
-                            output.stdout.chars().take(600).collect::<String>()
-                        ));
-                    }
-                    if output.code != Some(0) {
-                        return Err(format!("{}: exit {:?}", case.condition, output.code));
-                    }
                     Ok(())
                 })
             })
@@ -385,118 +392,68 @@ fn atip_check_104_the_same_violations_at_a_claim_of_1_1_fail_no_row_and_the_1_2_
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// A conforming 1.2 tool, in one run: it passes (the registry lists `STOPPED_MIDWAY` with exit 1, 107), `L1.check-order` is in its report and every pair is run (110). Then its
+/// violations, planted together in a tool that claims 1.1 (104, 105): none fails a row, a 1.1 registry may use the name as its own (107), and the report differs from the 1.2 one
+/// only in `L1.check-order`. Then every 1.2 condition the conforming run judges has a case, and the seeds, planted together, stop failing when the owner is forced to pass or the
+/// condition is switched off (106).
 #[test]
-fn atip_check_105_the_same_tool_and_fixture_at_1_1_and_at_1_2_differ_only_in_the_1_2_rows() {
-    let harness = Harness::new();
-    let config_12 = l1_config_1_2(&json!({}));
-    let fixture_12 = harness.l1_fixture(&config_12);
-    let at_12 = run_l1(&harness, &config_12, &fixture_12);
+fn atip_check_105_a_conforming_1_2_tool_passes_and_its_violations_at_a_claim_of_1_1_fail_no_row_and_every_1_2_condition_a_conforming_run_judges_has_a_case(
+) {
+    let config_12 = l1_config_1_2(&json!({"stoppedMidway": true}));
+    let (at_12, passed, judged_12) = l1_report(&config_12);
+    assert!(passed, "{:?}", failing_in(&at_12));
     assert_eq!(
-        at_12.code,
-        Some(0),
-        "{:?} {}",
-        failing(&at_12),
-        at_12.stdout.chars().take(300).collect::<String>()
-    );
-    assert_eq!(
-        at_12.envelope()["data"]["checks"].as_array().map(Vec::len),
+        at_12["checks"].as_array().map(Vec::len),
         Some(61),
         "28 L0 and 32 L1 checks, and L2.effects"
     );
-    assert_eq!(
-        result_of(&at_12, "L1.check-order"),
-        "pass",
-        "{}",
-        at_12.check("L1.check-order")
-    );
-    // The checker's own claim stands for the same tool: only the claim differs.
-    let mut config_11 = config_12.clone();
-    config_11["claims"] = json!("1.1");
-    config_11
-        .as_object_mut()
-        .expect("object")
-        .remove("binAlias");
-    let harness = Harness::new();
-    let fixture_11 = harness.l1_fixture(&config_11);
-    assert_eq!(fixture_11["contractVersion"], "1.1");
-    let at_11 = run_l1(&harness, &config_11, &fixture_11);
-    assert_eq!(
-        at_11.code,
-        Some(0),
-        "{:?} {}",
-        failing(&at_11),
-        at_11.check("L0.contract-version")
-    );
-    assert_eq!(at_11.envelope()["data"]["contractVersion"], "1.1");
-    let ids = |output: &Output| -> Vec<String> {
-        output.results().into_iter().map(|(id, _)| id).collect()
-    };
-    let (ids_12, ids_11) = (ids(&at_12), ids(&at_11));
-    assert_eq!(ids_11.len(), 60);
-    let only_12: Vec<&String> = ids_12.iter().filter(|id| !ids_11.contains(id)).collect();
-    assert_eq!(only_12, ["L1.check-order"]);
-    // `L1.check-order` stands behind `L1.validators`, and no row that ran at 1.1 changed its result.
-    let at = ids_12
-        .iter()
-        .position(|id| id == "L1.check-order")
-        .expect("position");
-    assert_eq!(ids_12[at - 1], "L1.validators");
-    for (id, result) in at_11.results() {
-        assert_eq!(
-            result,
-            at_12.check(&id)["result"].as_str().unwrap_or_default(),
-            "{id}"
-        );
+    for id in ["L1.check-order", "L1.registry"] {
+        assert_eq!(check_of(&at_12, id)["result"], "pass", "{id}");
     }
-    // A claim of 1.0 has no more than it had.
-    let mut config_10 = config_12.clone();
-    config_10["claims"] = json!("1.0");
-    config_10
-        .as_object_mut()
-        .expect("object")
-        .remove("binAlias");
-    let harness = Harness::new();
-    let fixture_10 = harness.l1_fixture(&config_10);
-    let at_10 = run_l1(&harness, &config_10, &fixture_10);
-    assert!(
-        !ids(&at_10).contains(&"L1.check-order".to_string()),
-        "{:?}",
-        ids(&at_10)
-    );
-}
-
-#[test]
-fn atip_check_106_a_row_forced_to_pass_or_a_condition_switched_off_makes_its_1_2_case_fail_and_every_1_2_condition_a_conforming_run_judges_has_a_case(
-) {
-    let harness = Harness::new();
-    let config = l1_config_1_2(&json!({}));
-    let _ = &config;
-    let conforming = l1_config_1_2(&json!({"stoppedMidway": true}));
-    let fixture = harness.l1_fixture(&conforming);
-    let args = |level: Level, config: &Value, fixture: &Value, harness: &Harness| CheckArgs {
-        bin: l1_bin(harness, config).into(),
-        level,
-        fixture: harness.write("fixture.json", fixture).into(),
-        contract: None,
-    };
-    let (report, judged_12) =
-        check_binary_mutated(&args(Level::L1, &conforming, &fixture, &harness), &[], &[])
-            .expect("a report");
-    assert!(report.passed, "{}", report.text());
-    let mut config_11 = conforming.clone();
-    config_11["claims"] = json!("1.1");
-    config_11
-        .as_object_mut()
-        .expect("object")
-        .remove("binAlias");
-    let harness_11 = Harness::new();
-    let fixture_11 = harness_11.l1_fixture(&config_11);
-    let (_, judged_11) = check_binary_mutated(
-        &args(Level::L1, &config_11, &fixture_11, &harness_11),
-        &[],
-        &[],
-    )
-    .expect("a report");
+    check_order_pairs(check_of(&at_12, "L1.check-order"));
+    // The violations of every 1.2 row, in a tool that claims 1.1 and gives `STOPPED_MIDWAY` the exit 2 and retryable: all of them are the tool's own there.
+    let groups = planted_together(representatives(l1_cases_1_2(), owner_of), owner_of);
+    let mut judged_11 = BTreeSet::new();
+    for (index, group) in groups.iter().enumerate() {
+        let mut config_11 = group.config.clone();
+        config_11["claims"] = json!("1.1");
+        config_11
+            .as_object_mut()
+            .expect("object")
+            .remove("binAlias");
+        if config_11.get("stoppedMidway").is_some() {
+            config_11["stoppedMidwayRetryable"] = json!(true);
+            config_11["stoppedMidwayExit2"] = json!(true);
+        }
+        let (at_11, passed, judged) = l1_report(&config_11);
+        assert!(passed, "{:?}", failing_in(&at_11));
+        assert!(
+            failing_in(&at_11).is_empty(),
+            "a 1.1 claim fails {:?}",
+            failing_in(&at_11)
+        );
+        assert_eq!(at_11["contractVersion"], "1.1");
+        let (ids_12, ids_11) = (ids_in(&at_12), ids_in(&at_11));
+        assert_eq!(ids_11.len(), 60);
+        let only_12: Vec<&String> = ids_12.iter().filter(|id| !ids_11.contains(id)).collect();
+        assert_eq!(only_12, ["L1.check-order"], "{index}");
+        if index == 0 {
+            judged_11 = judged;
+            // `L1.check-order` stands behind `L1.validators`, and no row that ran at 1.1 changed its result.
+            let at = ids_12
+                .iter()
+                .position(|id| id == "L1.check-order")
+                .expect("position");
+            assert_eq!(ids_12[at - 1], "L1.validators");
+            for id in &ids_11 {
+                assert_eq!(
+                    check_of(&at_11, id)["result"],
+                    check_of(&at_12, id)["result"],
+                    "{id}"
+                );
+            }
+        }
+    }
     let only_12: BTreeSet<String> = judged_12.difference(&judged_11).cloned().collect();
     let planted: BTreeSet<String> = l1_cases_1_2()
         .iter()
@@ -508,147 +465,11 @@ fn atip_check_106_a_row_forced_to_pass_or_a_condition_switched_off_makes_its_1_2
         "judged only by a 1.2 conforming run and planted by no case: {unplanted:?}"
     );
     assert!(!only_12.is_empty());
-    // Each case: with its own condition switched off the owner no longer fails; the first case of each owner: the owner forced to pass.
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    let firsts: Vec<(Case, bool)> = representatives(l1_cases_1_2(), owner_of)
-        .into_iter()
-        .map(|case| {
-            let first = seen.insert(owner_of(&case));
-            (case, first)
-        })
-        .collect();
-    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = firsts
-        .into_iter()
-        .map(
-            |(case, first)| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-                Box::new(move || {
-                    let harness = Harness::new();
-                    let fixture = l1_fixture_of(&harness, &case);
-                    let owner = owner_of(&case);
-                    let args = CheckArgs {
-                        bin: l1_bin(&harness, &case.config).into(),
-                        level: Level::L1,
-                        fixture: harness.write("fixture.json", &fixture).into(),
-                        contract: None,
-                    };
-                    if first {
-                        let (forced, _) = check_binary_mutated(&args, &[owner.as_str()], &[])
-                            .map_err(|failure| {
-                                format!("{}: {}", case.condition, failure.message)
-                            })?;
-                        if forced.find(&owner).map(|check| check.result)
-                            == Some(atip_check::report::CheckResult::Fail)
-                        {
-                            return Err(format!(
-                                "{}: forced to pass, {owner} still fails",
-                                case.condition
-                            ));
-                        }
-                    }
-                    let (skipped, _) = check_binary_mutated(&args, &[], &[case.condition])
-                        .map_err(|failure| format!("{}: {}", case.condition, failure.message))?;
-                    if skipped.find(&owner).map(|check| check.result)
-                        == Some(atip_check::report::CheckResult::Fail)
-                    {
-                        return Err(format!(
-                            "{}: with the condition switched off {owner} still fails",
-                            case.condition
-                        ));
-                    }
-                    Ok(())
-                })
-            },
-        )
-        .collect();
-    let failures = in_parallel(jobs);
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
-#[test]
-fn atip_check_107_stopped_midway_registered_with_exit_1_passes_and_one_that_is_not_registered_passes_and_a_1_1_registry_may_use_the_name_as_its_own(
-) {
-    let harness = Harness::new();
-    let registered = l1_config_1_2(&json!({"stoppedMidway": true}));
-    let output = run_l1(&harness, &registered, &harness.l1_fixture(&registered));
-    assert!(
-        output.envelope()["data"]["checks"].is_array(),
-        "{}",
-        output.stdout
-    );
-    assert_eq!(
-        (output.code, result_of(&output, "L1.registry")),
-        (Some(0), "pass".to_string()),
-        "{}",
-        output.stdout
-    );
-    let plain = l1_config_1_2(&json!({}));
-    let output = run_l1(&harness, &plain, &harness.l1_fixture(&plain));
-    assert_eq!(result_of(&output, "L1.registry"), "pass");
-    // In a 1.1 registry the name is the tool's own: retryable, and exit 2 are both free.
-    let mut own = l1_config_1_2(
-        &json!({"claims": "1.1", "stoppedMidway": true, "stoppedMidwayRetryable": true, "stoppedMidwayExit2": true}),
-    );
-    own.as_object_mut().expect("object").remove("binAlias");
-    let output = run_l1(&harness, &own, &harness.l1_fixture(&own));
-    assert!(
-        output.envelope()["data"]["checks"].is_array(),
-        "{}",
-        output.stdout
-    );
-    assert_eq!(
-        (output.code, result_of(&output, "L1.registry")),
-        (Some(0), "pass".to_string()),
-        "{}",
-        output.stdout
-    );
-    // At 1.2 the same row is a failure, and the reason names the code.
-    let bad = l1_config_1_2(
-        &json!({"stoppedMidway": true, "stoppedMidwayExit2": true, "stoppedMidwayRetryable": true}),
-    );
-    let output = run_l1(&harness, &bad, &harness.l1_fixture(&bad));
-    let check = output.check("L1.registry");
-    assert_eq!(check["result"], "fail", "{}", output.stdout);
-    assert!(
-        check["reason"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("STOPPED_MIDWAY"),
-        "{check}"
-    );
-}
-
-#[test]
-fn atip_check_108_a_1_2_tool_whose_commands_have_no_all_no_env_and_no_input_has_those_parts_unsupported_and_the_row_passes(
-) {
-    let harness = Harness::new();
-    let mut config = l1_config_1_2(&json!({}));
-    config["docPatch"] = json!({
-        "member list": [
-            {"op": "remove", "path": "/options/name=all"},
-            {"op": "remove", "path": "/options/name=team/env"},
-            {"op": "remove", "path": "/options/name=input"},
-            {"op": "remove", "path": "/input"}
-        ]
+    // With its own condition switched off the owner no longer fails, and forced to pass it does not either.
+    let failures = mutations_hold(groups, Level::L1, |harness, config| {
+        harness.l1_fixture(config)
     });
-    let output = run_l1(&harness, &config, &harness.l1_fixture(&config));
-    let paging = output.check("L1.paging");
-    assert_eq!(paging["result"], "pass", "{paging}");
-    let notes = paging["notes"].as_array().cloned().unwrap_or_default();
-    assert!(
-        notes.iter().any(|note| note
-            .as_str()
-            .is_some_and(|note| note.contains("member list")
-                && note.contains("nothing to test for: all, env, input"))),
-        "{notes:?}"
-    );
-    // The part of the row that the tool does have is still judged: the default written out is refused.
-    let observed: Vec<Value> = paging["observed"].as_array().cloned().unwrap_or_default();
-    assert!(
-        observed.iter().any(|call| call["argv"]
-            .as_array()
-            .is_some_and(|argv| argv.iter().any(|word| word == "--sort=name"))),
-        "the default is written out: {observed:?}"
-    );
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]
@@ -690,13 +511,8 @@ fn atip_check_109_a_tool_with_no_invocation_to_change_has_check_order_unprovided
     );
 }
 
-#[test]
-fn atip_check_110_every_stage_pair_a_command_can_have_is_run_and_a_pair_that_needs_a_third_fault_is_not(
-) {
-    let harness = Harness::new();
-    let config = l1_config_1_2(&json!({}));
-    let output = run_l1(&harness, &config, &harness.l1_fixture(&config));
-    let check = output.check("L1.check-order");
+/// 110: every stage pair a command can have is run, and a pair that needs a third fault is not: what the pass of `L1.check-order` says of its pairs.
+fn check_order_pairs(check: &Value) {
     assert_eq!(check["result"], "pass", "{check}");
     // The report says each pair it judged, with the invocation of the earlier fault alone that its answer is compared with: `<command>: <pair> (`<pair argv>` against `<alone argv>`)`.
     let notes: Vec<String> = check["notes"]
@@ -982,15 +798,57 @@ fn atip_check_122_a_1_2_document_whose_cursor_all_or_fields_is_not_flag_only_and
     assert!(problems(registry_findings(&entries, minor_of(Claim::V1_1))).is_empty());
 }
 
+/// 108 (and 107, a registry that does not list `STOPPED_MIDWAY` passes): a 1.2 tool whose commands have no `--all`, no env and no `--input` has those parts unsupported and the row passes.
+#[test]
+fn atip_check_108_a_1_2_tool_whose_commands_have_no_all_no_env_and_no_input_has_those_parts_unsupported_and_the_row_passes(
+) {
+    let harness = Harness::new();
+    let mut config = l1_config_1_2(&json!({}));
+    config["docPatch"] = json!({
+        "member list": [
+            {"op": "remove", "path": "/options/name=all"},
+            {"op": "remove", "path": "/options/name=team/env"},
+            {"op": "remove", "path": "/options/name=input"},
+            {"op": "remove", "path": "/input"}
+        ]
+    });
+    let output = run_l1(&harness, &config, &harness.l1_fixture(&config));
+    assert_eq!(result_of(&output, "L1.registry"), "pass");
+    let paging = output.check("L1.paging");
+    assert_eq!(paging["result"], "pass", "{paging}");
+    let notes = paging["notes"].as_array().cloned().unwrap_or_default();
+    assert!(
+        notes.iter().any(|note| note
+            .as_str()
+            .is_some_and(|note| note.contains("member list")
+                && note.contains("nothing to test for: all, env, input"))),
+        "{notes:?}"
+    );
+    // The part of the row that the tool does have is still judged: the default written out is refused.
+    let observed: Vec<Value> = paging["observed"].as_array().cloned().unwrap_or_default();
+    assert!(
+        observed.iter().any(|call| call["argv"]
+            .as_array()
+            .is_some_and(|argv| argv.iter().any(|word| word == "--sort=name"))),
+        "the default is written out: {observed:?}"
+    );
+}
+
+/// 113: an output schema that marks the optional `nickname` required is caught by `L1.output-data` when a run returns the record without it; at a claim of 1.1 too, with `ATIP_CHECK_ALL_SEEDS=1`.
 #[test]
 fn atip_check_113_an_output_schema_that_marks_an_optional_field_required_is_caught_by_l1_output_data_when_a_run_returns_the_record_without_it(
 ) {
     // `nickname` is optional in the data of `member list`: a member may have none. The schema of the output says every member has one.
-    for claim in ["1.1", "1.2"] {
+    let claims: &[&str] = if all_seeds() {
+        &["1.1", "1.2"]
+    } else {
+        &["1.2"]
+    };
+    for claim in claims {
         let harness = Harness::new();
         let mut config = l1_config_1_2(&json!({"claims": claim}));
         config["docPatch"] = json!({"member list": [{"op": "add", "path": "/schemas/MemberRow/required/-", "value": "nickname"}]});
-        if claim == "1.1" {
+        if *claim == "1.1" {
             config.as_object_mut().expect("object").remove("binAlias");
         }
         let fixture = harness.l1_fixture(&config);
