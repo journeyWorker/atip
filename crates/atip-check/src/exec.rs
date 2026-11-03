@@ -217,6 +217,7 @@ pub struct Runner {
 impl Runner {
     /// Builds the template by running the fixture's `setup` once.
     pub fn new(bin: &Path, fixture: &Fixture) -> Result<Self, RunError> {
+        ignore_sigpipe();
         let scratch = tempfile::Builder::new()
             .prefix("atip-check-")
             .tempdir()
@@ -518,12 +519,14 @@ impl Runner {
             None
         };
         let mut child = command.spawn()?;
-        // The document goes in from a thread of its own: a tool that answers before it reads must not block this one.
-        if let (Some(bytes), Some(mut pipe)) = (call.stdin.clone(), child.stdin.take()) {
-            thread::spawn(move || {
+        // The document goes in from a thread of its own: a tool that answers before it reads must not block this one. A tool that has
+        // exited by then (it refused the call without reading stdin) makes the write fail with `EPIPE`, which is no one's error.
+        let writer = match (call.stdin.clone(), child.stdin.take()) {
+            (Some(bytes), Some(mut pipe)) => Some(thread::spawn(move || {
                 let _ = std::io::Write::write_all(&mut pipe, &bytes);
-            });
-        }
+            })),
+            _ => None,
+        };
         drop(command);
         let ended = Arc::new(AtomicBool::new(false));
         let stdout = match (stdout_terminal, child.stdout.take()) {
@@ -541,6 +544,10 @@ impl Runner {
         // Whatever the tool left running in its group must not hold the output open.
         kill_group(&child);
         ended.store(true, Ordering::Release);
+        // The tool is gone, so the writer ends (`EPIPE` at the latest): nothing of this call writes to a pipe once it returns.
+        if let Some(writer) = writer {
+            let _ = writer.join();
+        }
         let stdout = stdout.join().unwrap_or_default();
         Ok(Outcome {
             call: call.clone(),
@@ -876,6 +883,20 @@ fn reader<R: Read + Send + 'static>(mut source: R) -> JoinHandle<Vec<u8>> {
     })
 }
 
+/// A document is written to the stdin of a tool that may have exited already (it refused the call without reading it): the write must fail with
+/// `EPIPE`, not end the checker by SIGPIPE. Rust starts a process with SIGPIPE ignored, and a runner makes sure it still is, whoever restored the
+/// default before (`app::main` does, once the run is over, so that a closed stdout ends `atip` by the signal).
+#[expect(
+    unsafe_code,
+    reason = "libc::signal is an unsafe FFI call with no safe std equivalent for ignoring SIGPIPE"
+)]
+fn ignore_sigpipe() {
+    // SAFETY: it only changes the process's SIGPIPE action, to the one Rust starts every process with.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+    }
+}
+
 fn kill_group(child: &Child) {
     if let Ok(pid) = i32::try_from(child.id()) {
         // ESRCH is the usual answer: the group is already gone.
@@ -1029,8 +1050,10 @@ mod tests {
             paths[0], paths[2],
             "each invocation has its own working directory"
         );
+        // `pwd` prints the physical path and `HOME` is the path as made: on macOS the temporary directory is a link (`/var` for `/private/var`).
+        let physical = |path: &str| path.strip_prefix("/private").unwrap_or(path).to_string();
         assert!(
-            paths[1].starts_with(paths[0].trim_end_matches("/work")),
+            physical(paths[1]).starts_with(physical(paths[0]).trim_end_matches("/work")),
             "HOME is inside the copy: {paths:?}"
         );
     }
