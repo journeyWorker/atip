@@ -27,7 +27,7 @@ and default-valued members are left out (`--commit` and `--plan-digest` stay lis
 and `--help` stays text while `--help --json` refuses and points at `schema`; the `--schemas` answer also carries the
 derived input schema and the validators' counterexamples; its rules bind only documents that declare 1.4. 1.4.1
 (2026-11-04), after one round of review, is a patch: compactness forbids only whitespace outside strings. 1.4.2 is a
-patch: a repeatable option's `--input` value is a non-empty array, and `--version --json` resolves its path first. The
+patch: a caller omits a repeatable option's `--input` key for none, and `--version --json` resolves its path first. The
 decisions behind all of the versions are in Appendix A of the spec; no question is open. `CHANGELOG.md` lists the
 versions; spec 15 says how versions work, 15.7 lists what differs in the earlier minors, and 15.8 says what 1.4 means
 for callers. Until its second revision the contract was called `agent-cli/1`.

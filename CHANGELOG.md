@@ -5,16 +5,14 @@
 A patch (15.1) from implementer feedback on 1.4 (D40). No rule changes strength; `meta.contractVersion` stays
 `"1.4"`.
 
-- **A repeatable option's `--input` value is a non-empty array (10.5, 9.7.2, 9.9.2).** None is written by omitting the
-  key, as for `operands`; the derived fragment gives the array `"minItems": 1` (a count stays one integer). An empty
-  array had no stated meaning. `scripts/check.ts` derives `minItems` and still accepts a 1.4.1 `Input` without it; the
-  acme `page label` schemas answer is updated, and `invalid/input-acme-page-label-empty-array.json` is new. The `atip`
-  crate's projected fragment schema gives repeatable options `minItems: 1`.
+- **None for a repeatable option (10.5).** A caller writes none by omitting the key, as for `operands`; a 1.4 tool may
+  read `[]` as absent or refuse it with `INPUT_INVALID` and the key's pointer. The derivation of 9.9.2 is unchanged
+  (1.4.1 admitted `[]`); making `[]` invalid with `"minItems": 1` is a 1.5 candidate.
 - **`--version --json` resolves its path first (4.4.1),** as `--help --json` does: `<tool> nosuch --version --json`
   answers `UNKNOWN_COMMAND`.
 - **`approaches/checker.md`:** L1.help-json adds `<tool> nosuch-xyz --version --json` in the deep mode;
-  L2.input-refusals sends `[]` for each repeatable option at a 1.4 claim and expects `INPUT_INVALID` with the key's
-  pointer; two seeded rows.
+  L2.input-refusals sends `[]` for each repeatable option at a 1.4 claim and accepts either answer; L1.schemas names
+  the 1.4.x derivation; two seeded rows.
 
 ## 1.4.1 (2026-11-04)
 

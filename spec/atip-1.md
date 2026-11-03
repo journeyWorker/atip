@@ -1,8 +1,8 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.4.2, release candidate**: a patch (15.1) that says a repeatable option's `--input` value is a non-empty
-array and that `--version --json` resolves its path first (Appendix A D40). Version 1.4.1, adopted 2026-11-04 after one
-round of independent review, is a patch that states the compactness rule as whitespace outside strings only, applies
+Status: **1.4.2, release candidate**: a patch (15.1) that says how a caller writes none for a repeatable option in
+`--input` and that `--version --json` resolves its path first (Appendix A D40). Version 1.4.1, adopted 2026-11-04 after
+one round of independent review, is a patch that states the compactness rule as whitespace outside strings only, applies
 7.3.2's naming to every minor from 1.3, and words the MINOR row for replaced members (D39). Version 1.4.0, adopted
 2026-11-04 after two rounds of independent review, is a minor (15.1) that makes the self-description small and compact
 for agents and separates `--help` from `schema` (D38); 1.3.1 and 1.3.0 are described in D37 and D36.
@@ -516,8 +516,8 @@ reserved options are, whether implied or listed); `short` is a declared letter; 
 | `enum` | `--name=<V>` | a member of `possibleValues` or `null` | a member of `possibleValues` |
 | `json` | `--name=<JSON>` | any JSON value, or `null` for none | any JSON value but a top-level `null` |
 
-A repeatable option's default and document value are arrays (a document value non-empty, 10.5), a `count`'s one integer;
-a `switch` is never required or repeatable. [Appendix A D11.3]
+A repeatable option's default and document value are arrays, a `count`'s one integer; a `switch` is never required
+or repeatable. [Appendix A D11.3]
 
 9.7.3. `default` is used when the option is absent: `null` for none or for a value computed at run time (with
 `defaultNote`); `false` for a switch; `null` for a required option. A default the help promises appears here.
@@ -563,11 +563,11 @@ describes the whole report; a batch output's describes `items[].data`, and the b
 
 9.9.2. `input` declares `--input`: `maxBytes`, `batch` and `maxItems` (10.10, 10.11), `example` one complete valid
 document, and optionally `argumentsRef`, an informative schema of the argument object of 10.7 step 6, never stricter
-than the declarations. The **fragment schema** of one document is derived from the command's options, not declared: an
-object with no `required` and `additionalProperties: false` whose properties are `operands` (an array of operand values,
-at least one, at most one per operand unless the last is variadic) and the camelCase name of every option that is not
-flag-only, each admitting the `--input` values of 9.7.2 (when repeatable, a non-empty array of them; a count stays one
-integer). Domains are not part of it (10.7 step 6). A declared copy could only disagree with the options.
+than the declarations. The **fragment schema** of one document is derived from the command's options, not declared:
+an object with no `required` and `additionalProperties: false` whose properties are `operands` (an array of operand
+values, at least one, at most one per operand unless the last is variadic) and the camelCase name of every option that
+is not flag-only, each admitting the `--input` values of 9.7.2 (an array of them when repeatable). Domains are not part
+of it (10.7 step 6). A declared copy could only disagree with the options.
 
 9.9.3. `schema <PATH> --schemas` answers with `kind: "schemas"`, `command`, and `schemas`: exactly the JSON Schemas
 the command document's refs name and the ones they refer to through `#/schemas/<Name>`, each compiling under draft
@@ -599,10 +599,10 @@ twice or without a value is `USAGE`. [Appendix A D26]
 10.4. An object is one invocation, an array a batch (10.11); only a file or stdin that is not one JSON value is read
 as NDJSON (a batch). Anything else, and a batch the command does not accept, refuses with `INPUT_INVALID`.
 
-10.5. Keys are the options' camelCase names and `operands` (a non-empty array, in order); values follow 9.7.2, and a
-repeatable option's value is a non-empty array (omit the key for none, as for `operands`). A numeric string for an
-`integer` or `number` is normalised to its number; nothing else is coerced; `null` is refused except inside a `json`
-value. [Appendix A D11.17]
+10.5. Keys are the options' camelCase names and `operands` (a non-empty array, in order); values follow 9.7.2. A caller
+writes none for a repeatable option by omitting the key, as for `operands`; a 1.4 tool may read `[]` as absent or refuse
+it with `INPUT_INVALID`, `field` the key's pointer. A numeric string for an `integer` or `number` is normalised to its
+number; nothing else is coerced; `null` is refused except inside a `json` value. [Appendix A D11.17]
 
 10.6. Flag-only options (4.5, and any the tool marks) are never keys, so a document cannot select output, page or
 commit a plan.
@@ -945,7 +945,7 @@ sections of this version.
 
 | # | Owner decision 2026-11-04, version 1.4.2, a patch (15.1) from implementer feedback | Where |
 |---|---|---|
-| D40 | Two gaps two implementers met on 1.4, closed without changing a rule's strength; `meta.contractVersion` stays `"1.4"`. (1) A repeatable option's `--input` value is a non-empty array, and none is written by omitting the key, as `operands` has been since 1.0; the derived fragment gives it `"minItems": 1` (a count stays one integer). An empty array had no stated meaning: neither "given" (9.8.1) nor a value (10.7 step 6) said what it was, and an implementer could not tell whether `"tag": []` satisfies a `required` option or conflicts with argv. (2) `--version --json` with a path resolves the path first, as `--help --json` does, so an unknown word answers `UNKNOWN_COMMAND`. The repository checker accepts an `Input` derived without `minItems` on option arrays, so every 1.4.1 schemas answer stays valid; `approaches/checker.md` L2.input-refusals sends `[]` for a repeatable option at a 1.4 claim. | 4.4.1, 9.7.2, 9.9.2, 10.5, approaches/checker.md |
+| D40 | Two gaps two implementers met on 1.4, closed without changing a rule's strength; `meta.contractVersion` stays `"1.4"`. (1) A caller writes none for a repeatable option by omitting the key, as for `operands`; a 1.4 tool may read `"tag": []` as absent or refuse it with `INPUT_INVALID` and the key's pointer. 1.4.1 admitted `[]` (9.7.2 says "arrays", and the derived fragment has no `minItems`) but gave it no meaning, so either reading is allowed and the derivation of 9.9.2 is unchanged. A review of the 1.4.2 candidate found that making `[]` invalid, with `"minItems": 1` in the derivation, would fail a conforming 1.4.1 tool; that rule, a MUST and `minItems: 1` binding documents that declare 1.5, is a 1.5 candidate. (2) `--version --json` with a path resolves the path first, as `--help --json` does, so an unknown word answers `UNKNOWN_COMMAND`. `approaches/checker.md` L2.input-refusals sends `[]` for a repeatable option at a 1.4 claim and accepts either answer. | 4.4.1, 10.5, approaches/checker.md |
 
 ## Appendix B. Prior art
 

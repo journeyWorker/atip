@@ -119,8 +119,6 @@ type CommandDoc = {
   schemas: Record<string, SchemaNode>
   named: string[]
   fragment?: JsonObject
-  /** The 1.4.1 form of `fragment`: option arrays without `minItems` (accepted as `Input`, spec 15.1). */
-  fragment141?: JsonObject
 }
 type TreeEntry = { command: string; path?: string[]; kind?: string }
 type Reason = { reason: string }
@@ -1242,7 +1240,6 @@ function resolveCommand(raw: RawCommandDoc, tool: string, v14: boolean, problems
     schemas: v14 ? (answer?.schemas ?? {}) : (raw.schemas ?? {}),
     named,
     fragment: v14 && raw.input ? deriveFragment(raw, tree?.options ?? new Map()) : undefined,
-    fragment141: v14 && raw.input ? deriveFragment(raw, tree?.options ?? new Map(), false) : undefined,
   }
 }
 
@@ -1265,10 +1262,9 @@ function documentValueSchema(a: Arg): JsonObject {
  * The fragment schema of one `--input` document, derived as spec 9.9.2 says: an object with no `required` and
  * `additionalProperties: false` whose properties are `operands` (an array of operand values, at least one, at most
  * one per operand unless the last is variadic) and the camelCase name of every option that is not flag-only, each
- * admitting the `--input` values of 9.7.2 (when repeatable, a non-empty array of them, spec 10.5; a count stays one
- * integer). Domains are not part of it. `minItems: false` gives the 1.4.1 form, whose option arrays had no `minItems`.
+ * admitting the `--input` values of 9.7.2 (an array of them when repeatable). Domains are not part of it.
  */
-function deriveFragment(doc: RawCommandDoc, treeOptions: Map<string, RawArg>, minItems = true): JsonObject {
+function deriveFragment(doc: RawCommandDoc, treeOptions: Map<string, RawArg>): JsonObject {
   const operands = (doc.operands ?? []).map(fullArg)
   const properties: JsonObject = {}
   const last = operands.at(-1)
@@ -1288,7 +1284,7 @@ function deriveFragment(doc: RawCommandDoc, treeOptions: Map<string, RawArg>, mi
     const a = fullArg(raw)
     if (a.flagOnly) continue
     const value = documentValueSchema(a)
-    properties[camel(a.name)] = a.repeatable && a.valueType !== "count" ? { type: "array", ...(minItems ? { minItems: 1 } : {}), items: value } : value
+    properties[camel(a.name)] = a.repeatable && a.valueType !== "count" ? { type: "array", items: value } : value
   }
   return { type: "object", additionalProperties: false, properties }
 }
@@ -1357,8 +1353,7 @@ function schemasAnswerProblems(data: { command: string; schemas: Record<string, 
   for (const name of Object.keys(data.schemas)) if (!reached.has(name) && !(name === "Input" && doc.input)) problems.push(`schemas.${name} is reached by no ref of ${data.command} (spec 9.9.3)`)
   if (doc.input) {
     if (!Object.prototype.hasOwnProperty.call(data.schemas, "Input")) problems.push(`the schemas answer of ${data.command} lacks Input, the derived fragment schema of its input (spec 9.9.3, Annex S2 rule 2)`)
-    // A schemas answer of 1.4.1, whose option arrays have no `minItems`, stays valid (spec 15.1: a patch changes no rule).
-    else if (!doc.fragment || !(jsonEqual(data.schemas.Input as JsonValue, doc.fragment) || jsonEqual(data.schemas.Input as JsonValue, doc.fragment141 ?? null))) problems.push(`schemas.Input of ${data.command} differs from the fragment schema derived from its operands and options (spec 9.9.2, 9.9.3)`)
+    else if (!doc.fragment || !jsonEqual(data.schemas.Input as JsonValue, doc.fragment)) problems.push(`schemas.Input of ${data.command} differs from the fragment schema derived from its operands and options (spec 9.9.2, 9.9.3)`)
   }
   const validators = doc.validators?.length ?? 0
   if (validators && data.rejects?.length !== validators) problems.push(`the schemas answer of ${data.command} must hold one rejects list per validator (${validators}), in order (spec 9.9.3, Annex S2 rule 2)`)
