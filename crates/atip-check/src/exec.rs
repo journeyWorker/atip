@@ -1050,10 +1050,12 @@ mod tests {
             paths[0], paths[2],
             "each invocation has its own working directory"
         );
-        // `pwd` prints the physical path and `HOME` is the path as made: on macOS the temporary directory is a link (`/var` for `/private/var`).
-        let physical = |path: &str| path.strip_prefix("/private").unwrap_or(path).to_string();
+        // `pwd` prints the physical path and `HOME` is the path as made: the temporary directory may be a link (`/var` for `/private/var` on macOS).
+        let physical = |path: &str| {
+            std::fs::canonicalize(path).unwrap_or_else(|error| panic!("{path}: {error}"))
+        };
         assert!(
-            physical(paths[1]).starts_with(physical(paths[0]).trim_end_matches("/work")),
+            physical(paths[1]).starts_with(physical(paths[0]).parent().expect("a copy")),
             "HOME is inside the copy: {paths:?}"
         );
     }
