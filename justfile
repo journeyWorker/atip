@@ -41,10 +41,18 @@ fmt-check:
 validate:
     scripts/validate.sh
 
-# Run the checker on its own fake tool at L0: the fake tool with no configuration is a conforming one.
-check:
+# Run the checker on its own fake tool at L0 in both modes: the fake tool with no configuration is a conforming one.
+check: check-interface check-deep
+
+# The default mode: the interface checks, a few launches of the binary on one shared copy of the fixture state.
+check-interface:
     cargo build --locked -p atip-check --features test-support
     {{ target }}/debug/atip check --bin {{ target }}/debug/atip-fake-tool --level L0 --fixture crates/atip-check/fake-tool/fixture.json
+
+# `--deep`: every check of L0, each call in a fresh copy of the state.
+check-deep:
+    cargo build --locked -p atip-check --features test-support
+    {{ target }}/debug/atip check --bin {{ target }}/debug/atip-fake-tool --level L0 --fixture crates/atip-check/fake-tool/fixture.json --deep
 
 # Everything CI does.
 ci: validate fmt-check lint test

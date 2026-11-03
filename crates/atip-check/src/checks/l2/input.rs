@@ -227,25 +227,26 @@ impl<'a> Judge<'a> {
         c.finish_as(End::missing_all(whys, entries))
     }
 
-    /// The findings of the 15 rows, in table order.
-    pub(crate) fn input_findings(&'a self) -> Vec<Finding> {
-        vec![
-            self.l2_input_present(),
-            self.l2_input_example(),
-            self.l2_input_refusals(),
-            self.l2_input_tty(),
-            self.l2_input_usage(),
-            self.l2_input_reasons(),
-            self.l2_input_fragment(),
-            self.l2_input_normalise(),
-            self.l2_input_conflict(),
-            self.l2_input_env(),
-            self.l2_input_pointer(),
-            self.l2_input_dash_values(),
-            self.l2_batch_preflight(),
-            self.l2_batch_incomplete(),
-            self.l2_batch_ok(),
-        ]
+    /// The finding of the row `id`, when it is one of the 15.
+    pub(crate) fn input_finding(&'a self, id: &str) -> Option<Finding> {
+        Some(match id {
+            "L2.input-present" => self.l2_input_present(),
+            "L2.input-example" => self.l2_input_example(),
+            "L2.input-refusals" => self.l2_input_refusals(),
+            "L2.input-tty" => self.l2_input_tty(),
+            "L2.input-usage" => self.l2_input_usage(),
+            "L2.input-reasons" => self.l2_input_reasons(),
+            "L2.input-fragment" => self.l2_input_fragment(),
+            "L2.input-normalise" => self.l2_input_normalise(),
+            "L2.input-conflict" => self.l2_input_conflict(),
+            "L2.input-env" => self.l2_input_env(),
+            "L2.input-pointer" => self.l2_input_pointer(),
+            "L2.input-dash-values" => self.l2_input_dash_values(),
+            "L2.batch-preflight" => self.l2_batch_preflight(),
+            "L2.batch-incomplete" => self.l2_batch_incomplete(),
+            "L2.batch-ok" => self.l2_batch_ok(),
+            _ => return None,
+        })
     }
 
     fn l2_input_present(&'a self) -> Finding {

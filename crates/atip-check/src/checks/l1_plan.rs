@@ -14,7 +14,7 @@ use super::{first_document, in_json_mode, Run};
 use crate::claim::Claim;
 use crate::exec::{Call, RunError};
 use crate::l1::invocation::{self, Invocation, Item};
-use crate::l1::model::{Arg, CommandDoc, GroupDoc, Output, ToolDocs, Tree};
+use crate::l1::model::{Arg, CommandDoc, GroupDoc, Output, ToolDocs, Tree, TreeEntry};
 use crate::l1::witness::{self, DomainProbe, Expect, GroupOutcome, GroupPlan};
 
 /// The word no tool has as a path word, for `schema nosuch-xyz`.
@@ -253,17 +253,9 @@ impl Run<'_> {
         self.fixture.not_run.iter().any(|id| id == command)
     }
 
-    pub(crate) fn invoke_l1(
-        &mut self,
-        warnings_offered: bool,
-        claim: Claim,
-    ) -> Result<L1Run, RunError> {
-        let mut run = L1Run {
-            tree: self.invoke(Call::new(["schema", "--json"]).measured())?,
-            ..L1Run::default()
-        };
-        run.tree_again = self.invoke(Call::new(["schema", "--json"]))?;
-        run.empty = self.invoke(Call::new(["schema", "--json"]).in_empty_state())?;
+    /// What `schema --json` (the invocation `run.tree`) says: the tool, the tree, and the commands and groups of it. A `notRun` command the tree does not
+    /// have is an error of the fixture.
+    fn read_tree(&self, run: &mut L1Run) -> Result<Vec<TreeEntry>, RunError> {
         let envelope = first_document(&self.log[run.tree].stdout)
             .filter(|document| document.get("ok") == Some(&Value::Bool(true)));
         run.docs.tool = envelope
@@ -294,6 +286,33 @@ impl Run<'_> {
                 )));
             }
         }
+        Ok(entries)
+    }
+
+    /// The L1 invocations of an interface run: the tree `schema --json` printed (`tree`, the call the L0 run made) and `--help`, in the shared copy
+    /// of the state. The documents of the commands, and everything planned from them, are `--deep`'s.
+    pub(crate) fn invoke_l1_interface(&mut self, tree: usize) -> Result<L1Run, RunError> {
+        let mut run = L1Run {
+            tree,
+            ..L1Run::default()
+        };
+        self.read_tree(&mut run)?;
+        run.root_help = self.invoke(Call::new(["--help"]))?;
+        Ok(run)
+    }
+
+    pub(crate) fn invoke_l1(
+        &mut self,
+        warnings_offered: bool,
+        claim: Claim,
+    ) -> Result<L1Run, RunError> {
+        let mut run = L1Run {
+            tree: self.invoke(Call::new(["schema", "--json"]).measured())?,
+            ..L1Run::default()
+        };
+        run.tree_again = self.invoke(Call::new(["schema", "--json"]))?;
+        run.empty = self.invoke(Call::new(["schema", "--json"]).in_empty_state())?;
+        let entries = self.read_tree(&mut run)?;
         // The invocations that are the same whatever the fixture says.
         run.root_help = self.invoke(Call::new(["--help"]))?;
         run.unknown_path = self.invoke(Call::new(["schema", NO_SUCH_PATH, "--json"]))?;

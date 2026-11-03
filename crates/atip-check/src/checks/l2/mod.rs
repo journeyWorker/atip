@@ -83,12 +83,14 @@ impl<'a> Judge<'a> {
         self.l2.expect("the L2 checks run only with an L2 run")
     }
 
-    /// The findings of the L2 checks, in table order.
-    pub(crate) fn l2_findings(&'a self) -> Vec<Finding> {
-        let mut findings = self.input_findings();
-        findings.extend(self.safety_findings());
-        findings.extend(self.guides_findings());
-        findings.push(self.l2_effects(self.effects));
-        findings
+    /// The finding of the L2 check `id` of the table.
+    pub(crate) fn l2_finding(&'a self, id: &str) -> Finding {
+        if id == EFFECTS_ID {
+            return self.l2_effects(self.effects);
+        }
+        self.input_finding(id)
+            .or_else(|| self.safety_finding(id))
+            .or_else(|| self.guides_finding(id))
+            .unwrap_or_else(|| panic!("{id} is not in the L2 table"))
     }
 }

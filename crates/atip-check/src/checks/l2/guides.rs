@@ -60,15 +60,16 @@ impl<'a> Judge<'a> {
         &self.l2().guides
     }
 
-    /// The findings of the five rows, in table order.
-    pub(crate) fn guides_findings(&'a self) -> Vec<Finding> {
-        vec![
-            self.l2_stream(),
-            self.l2_skills(),
-            self.l2_guide_commands(),
-            self.l2_search(),
-            self.l2_help_guide(),
-        ]
+    /// The finding of the row `id`, when it is one of the five.
+    pub(crate) fn guides_finding(&'a self, id: &str) -> Option<Finding> {
+        Some(match id {
+            "L2.stream" => self.l2_stream(),
+            "L2.skills" => self.l2_skills(),
+            "L2.guide-commands" => self.l2_guide_commands(),
+            "L2.search" => self.l2_search(),
+            "L2.help-guide" => self.l2_help_guide(),
+            _ => return None,
+        })
     }
 
     fn l2_help_guide(&'a self) -> Finding {

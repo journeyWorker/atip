@@ -23,7 +23,7 @@ use crate::claim::Claim;
 use crate::cli::Level;
 use crate::exec::{Call, Exit, Outcome, RunError, Runner};
 use crate::fixture::{Fixture, RegistryRow};
-use crate::report::{Check, CheckResult, Detail, Report, Strength};
+use crate::report::{Check, CheckResult, Detail, Mode, Report, Strength};
 use crate::schema::schemas;
 
 pub mod documents;
@@ -139,6 +139,92 @@ pub fn needs(id: &str) -> &'static [Need] {
         .iter()
         .find(|entry| entry.id == id)
         .map_or(&[], |entry| entry.needs)
+}
+
+/// The checks of the default mode (approaches/checker.md 3.1 "Modes"), each with what `--deep` adds to it when it judges only part of its
+/// rule without `--deep` (empty: the check is the same in both modes). This is the one place that classifies the checks: a check that is not
+/// listed here is deep, so a new check costs nothing in the default mode until someone puts it here.
+///
+/// An interface check judges a document the tool prints for an ordinary call (the envelope, the exit status, the registry the tool lists, the
+/// tree `schema --json` prints, `--help`, one document in JSON mode, a refusal on end-of-file); every check that enumerates over the commands, options or codes,
+/// or probes with a generated invocation or a different environment, is deep.
+///
+/// To classify a new check, add `(id, deep part)` here and the row to the Modes table of approaches/checker.md; `tests/interface_mode.rs` holds the
+/// two to each other and to the three check tables. The checks of contract 1.4 (`L1.schemas`: `schema --schemas --json`; `L1.help-json`: `--help --json`)
+/// judge the document of one call and belong here when they are added.
+const INTERFACE: [(&str, &str); 32] = [
+    ("L0.version", ""),
+    ("L0.version-format", ""),
+    ("L0.unknown-command", ""),
+    ("L0.unknown-command-text", ""),
+    ("L0.text-error-form", ""),
+    ("L0.bare", ""),
+    ("L0.unknown-option", ""),
+    ("L0.json-mode-preparse", ""),
+    ("L0.after-dashdash", ""),
+    ("L0.ok-exit", ""),
+    ("L0.no-null", ""),
+    ("L0.envelope", ""),
+    ("L0.compact", ""),
+    (
+        "L0.one-document",
+        "the `ok` invocations of the fixture's commands",
+    ),
+    ("L0.contract", ""),
+    ("L0.contract-version", ""),
+    ("L0.stderr-result", ""),
+    ("L0.stderr-quiet", ""),
+    ("L0.next", ""),
+    (
+        "L0.no-prompt",
+        "the run on a terminal, and the `missingValue` invocations after the first",
+    ),
+    (
+        "L0.registry",
+        "`schema --error <CODE>` and `schema --warning <CODE>` for each code the tool lists",
+    ),
+    ("L0.usage-hint", ""),
+    ("L0.hint-form", ""),
+    ("L1.tree", ""),
+    ("L1.registry", "the error codes of each command document"),
+    (
+        "L1.reasons",
+        "`schema --error <CODE>` for each code the tool lists",
+    ),
+    ("L1.reasons-reserved", ""),
+    ("L1.warnings", "`schema --warning NOSUCH_XYZ`"),
+    ("L1.depth", ""),
+    ("L1.next", "running the `next` entries of read commands"),
+    ("L1.help-line", ""),
+    ("L2.help-guide", ""),
+];
+
+/// The mode a check first runs in: `Interface` for the checks of [`INTERFACE`], `Deep` for every other.
+pub fn mode_of(id: &str) -> Mode {
+    if INTERFACE.iter().any(|(interface, _)| *interface == id) {
+        Mode::Interface
+    } else {
+        Mode::Deep
+    }
+}
+
+/// What `--deep` adds to the interface check `id` (empty when nothing, and for a deep check).
+pub fn deep_part(id: &str) -> &'static str {
+    INTERFACE
+        .iter()
+        .find(|(interface, _)| *interface == id)
+        .map_or("", |(_, part)| part)
+}
+
+/// The ids of every check of every level for a claim of 1.2 (the table of the most checks), in table order: the 28 of L0, the 31 of L1 and
+/// `L1.check-order`, the L2 ones and `L2.effects`.
+pub fn every_id() -> Vec<&'static str> {
+    TABLE
+        .iter()
+        .chain(l1::table(Claim::V1_2))
+        .chain(l2::table())
+        .map(|entry| entry.id)
+        .collect()
 }
 
 /// The word no tool has as a command.
@@ -286,12 +372,27 @@ pub(crate) struct Skip {
 
 /// The invocations that use the fixture's probe command.
 struct ProbeCalls {
+    /// The plain `<probe> --json`.
+    plain: usize,
+    /// The refusals of the grammar checks, which both modes make.
+    grammar: GrammarProbeCalls,
+    /// The probes of the checks of `--deep`; `None` in interface mode.
+    deep: Option<DeepProbeCalls>,
+}
+
+/// The probe invocations of the argument-grammar checks: three refusals and a call after `--`, none of which writes.
+struct GrammarProbeCalls {
     /// `<probe> --bogus-xyz --json`.
     unknown_option: usize,
     /// `<probe> --json --bogus-xyz`.
     json_first: usize,
+    /// `<probe> -- --json`.
     after_dashdash: usize,
-    /// The plain `<probe> --json`, then one per variation of the environment and one on a terminal.
+}
+
+/// The probe invocations that only a deep run makes.
+struct DeepProbeCalls {
+    /// The plain `<probe> --json` (`ProbeCalls::plain`), then one per variation of the environment and one on a terminal.
     json_variations: Vec<(String, usize)>,
     /// The same for `<probe>` in text mode.
     text_variations: Vec<(String, usize)>,
@@ -326,11 +427,17 @@ struct Run<'a> {
     log: Vec<Outcome>,
     served: Vec<ServedRun>,
     skipped: Vec<Skip>,
+    /// An interface run: every call runs in the one shared copy of the fixture state, not in a copy of its own.
+    shared: bool,
 }
 
 impl Run<'_> {
     fn invoke(&mut self, call: Call) -> Result<usize, RunError> {
-        let outcome = self.runner.run(&call)?;
+        let outcome = if self.shared {
+            self.runner.run_shared(&call)?
+        } else {
+            self.runner.run(&call)?
+        };
         self.log.push(outcome);
         Ok(self.log.len() - 1)
     }
@@ -408,6 +515,101 @@ impl Run<'_> {
         })
     }
 
+    /// The invocations of an interface run (approaches/checker.md 3.1) but the last: nine at most with the `--help` of L1 and the control run
+    /// that [`Run::invoke_first_missing_value`] makes, all in the one shared copy of the fixture state.
+    ///
+    /// None of them writes, by construction, so that one shared copy serves all: `--version`, a refusal (an unknown command, a bare
+    /// `--json`) changes nothing by the contract (spec 8.2); `schema` writes nothing (spec 9.2); `--help` writes nothing; the fixture's `probe`
+    /// is a command that runs without state; and the one `missingValue` invocation is a call that must be refused, and runs last, so that a tool
+    /// that wrote on it would leave its trace after every other call had run. Whether a call wrote is `--deep`'s to find
+    /// (`L0.refusal-effects`, `L1.no-state`); an interface run does not measure it.
+    fn invoke_interface(&mut self) -> Result<Invocations, RunError> {
+        let version = self.invoke(Call::new(["--version"]))?;
+        let unknown_command = self.invoke(Call::new([NO_SUCH_COMMAND, "--json"]))?;
+        let unknown_command_text = self.invoke(Call::new([NO_SUCH_COMMAND]))?;
+        let bare = self.invoke(Call::new(["--json"]))?;
+        let schema_errors = self.invoke(Call::new(["schema", "--errors", "--json"]))?;
+        let schema_warnings = self.invoke(Call::new(["schema", "--warnings", "--json"]))?;
+        let schema_tree = self.invoke(Call::new(["schema", "--json"]))?;
+        let probe = match self.fixture.probe.clone() {
+            None => None,
+            Some(mut words) => {
+                words.push("--json".to_string());
+                let plain = self.invoke(Call::new(words.clone()))?;
+                words.pop();
+                Some(ProbeCalls {
+                    plain,
+                    grammar: self.invoke_probe_grammar(&words)?,
+                    deep: None,
+                })
+            }
+        };
+        Ok(Invocations {
+            version,
+            unknown_command,
+            unknown_command_text,
+            bare,
+            schema_errors,
+            error_entries: Vec::new(),
+            schema_warnings,
+            warning_entries: Vec::new(),
+            warning_only: Vec::new(),
+            probe,
+            commands: Vec::new(),
+            group: None,
+            schema_tree,
+            remote_baseline: None,
+            served: Vec::new(),
+            skipped: Vec::new(),
+        })
+    }
+
+    /// The control run (stdin at end-of-file) of the first `missingValue` invocation of the fixture, and nothing else of its commands: the
+    /// list of calls of every command, aligned with the fixture's `commands`, the others empty.
+    fn invoke_first_missing_value(&mut self) -> Result<Vec<CommandCalls>, RunError> {
+        let Some(commands) = self.fixture.commands.clone() else {
+            return Ok(Vec::new());
+        };
+        let mut all = Vec::new();
+        let mut made = false;
+        for entry in commands.values() {
+            let mut calls = CommandCalls {
+                ok: Vec::new(),
+                refused: Vec::new(),
+                missing: Vec::new(),
+                paged: Vec::new(),
+                cursor: 0,
+            };
+            if let (false, Some(argv)) = (made, entry.missing_value.first()) {
+                let control = self.invoke(Call::new(in_json_mode(argv)))?;
+                calls.missing.push(MissingCalls {
+                    control,
+                    terminal: None,
+                });
+                made = true;
+            }
+            all.push(calls);
+        }
+        Ok(all)
+    }
+
+    /// The three refusals and the call after `--` of the probe: the same calls in both modes.
+    fn invoke_probe_grammar(&mut self, words: &[String]) -> Result<GrammarProbeCalls, RunError> {
+        let call = |extra: &[&str]| {
+            Call::new(
+                words
+                    .iter()
+                    .map(String::as_str)
+                    .chain(extra.iter().copied()),
+            )
+        };
+        Ok(GrammarProbeCalls {
+            unknown_option: self.invoke(call(&[NO_SUCH_OPTION, "--json"]))?,
+            json_first: self.invoke(call(&["--json", NO_SUCH_OPTION]))?,
+            after_dashdash: self.invoke(call(&["--", "--json"]))?,
+        })
+    }
+
     fn invoke_probe(&mut self, words: &[String]) -> Result<ProbeCalls, RunError> {
         let call = |extra: &[&str]| {
             Call::new(
@@ -417,9 +619,7 @@ impl Run<'_> {
                     .chain(extra.iter().copied()),
             )
         };
-        let unknown_option = self.invoke(call(&[NO_SUCH_OPTION, "--json"]))?;
-        let json_first = self.invoke(call(&["--json", NO_SUCH_OPTION]))?;
-        let after_dashdash = self.invoke(call(&["--", "--json"]))?;
+        let grammar = self.invoke_probe_grammar(words)?;
         let variations =
             |run: &mut Self, extra: &[&str]| -> Result<Vec<(String, usize)>, RunError> {
                 let base = call(extra);
@@ -439,11 +639,12 @@ impl Run<'_> {
         let json_variations = variations(self, &["--json"])?;
         let text_variations = variations(self, &[])?;
         Ok(ProbeCalls {
-            unknown_option,
-            json_first,
-            after_dashdash,
-            json_variations,
-            text_variations,
+            plain: json_variations[0].1,
+            grammar,
+            deep: Some(DeepProbeCalls {
+                json_variations,
+                text_variations,
+            }),
         })
     }
 
@@ -615,7 +816,70 @@ pub(crate) struct Judged {
     pub(crate) conditions: BTreeSet<String>,
 }
 
-/// Runs every check of `level` against the fixture's state and reports each.
+/// What the invocations of a run give the judge besides the log.
+struct Made {
+    calls: Invocations,
+    l1: Option<L1Run>,
+    l2: Option<L2Run>,
+    effects: l2::EffectsRun,
+}
+
+impl Run<'_> {
+    /// The invocations of a deep run: those of every check of `level`, each in a fresh copy of the fixture state.
+    fn invoke_levels(&mut self, claim: Claim, level: Level) -> Result<Made, RunError> {
+        let mut calls = self.invoke_all()?;
+        let l1 = if level != Level::L0 {
+            let warnings_offered = claim.at_least(Claim::V1_1)
+                && first_document(&self.log[calls.schema_warnings].stdout).is_some_and(
+                    |document| {
+                        document.get("ok") == Some(&Value::Bool(true))
+                            && document
+                                .pointer("/data/warnings")
+                                .is_some_and(Value::is_array)
+                    },
+                );
+            Some(self.invoke_l1(warnings_offered, claim)?)
+        } else {
+            None
+        };
+        calls.served = std::mem::take(&mut self.served);
+        calls.skipped = std::mem::take(&mut self.skipped);
+        let l2 = if level == Level::L2 {
+            Some(self.invoke_l2(&calls, l1.as_ref(), claim)?)
+        } else {
+            None
+        };
+        let effects = self.plan_effects(l1.as_ref())?;
+        Ok(Made {
+            calls,
+            l1,
+            l2,
+            effects,
+        })
+    }
+
+    /// The invocations of an interface run: the L0 ones, then, from L1, the tree it has read and `--help`, and last the `missingValue` control run
+    /// (see [`Run::invoke_interface`]). The L2 run has nothing of its own to read but `--help` (`L2.help-guide`), and `L2.effects` is deep.
+    fn invoke_interface_levels(&mut self, level: Level) -> Result<Made, RunError> {
+        let mut calls = self.invoke_interface()?;
+        let l1 = if level != Level::L0 {
+            Some(self.invoke_l1_interface(calls.schema_tree)?)
+        } else {
+            None
+        };
+        calls.commands = self.invoke_first_missing_value()?;
+        let l2 = (level == Level::L2).then(L2Run::default);
+        Ok(Made {
+            calls,
+            l1,
+            l2,
+            effects: l2::EffectsRun::default(),
+        })
+    }
+}
+
+/// Runs the checks of `level` against the fixture's state and reports each: every one of the level in a deep run, the interface ones in an
+/// interface run (the report lists the others as `deepChecks`).
 pub(crate) fn run_checks(
     runner: Runner,
     fixture: &Fixture,
@@ -623,6 +887,7 @@ pub(crate) fn run_checks(
     bin_name: &str,
     mutation: Mutation<'_>,
     level: Level,
+    mode: Mode,
 ) -> Result<Judged, RunError> {
     let mut run = Run {
         runner,
@@ -630,28 +895,17 @@ pub(crate) fn run_checks(
         log: Vec::new(),
         served: Vec::new(),
         skipped: Vec::new(),
+        shared: mode == Mode::Interface,
     };
-    let mut calls = run.invoke_all()?;
-    let l1 = if level != Level::L0 {
-        let warnings_offered = claim.at_least(Claim::V1_1)
-            && first_document(&run.log[calls.schema_warnings].stdout).is_some_and(|document| {
-                document.get("ok") == Some(&Value::Bool(true))
-                    && document
-                        .pointer("/data/warnings")
-                        .is_some_and(Value::is_array)
-            });
-        Some(run.invoke_l1(warnings_offered, claim)?)
-    } else {
-        None
+    let Made {
+        calls,
+        l1,
+        l2,
+        effects,
+    } = match mode {
+        Mode::Deep => run.invoke_levels(claim, level)?,
+        Mode::Interface => run.invoke_interface_levels(level)?,
     };
-    calls.served = std::mem::take(&mut run.served);
-    calls.skipped = std::mem::take(&mut run.skipped);
-    let l2 = if level == Level::L2 {
-        Some(run.invoke_l2(&calls, l1.as_ref(), claim)?)
-    } else {
-        None
-    };
-    let effects = run.plan_effects(l1.as_ref())?;
     let judge = Judge::new(
         &run.log,
         fixture,
@@ -663,55 +917,32 @@ pub(crate) fn run_checks(
             l1: l1.as_ref(),
             l2: l2.as_ref(),
             effects: &effects,
+            mode,
         },
     );
-    let mut findings = vec![
-        judge.version(),
-        judge.version_format(),
-        judge.unknown_command(),
-        judge.unknown_command_text(),
-        judge.text_error_form(),
-        judge.bare(),
-        judge.unknown_option(),
-        judge.json_mode_preparse(),
-        judge.after_dashdash(),
-        judge.ok_exit(),
-        judge.no_null(),
-        judge.envelope_check(),
-        judge.compact(),
-        judge.one_document(),
-        judge.no_env_switch(),
-        judge.no_env_switch_text(),
-        judge.contract(),
-        judge.contract_version(),
-        judge.stderr_result(),
-        judge.stderr_quiet(),
-        judge.next(),
-        judge.page(),
-        judge.refusal_effects(),
-        judge.no_prompt(),
-        judge.registry(),
-        judge.usage_hint(),
-        judge.hint_form(),
-        judge.global_on_group(),
-    ];
     let mut table: Vec<&Entry> = TABLE.iter().collect();
     if l1.is_some() {
-        findings.extend(judge.l1_findings());
         table.extend(l1::table(claim));
     }
     if l2.is_some() {
-        findings.extend(judge.l2_findings());
         table.extend(l2::table());
     } else {
         // `L2.effects` is advisory at L0 and L1: no level gains a rule of a higher level (spec 3.2).
-        findings.push(judge.l2_effects(&effects));
         table.push(l2::effects_entry());
     }
+    let deep_checks: Vec<&'static str> = match mode {
+        Mode::Interface => table
+            .iter()
+            .filter(|entry| mode_of(entry.id) == Mode::Deep)
+            .map(|entry| entry.id)
+            .collect(),
+        Mode::Deep => Vec::new(),
+    };
+    table.retain(|entry| mode == Mode::Deep || mode_of(entry.id) == Mode::Interface);
     let checks = table
         .into_iter()
-        .zip(findings)
-        .map(|(entry, finding)| {
+        .map(|entry| {
+            let finding = judge.finding(entry.id);
             let finding = if mutation.forced_pass.contains(&entry.id) {
                 Finding {
                     result: CheckResult::Pass,
@@ -723,6 +954,14 @@ pub(crate) fn run_checks(
             } else {
                 finding
             };
+            let mut notes = finding.notes;
+            let ran = (!deep_part(entry.id).is_empty()).then_some(match mode {
+                Mode::Interface => "interface",
+                Mode::Deep => "all",
+            });
+            if mode == Mode::Interface && !deep_part(entry.id).is_empty() {
+                notes.push(format!("--deep adds {}", deep_part(entry.id)));
+            }
             Check {
                 id: entry.id,
                 strength: if (entry.id == "L2.input-usage" && !claim.at_least(Claim::V1_1))
@@ -738,7 +977,8 @@ pub(crate) fn run_checks(
                 advisories: finding.advisories,
                 findings: finding.details,
                 cut: finding.cut,
-                notes: finding.notes,
+                notes,
+                ran,
                 unlisted: if matches!(entry.id, "L1.constraints" | "L1.domains" | "L1.validators") {
                     l1.as_ref()
                         .map(|l1| l1.unprobed_writes.clone())
@@ -771,17 +1011,21 @@ pub(crate) fn run_checks(
         })
         .collect();
     let conditions = judge.seen.into_inner();
+    let report = Report::new(
+        match level {
+            Level::L0 => "L0",
+            Level::L1 => "L1",
+            Level::L2 => "L2",
+        },
+        claim,
+        checks,
+    )
+    .with_prepare(fixture.prepare.clone());
     Ok(Judged {
-        report: Report::new(
-            match level {
-                Level::L0 => "L0",
-                Level::L1 => "L1",
-                Level::L2 => "L2",
-            },
-            claim,
-            checks,
-        )
-        .with_prepare(fixture.prepare.clone()),
+        report: match mode {
+            Mode::Interface => report.interface(deep_checks),
+            Mode::Deep => report,
+        },
         conditions,
     })
 }
@@ -1223,13 +1467,16 @@ struct Judge<'a> {
     l2: Option<&'a L2Run>,
     /// What `L2.effects` reads, at every level.
     effects: &'a l2::EffectsRun,
+    /// The mode of the run: what an interface run leaves to `--deep` is not judged (`L0.no-prompt` reads the control run alone).
+    mode: Mode,
 }
 
-/// What the invocations of the levels above L0 read, handed to the judge.
+/// What the invocations of the levels above L0 read, handed to the judge, and the mode of the run.
 struct Runs<'a> {
     l1: Option<&'a L1Run>,
     l2: Option<&'a L2Run>,
     effects: &'a l2::EffectsRun,
+    mode: Mode,
 }
 
 impl<'a> Judge<'a> {
@@ -1242,7 +1489,12 @@ impl<'a> Judge<'a> {
         mutation: Mutation<'a>,
         runs: Runs<'a>,
     ) -> Self {
-        let Runs { l1, l2, effects } = runs;
+        let Runs {
+            l1,
+            l2,
+            effects,
+            mode,
+        } = runs;
         let documents: Vec<Option<Value>> = log
             .iter()
             .map(|outcome| first_document(&outcome.stdout))
@@ -1295,7 +1547,54 @@ impl<'a> Judge<'a> {
             l1,
             l2,
             effects,
+            mode,
         }
+    }
+
+    /// The finding of the check `id`: the one place that says which judgment each check of the three tables is.
+    fn finding(&'a self, id: &str) -> Finding {
+        match id {
+            "L0.version" => self.version(),
+            "L0.version-format" => self.version_format(),
+            "L0.unknown-command" => self.unknown_command(),
+            "L0.unknown-command-text" => self.unknown_command_text(),
+            "L0.text-error-form" => self.text_error_form(),
+            "L0.bare" => self.bare(),
+            "L0.unknown-option" => self.unknown_option(),
+            "L0.json-mode-preparse" => self.json_mode_preparse(),
+            "L0.after-dashdash" => self.after_dashdash(),
+            "L0.ok-exit" => self.ok_exit(),
+            "L0.no-null" => self.no_null(),
+            "L0.envelope" => self.envelope_check(),
+            "L0.compact" => self.compact(),
+            "L0.one-document" => self.one_document(),
+            "L0.no-env-switch" => self.no_env_switch(),
+            "L0.no-env-switch-text" => self.no_env_switch_text(),
+            "L0.contract" => self.contract(),
+            "L0.contract-version" => self.contract_version(),
+            "L0.stderr-result" => self.stderr_result(),
+            "L0.stderr-quiet" => self.stderr_quiet(),
+            "L0.next" => self.next(),
+            "L0.page" => self.page(),
+            "L0.refusal-effects" => self.refusal_effects(),
+            "L0.no-prompt" => self.no_prompt(),
+            "L0.registry" => self.registry(),
+            "L0.usage-hint" => self.usage_hint(),
+            "L0.hint-form" => self.hint_form(),
+            "L0.global-on-group" => self.global_on_group(),
+            _ if id.starts_with("L1.") => self.l1_finding(id),
+            _ => self.l2_finding(id),
+        }
+    }
+
+    /// The probe invocations of the argument-grammar checks, when the fixture has a probe.
+    fn grammar_probe(&self) -> Option<&GrammarProbeCalls> {
+        self.calls.probe.as_ref().map(|probe| &probe.grammar)
+    }
+
+    /// The probe invocations of a deep run, when the fixture has a probe.
+    fn deep_probe(&self) -> Option<&DeepProbeCalls> {
+        self.calls.probe.as_ref()?.deep.as_ref()
     }
 
     fn at(&self, index: usize) -> &Outcome {
@@ -1571,7 +1870,7 @@ impl<'a> Judge<'a> {
     /// `<probe> --bogus-xyz --json`: a refusal code, the field and the command. Whether it is an envelope is `L0.json-mode-preparse`'s.
     fn unknown_option(&'a self) -> Finding {
         let mut c = self.check("L0.unknown-option");
-        let Some(probe) = &self.calls.probe else {
+        let Some(probe) = self.grammar_probe() else {
             return c.finish(false);
         };
         c.own(probe.unknown_option);
@@ -1622,7 +1921,7 @@ impl<'a> Judge<'a> {
 
     fn json_mode_preparse(&'a self) -> Finding {
         let mut c = self.check("L0.json-mode-preparse");
-        let Some(probe) = &self.calls.probe else {
+        let Some(probe) = self.grammar_probe() else {
             return c.finish(false);
         };
         for (condition, index) in [
@@ -1649,7 +1948,7 @@ impl<'a> Judge<'a> {
 
     fn after_dashdash(&'a self) -> Finding {
         let mut c = self.check("L0.after-dashdash");
-        let Some(probe) = &self.calls.probe else {
+        let Some(probe) = self.grammar_probe() else {
             return c.finish(false);
         };
         c.own(probe.after_dashdash);
@@ -1860,7 +2159,7 @@ impl<'a> Judge<'a> {
     fn one_document(&'a self) -> Finding {
         let calls = self.calls;
         let mut c = self.check("L0.one-document");
-        let probe = calls.probe.as_ref().map(|probe| probe.json_variations[0].1);
+        let probe = calls.probe.as_ref().map(|probe| probe.plain);
         let ok_runs: Vec<(&str, usize)> = self
             .fixture
             .commands
@@ -1932,7 +2231,7 @@ impl<'a> Judge<'a> {
     /// The probe's JSON output does not depend on the environment or a terminal (spec 4.3).
     fn no_env_switch(&'a self) -> Finding {
         let mut c = self.check("L0.no-env-switch");
-        let Some(probe) = &self.calls.probe else {
+        let Some(probe) = self.deep_probe() else {
             return c.finish(false);
         };
         let plain_index = &probe.json_variations[0].1;
@@ -2014,7 +2313,7 @@ impl<'a> Judge<'a> {
 
     fn no_env_switch_text(&'a self) -> Finding {
         let mut c = self.check("L0.no-env-switch-text");
-        let Some(probe) = &self.calls.probe else {
+        let Some(probe) = self.deep_probe() else {
             return c.finish(false);
         };
         let kind = |index: usize| self.envelope(index).is_some();
@@ -2385,6 +2684,15 @@ impl<'a> Judge<'a> {
         for call in missing {
             let control = self.at(call.control);
             let Some(terminal_index) = call.terminal else {
+                if self.mode == Mode::Interface {
+                    // An interface run makes no run on a terminal: its subject is the control run, which must refuse (exit 2) and must not hang
+                    // (a run over the time limit fails the check). Whether the call prompts on a terminal is `--deep`'s.
+                    c.own(call.control);
+                    if control.exit == Exit::Code(2) {
+                        judged = true;
+                        continue;
+                    }
+                }
                 unclear.push(format!(
                     "{} was not refused with exit 2 as a control run (it ended with {}), so it cannot show a prompt",
                     self.label(call.control),

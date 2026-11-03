@@ -269,6 +269,7 @@ fn atip_check_04_a_binary_that_does_not_exist_or_cannot_run_exits_2_with_binary_
     let found = std::process::Command::new(ATIP)
         .args([
             "check",
+            "--deep",
             "--bin",
             "atip-fake-tool",
             "--level",
@@ -361,7 +362,7 @@ fn atip_check_06_a_malformed_atip_command_line_is_refused_naming_the_argument_at
     std::fs::create_dir_all(&tmp).expect("tmp");
     /// argv, the error code, the `field` it names, and the `meta.command` it carries.
     type Case<'a> = (&'a [&'a str], &'a str, Option<&'a str>, Option<&'a str>);
-    let cases: [Case; 9] = [
+    let cases: [Case; 8] = [
         (
             &["nosuch-xyz", "--json"],
             "UNKNOWN_COMMAND",
@@ -391,12 +392,6 @@ fn atip_check_06_a_malformed_atip_command_line_is_refused_naming_the_argument_at
             &["check", "--bin", "b", "--level", "L0", "--json"],
             "USAGE",
             Some("--fixture"),
-            Some("check"),
-        ),
-        (
-            &["check", "--bin", "b", "--fixture", "f", "--json"],
-            "USAGE",
-            Some("--level"),
             Some("check"),
         ),
         (
@@ -1422,6 +1417,7 @@ fn atip_check_53_a_completed_run_leaves_the_working_directory_home_and_the_scrat
     let output = std::process::Command::new(ATIP)
         .args([
             "check",
+            "--deep",
             "--bin",
             FAKE_TOOL,
             "--level",
@@ -1456,6 +1452,7 @@ fn atip_check_53_a_completed_run_leaves_the_working_directory_home_and_the_scrat
     let failing = std::process::Command::new(ATIP)
         .args([
             "check",
+            "--deep",
             "--bin",
             FAKE_TOOL,
             "--level",

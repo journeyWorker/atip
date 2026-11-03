@@ -15,6 +15,16 @@ pub enum Strength {
     Should,
 }
 
+/// How much of the contract a run checks (approaches/checker.md 3.1). `Interface` is the default: the checks that judge what the tool
+/// prints for ordinary calls, a few process launches on one shared copy of the fixture state. `Deep` (`--deep`) runs every check of the
+/// level, each invocation in a fresh copy of the state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    Interface,
+    Deep,
+}
+
 /// The five results of a check (approaches/checker.md 2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -95,6 +105,9 @@ pub struct Check {
     /// Facts the check found that do not change its result: the rules an `entailed` check rests on, a verified Unicode-version difference between the two regular-expression engines.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+    /// How far a check that judges part of its rule without `--deep` ran: `interface` (the part an interface run judges) or `all` (a deep run). Absent for a check that is the same in both modes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ran: Option<&'static str>,
     /// The write and destructive commands of the tool's documents that no fixture entry covers, named by `L1.constraints`, `L1.domains` and `L1.validators`: the checker never runs them, so they are outside what those checks probe (contract 1.1.2). Information only: it never changes the result.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unlisted: Vec<String>,
@@ -109,21 +122,28 @@ pub struct Check {
     pub observed: Vec<Value>,
 }
 
-/// The run: the claimed level, whether it is met, and every check.
+/// The run: the claimed level, the mode, whether it is passed, and every check.
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
     pub level: &'static str,
     /// The contract minor the tool claimed and the checks judged.
     #[serde(rename = "contractVersion")]
     pub contract_version: &'static str,
+    /// `interface` (the default) or `deep` (`--deep`).
+    pub mode: Mode,
+    /// Whether no MUST check of the checks run failed or is unprovided. In interface mode that is a verdict on those checks only, not on the level.
     pub passed: bool,
     /// The programs the fixture's `prepare` ran before `setup`, each as its argv: what was made outside the tool, for whoever reviews the claim.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub prepare: Vec<Vec<String>>,
+    /// The checks of the level that this run did not run, because only `--deep` does (interface mode only), by id.
+    #[serde(rename = "deepChecks", skip_serializing_if = "Vec::is_empty")]
+    pub deep_checks: Vec<&'static str>,
     pub checks: Vec<Check>,
 }
 
 impl Report {
+    /// The report of a deep run: every check of the level.
     pub fn new(level: &'static str, claim: Claim, checks: Vec<Check>) -> Self {
         let passed = !checks.iter().any(|check| {
             check.strength == Strength::Must
@@ -132,10 +152,20 @@ impl Report {
         Self {
             level,
             contract_version: claim.as_str(),
+            mode: Mode::Deep,
             passed,
             prepare: Vec::new(),
+            deep_checks: Vec::new(),
             checks,
         }
+    }
+
+    /// The same report as that of an interface run, which left the checks `deep_checks` to `--deep`.
+    #[must_use]
+    pub fn interface(mut self, deep_checks: Vec<&'static str>) -> Self {
+        self.mode = Mode::Interface;
+        self.deep_checks = deep_checks;
+        self
     }
 
     /// The same report naming the `prepare` steps that built the state it ran against.
@@ -161,7 +191,8 @@ impl Report {
             .count()
     }
 
-    /// The text of the report: one line per check, then one summary line. The text is not part of the contract.
+    /// The text of the report: one line per check, a line naming the checks `--deep` would add when the run was not deep, then one summary line.
+    /// The text is not part of the contract.
     pub fn text(&self) -> String {
         let mut lines: Vec<String> = self
             .prepare
@@ -169,11 +200,18 @@ impl Report {
             .map(|step| format!("prepare: {}", step.join(" ")))
             .collect();
         lines.extend(self.checks.iter().map(Check::line));
+        if !self.deep_checks.is_empty() {
+            lines.push(format!(
+                "not run without --deep: {}",
+                self.deep_checks.join(", ")
+            ));
+        }
         lines.push(self.summary());
         lines.join("\n")
     }
 
-    /// The summary line.
+    /// The summary line. A default run (interface mode) says what it judged: the interface checks of the level, and that `--deep` runs the rest;
+    /// it never says the level is met, which only a deep run shows.
     pub fn summary(&self) -> String {
         let must = |result| self.count(Strength::Must, result);
         let advisories = self.count(Strength::Should, CheckResult::Fail);
@@ -182,7 +220,12 @@ impl Report {
             .iter()
             .filter(|check| check.result == CheckResult::Unsupported)
             .count();
-        let verdict = if self.passed { "met" } else { "not met" };
+        let verdict = match (self.mode, self.passed) {
+            (Mode::Deep, true) => "met",
+            (Mode::Deep, false) => "not met",
+            (Mode::Interface, true) => "interface checks passed (--deep for the rest)",
+            (Mode::Interface, false) => "interface checks failed",
+        };
         format!(
             "{} {verdict}: {} MUST passed, {} MUST failed, {} MUST unprovided, {not_applicable} not applicable, {advisories} SHOULD advisories",
             self.level,
@@ -259,6 +302,7 @@ mod tests {
             findings: Vec::new(),
             cut: false,
             notes: Vec::new(),
+            ran: None,
             unlisted: Vec::new(),
             not_run: Vec::new(),
             skipped: Vec::new(),
@@ -337,5 +381,50 @@ mod tests {
         assert!(!serde_json::to_string(&report.checks[0])
             .expect("json")
             .contains("cut"));
+    }
+
+    #[test]
+    fn atip_check_deep_04_an_interface_report_names_the_deep_checks_and_never_says_the_level_is_met(
+    ) {
+        let passing = Report::new(
+            "L1",
+            Claim::V1_1,
+            vec![check("L0.a", Strength::Must, CheckResult::Pass)],
+        )
+        .interface(vec!["L1.walk", "L1.paging"]);
+        assert!(passing.passed);
+        let text = passing.text();
+        assert_eq!(
+            text.lines().collect::<Vec<_>>()[1..],
+            [
+                "not run without --deep: L1.walk, L1.paging",
+                "L1 interface checks passed (--deep for the rest): 1 MUST passed, 0 MUST failed, 0 MUST unprovided, 0 not applicable, 0 SHOULD advisories"
+            ],
+            "{text}"
+        );
+        let document = serde_json::to_value(&passing).expect("json");
+        assert_eq!(document["mode"], "interface");
+        assert_eq!(
+            document["deepChecks"],
+            serde_json::json!(["L1.walk", "L1.paging"])
+        );
+        let failing = Report::new(
+            "L1",
+            Claim::V1_1,
+            vec![check("L0.a", Strength::Must, CheckResult::Unprovided)],
+        )
+        .interface(vec!["L1.walk"]);
+        assert!(!failing.passed);
+        assert!(
+            failing
+                .summary()
+                .starts_with("L1 interface checks failed: "),
+            "{}",
+            failing.summary()
+        );
+        // A deep report says `mode: deep`, lists no deep check and keeps the wording of a level's verdict.
+        let deep = serde_json::to_value(Report::new("L0", Claim::V1_1, Vec::new())).expect("json");
+        assert_eq!(deep["mode"], "deep");
+        assert!(deep.get("deepChecks").is_none());
     }
 }

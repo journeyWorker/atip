@@ -84,19 +84,20 @@ const COMPLETE_WORDS: [&str; 7] = [
 ];
 
 impl<'a> Judge<'a> {
-    /// The findings of the nine rows, in table order.
-    pub(crate) fn safety_findings(&'a self) -> Vec<Finding> {
-        vec![
-            self.l2_idempotency(),
-            self.l2_destructive_safety(),
-            self.l2_destructive_preview(),
-            self.l2_destructive_preview_stdin(),
-            self.l2_destructive_stale(),
-            self.l2_destructive_half(),
-            self.l2_destructive_commit(),
-            self.l2_async(),
-            self.l2_operation_key(),
-        ]
+    /// The finding of the row `id`, when it is one of the nine.
+    pub(crate) fn safety_finding(&'a self, id: &str) -> Option<Finding> {
+        Some(match id {
+            "L2.idempotency" => self.l2_idempotency(),
+            "L2.destructive-safety" => self.l2_destructive_safety(),
+            "L2.destructive-preview" => self.l2_destructive_preview(),
+            "L2.destructive-preview-stdin" => self.l2_destructive_preview_stdin(),
+            "L2.destructive-stale" => self.l2_destructive_stale(),
+            "L2.destructive-half" => self.l2_destructive_half(),
+            "L2.destructive-commit" => self.l2_destructive_commit(),
+            "L2.async" => self.l2_async(),
+            "L2.operation-key" => self.l2_operation_key(),
+            _ => return None,
+        })
     }
 
     fn safety(&self) -> &'a super::safety_plan::SafetyRun {
