@@ -188,10 +188,12 @@ the paging surface in the command document alone, and `CURSOR_INVALID` is implie
 
 **Shared names and reserved names.** A string in `options` names a tree option or a reserved option (spec 4.5). A
 reserved option's shape is fixed (Annex S2 rule 8), so a command lists `--commit`, `--plan-digest`, `--limit`,
-`--cursor`, `--all` and the like by their bare names, with no tree entry; the serializer writes the name when the
-option is the reserved one unchanged and the command gives it no help of its own; when the command gives it a help, or the
-option is the command's own, it writes an object (for a reserved option, its fixed shape plus that `help`, as `member list` does for
-`--cursor` and `--all` in the acme example). Never list an option the document
+`--cursor`, `--all` and the like by their bare names, with no tree entry; each reserved option has one standard
+help text in the crate (`atip::describe::standard_help`). The serializer writes the name when the option is the reserved one
+unchanged and its help equals the standard text after whitespace normalisation; with another help, or for a command's own
+option, it writes an object (for a reserved option, its fixed shape plus that `help`, as `member list` does for `--cursor` and
+`--all` in the acme example). A tool that wants another standard text defines the option once in the tree's `options`; a name
+resolves there first. Never list an option the document
 implies, neither as an object nor as a name (Annex S2 rule 17).
 
 **How a caller rebuilds the full option set and the fragment schema** (spec 9.5, 9.9.2):
