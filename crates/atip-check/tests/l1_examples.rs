@@ -502,9 +502,10 @@ const SCHEMA_DOCS: &[(&str, &[&str])] = &[
     ("invalid/schema-ledger-meta-bracket-field.json", &[]),
     ("invalid/schema-ledger-meta-warning-unregistered.json", &[]),
     ("invalid/schema-missing-contract.json", &["L1.walk/valid"]),
+    // A document of 1.0-1.3 carries `schemas`: since 1.4 the schema leaves that to Annex S2, so only the reference rule finds it.
     (
         "invalid/schema-missing-schemas.json",
-        &["L1.walk/rule-2-refs", "L1.walk/valid"],
+        &["L1.walk/rule-2-refs"],
     ),
     (
         "invalid/schema-operand-untyped-default.json",
