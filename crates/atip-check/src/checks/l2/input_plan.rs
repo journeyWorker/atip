@@ -12,6 +12,7 @@ use crate::claim::Claim;
 use crate::exec::{Call, RunError};
 use crate::l1::invocation::{self, Invocation};
 use crate::l1::model::{camel, Arg, CommandDoc};
+use crate::l1::view::repeatable_document_keys;
 use crate::l1::witness::{self, Expect, GroupOutcome};
 use crate::l2::document::{self, Spec, Split, Which};
 
@@ -159,6 +160,8 @@ pub(crate) struct InputCommand {
     pub has_ok: bool,
     pub batch: Option<BatchPlan>,
     pub refusals: Vec<RefusalRun>,
+    /// A claim of 1.4: the call with `{"<key>":[]}` for the key of each repeatable option of the command (never a failure, spec 9.9.2).
+    pub empty_arrays: Vec<(String, usize)>,
     pub tty: Option<usize>,
     pub usage: Vec<(String, usize)>,
     pub fragments: Vec<SameRun>,
@@ -371,6 +374,7 @@ impl Run<'_> {
             has_ok: !bases.is_empty(),
             batch: None,
             refusals: Vec::new(),
+            empty_arrays: Vec::new(),
             tty: None,
             usage: Vec::new(),
             fragments: Vec::new(),
@@ -551,6 +555,18 @@ impl Run<'_> {
                 reasons: vec!["TOO_MANY_BYTES"],
                 details: None,
             });
+        }
+        // A claim of 1.4: the example with the key of each repeatable option set to `[]` (spec 9.7.2, 9.9.2). The derived schema says neither "none" nor "refused", so a tool
+        // may do either; the probe never fails it and reports which it did (a note of `L2.input-refusals`).
+        if claim.declares_1_4() {
+            let example = input.example.as_object().cloned().unwrap_or_default();
+            for key in repeatable_document_keys(doc) {
+                let mut probe = example.clone();
+                probe.insert(key.clone(), Value::Array(Vec::new()));
+                let text = Value::Object(probe).to_string();
+                let call = self.invoke(Call::new(framing_argv(before, &doc.path, &text)))?;
+                command.empty_arrays.push((key, call));
+            }
         }
         Ok(())
     }

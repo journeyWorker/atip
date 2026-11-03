@@ -28,6 +28,7 @@ use crate::schema::schemas;
 
 pub mod documents;
 mod l1;
+mod l1_14;
 mod l1_order;
 mod l1_plan;
 mod l2;
@@ -150,9 +151,10 @@ pub fn needs(id: &str) -> &'static [Need] {
 /// or probes with a generated invocation or a different environment, is deep.
 ///
 /// To classify a new check, add `(id, deep part)` here and the row to the Modes table of approaches/checker.md; `tests/interface_mode.rs` holds the
-/// two to each other and to the three check tables. The checks of contract 1.4 (`L1.schemas`: `schema --schemas --json`; `L1.help-json`: `--help --json`)
-/// judge the document of one call and belong here when they are added.
-const INTERFACE: [(&str, &str); 32] = [
+/// two to each other and to the three check tables. The checks of contract 1.3 and 1.4 are classified here too: `L1.code-names` (reads `schema --errors` only),
+/// `L1.schemas` (`schema <probe> --schemas --json` and the refusal of `schema --schemas --json`) and `L1.help-json` (`--help --json`, `--version --json`), each
+/// judging the documents of the calls of one interface run.
+const INTERFACE: [(&str, &str); 35] = [
     ("L0.version", ""),
     ("L0.version-format", ""),
     ("L0.unknown-command", ""),
@@ -186,7 +188,16 @@ const INTERFACE: [(&str, &str); 32] = [
     ("L0.usage-hint", ""),
     ("L0.hint-form", ""),
     ("L1.tree", ""),
+    (
+        "L1.schemas",
+        "`schema <path> --schemas --json` for every other command, and for a group",
+    ),
+    (
+        "L1.help-json",
+        "`<command> --help --json`, `nosuch-xyz --help --json` and `nosuch-xyz --version --json`",
+    ),
     ("L1.registry", "the error codes of each command document"),
+    ("L1.code-names", ""),
     (
         "L1.reasons",
         "`schema --error <CODE>` for each code the tool lists",
@@ -216,12 +227,12 @@ pub fn deep_part(id: &str) -> &'static str {
         .map_or("", |(_, part)| part)
 }
 
-/// The ids of every check of every level for a claim of 1.2 (the table of the most checks), in table order: the 28 of L0, the 31 of L1 and
-/// `L1.check-order`, the L2 ones and `L2.effects`.
+/// The ids of every check of every level of every claim (the union of the tables, in table order): the 28 of L0, the 31 of L1, `L1.check-order` (from 1.2),
+/// `L1.code-names` (from 1.3), `L1.schemas` and `L1.help-json` (1.4), the L2 ones and `L2.effects`.
 pub fn every_id() -> Vec<&'static str> {
     TABLE
         .iter()
-        .chain(l1::table(Claim::V1_2))
+        .chain(l1::table(Claim::V1_4))
         .chain(l2::table())
         .map(|entry| entry.id)
         .collect()
@@ -452,6 +463,20 @@ impl Run<'_> {
             .flatten()
             .filter_map(|row| row.get("code").and_then(Value::as_str).map(str::to_string))
             .collect()
+    }
+
+    /// The registered finer replacements of `USAGE` (spec 7.3.2) that the registry of invocation `schema_errors` lists, which a 1.4 command document may list or leave out
+    /// (spec 9.5); none for an earlier claim, whose documents list every code.
+    fn usage_replacements(&self, schema_errors: usize, claim: Claim) -> Vec<String> {
+        if !claim.declares_1_4() {
+            return Vec::new();
+        }
+        let entries: Vec<Value> = first_document(&self.log[schema_errors].stdout)
+            .filter(|document| document.get("ok") == Some(&Value::Bool(true)))
+            .and_then(|document| document.pointer("/data/errors").cloned())
+            .and_then(|list| list.as_array().cloned())
+            .unwrap_or_default();
+        crate::l1::view::usage_replacements(&entries)
     }
 
     fn invoke_all(&mut self) -> Result<Invocations, RunError> {
@@ -838,7 +863,8 @@ impl Run<'_> {
                                 .is_some_and(Value::is_array)
                     },
                 );
-            Some(self.invoke_l1(warnings_offered, claim)?)
+            let usage = self.usage_replacements(calls.schema_errors, claim);
+            Some(self.invoke_l1(warnings_offered, claim, &usage)?)
         } else {
             None
         };
@@ -858,12 +884,14 @@ impl Run<'_> {
         })
     }
 
-    /// The invocations of an interface run: the L0 ones, then, from L1, the tree it has read and `--help`, and last the `missingValue` control run
-    /// (see [`Run::invoke_interface`]). The L2 run has nothing of its own to read but `--help` (`L2.help-guide`), and `L2.effects` is deep.
-    fn invoke_interface_levels(&mut self, level: Level) -> Result<Made, RunError> {
+    /// The invocations of an interface run: the L0 ones, then, from L1, the tree it has read and `--help` (and for a claim of 1.4 the calls of `L1.schemas` and
+    /// `L1.help-json`), and last the `missingValue` control run (see [`Run::invoke_interface`]). The L2 run has nothing of its own to read but `--help`
+    /// (`L2.help-guide`), and `L2.effects` is deep.
+    fn invoke_interface_levels(&mut self, claim: Claim, level: Level) -> Result<Made, RunError> {
         let mut calls = self.invoke_interface()?;
         let l1 = if level != Level::L0 {
-            Some(self.invoke_l1_interface(calls.schema_tree)?)
+            let usage = self.usage_replacements(calls.schema_errors, claim);
+            Some(self.invoke_l1_interface(calls.schema_tree, claim, &usage)?)
         } else {
             None
         };
@@ -875,6 +903,19 @@ impl Run<'_> {
             l2,
             effects: l2::EffectsRun::default(),
         })
+    }
+}
+
+/// How strongly the check `entry` binds a claim at `level`: the table's strength, but for the rules a later minor relaxed or made a MUST. `L0.compact` is a MUST
+/// for a 1.4 claim (spec 5.1) and an advisory below; `L1.check-order` is a MUST for a claim of exactly 1.2 and a recommendation from 1.3; `L2.input-usage` binds a 1.1
+/// claim and later; `L2.effects` is a MUST at L2 and an advisory at L0 and L1.
+fn strength_of(entry: &Entry, claim: Claim, level: Level) -> Strength {
+    match entry.id {
+        "L0.compact" if claim.declares_1_4() => Strength::Must,
+        "L1.check-order" if !claim.is_1_2() => Strength::Should,
+        "L2.input-usage" if !claim.at_least(Claim::V1_1) => Strength::Should,
+        id if id == l2::EFFECTS_ID && level != Level::L2 => Strength::Should,
+        _ => entry.strength,
     }
 }
 
@@ -904,7 +945,7 @@ pub(crate) fn run_checks(
         effects,
     } = match mode {
         Mode::Deep => run.invoke_levels(claim, level)?,
-        Mode::Interface => run.invoke_interface_levels(level)?,
+        Mode::Interface => run.invoke_interface_levels(claim, level)?,
     };
     let judge = Judge::new(
         &run.log,
@@ -964,13 +1005,7 @@ pub(crate) fn run_checks(
             }
             Check {
                 id: entry.id,
-                strength: if (entry.id == "L2.input-usage" && !claim.at_least(Claim::V1_1))
-                    || (entry.id == l2::EFFECTS_ID && level != Level::L2)
-                {
-                    Strength::Should
-                } else {
-                    entry.strength
-                },
+                strength: strength_of(entry, claim, level),
                 result: finding.result,
                 rules: entry.rules.to_vec(),
                 reason: finding.reason,
@@ -1184,6 +1219,20 @@ impl<'j> Conditions<'j> {
         if !holds && !skipped {
             let detail = self.detail(index, condition, why());
             self.problems.push(detail);
+        }
+    }
+
+    /// Judges condition `condition` that the contract only recommends at the claim being checked (a rule a later minor turned into a recommendation, spec 15.7): when it
+    /// does not hold, the check keeps its result and says so as an advisory. It is still a condition of this check (`see`), so a test finds it.
+    fn recommends(&mut self, condition: &'static str, holds: bool, why: impl FnOnce() -> String) {
+        let id = self.see(condition);
+        let skipped = self
+            .judge
+            .mutation
+            .skipped_conditions
+            .contains(&id.as_str());
+        if !holds && !skipped {
+            self.advisories.push(why());
         }
     }
 
@@ -1619,8 +1668,7 @@ impl<'a> Judge<'a> {
     fn check(&'a self, id: &'static str) -> Conditions<'a> {
         let entry = TABLE
             .iter()
-            .chain(l1::TABLE.iter())
-            .chain(std::iter::once(&l1::CHECK_ORDER))
+            .chain(l1::table(Claim::V1_4))
             .chain(l2::table())
             .find(|entry| entry.id == id)
             .unwrap_or_else(|| panic!("{id} is not in a table"));
@@ -2140,16 +2188,55 @@ impl<'a> Judge<'a> {
         c.finish(true)
     }
 
+    /// Spec 5.1: below 1.4 an advisory (`no-indentation`: the document is on one line); for a claim of 1.4 every JSON document the tool prints, each envelope (`schema` answers
+    /// included) and each line of a stream, has no space, tab, carriage return or line feed outside a string (`no-whitespace`, found by tokenising the text).
     fn compact(&'a self) -> Finding {
         let mut c = self.check("L0.compact");
+        let compact = self.claim.declares_1_4();
         for (index, _) in self.envelopes() {
             let text = String::from_utf8_lossy(&self.at(index).stdout);
+            if compact {
+                let problem = rules::compact_problem(&first_document_line(&text));
+                c.holds_at(index, "no-whitespace", problem.is_none(), || {
+                    format!(
+                        "{} printed a document that is not compact: {}",
+                        self.label(index),
+                        problem.clone().unwrap_or_default()
+                    )
+                });
+                if problem.is_some() {
+                    c.observe(index);
+                }
+                continue;
+            }
             let indented = first_document_text(&text).contains('\n');
             c.holds_at(index, "no-indentation", !indented, || {
                 format!("{} printed an indented document", self.label(index))
             });
             if indented {
                 c.observe(index);
+            }
+        }
+        if compact {
+            for (index, document) in self.documents_of_json_runs() {
+                if !rules::is_stream_start(document) {
+                    continue;
+                }
+                let text = String::from_utf8_lossy(&self.at(index).stdout);
+                let problem = text
+                    .split_inclusive('\n')
+                    .filter(|line| !line.trim().is_empty())
+                    .find_map(rules::compact_problem);
+                c.holds_at(index, "no-whitespace", problem.is_none(), || {
+                    format!(
+                        "{} (a stream) printed a line that is not compact: {}",
+                        self.label(index),
+                        problem.clone().unwrap_or_default()
+                    )
+                });
+                if problem.is_some() {
+                    c.observe(index);
+                }
             }
         }
         c.finish(true)
@@ -3435,6 +3522,18 @@ fn first_document_text(text: &str) -> &str {
     }
 }
 
+/// The first JSON document of `text` as the tool printed it, for the compactness rule (spec 5.1): what stands before it, the document, and the newline that follows it
+/// (one is added when there is none, so that only the whitespace of the document is judged: the newline is `L0.one-document`'s).
+fn first_document_line(text: &str) -> std::borrow::Cow<'_, str> {
+    let start = text.len() - text.trim_start().len();
+    let end = start + first_document_text(text).len();
+    if text[end..].starts_with('\n') {
+        std::borrow::Cow::Borrowed(&text[..=end])
+    } else {
+        std::borrow::Cow::Owned(format!("{}\n", &text[..end]))
+    }
+}
+
 /// The code of a refusal at the start of a `notRun` command that the state or the environment of the fixture caused: exit 2 with an error
 /// envelope whose code is registered (when the fixture lists a registry) and is not one a step that reads no state gives (spec 11.7 steps 1-6),
 /// which is a fixture error, as any other way to end is. A step that reads no state gives `USAGE` and its finer replacements, `UNKNOWN_COMMAND`,
@@ -3597,9 +3696,11 @@ fn summary(outcome: &Outcome) -> Value {
 #[cfg(test)]
 mod tests {
     use super::{
-        exit_is_allowed, first_document, first_document_text, ids, in_json_mode, is_envelope,
-        needs, one_document, with_cursor, Need, TABLE,
+        exit_is_allowed, first_document, first_document_line, first_document_text, ids,
+        in_json_mode, is_envelope, needs, one_document, strength_of, with_cursor, Need, TABLE,
     };
+    use crate::claim::Claim;
+    use crate::cli::Level;
     use crate::exec::Exit;
     use crate::report::Strength;
 
@@ -3725,6 +3826,97 @@ mod tests {
         assert_eq!(
             with_cursor(&words(&["list", "--", "-v"])),
             words(&["list", "--cursor", "x", "--json", "--", "-v"])
+        );
+    }
+
+    #[test]
+    fn atip_check14_50_the_l1_table_of_a_claim_adds_the_rows_of_1_3_and_1_4_where_checker_md_puts_them(
+    ) {
+        let ids_of = |claim| -> Vec<&'static str> {
+            super::l1::table(claim)
+                .iter()
+                .map(|entry| entry.id)
+                .collect()
+        };
+        assert_eq!(ids_of(Claim::V1_1).len(), 31);
+        let at_1_2 = ids_of(Claim::V1_2);
+        assert_eq!(at_1_2.len(), 32);
+        assert!(!at_1_2.contains(&"L1.code-names"));
+        let at_1_3 = ids_of(Claim::V1_3);
+        assert_eq!(at_1_3.len(), 33);
+        let at = |ids: &[&str], id: &str| ids.iter().position(|found| *found == id).expect(id);
+        assert_eq!(at(&at_1_3, "L1.code-names"), at(&at_1_3, "L1.registry") + 1);
+        assert!(!at_1_3.contains(&"L1.schemas") && !at_1_3.contains(&"L1.help-json"));
+        let at_1_4 = ids_of(Claim::V1_4);
+        assert_eq!(at_1_4.len(), 35);
+        assert_eq!(
+            at(&at_1_4, "L1.schemas"),
+            at(&at_1_4, "L1.schema-errors") + 1
+        );
+        assert_eq!(at(&at_1_4, "L1.help-json"), at(&at_1_4, "L1.schemas") + 1);
+        assert_eq!(
+            at(&at_1_4, "L1.check-order"),
+            at(&at_1_4, "L1.validators") + 1
+        );
+        assert_eq!(super::every_id().len(), 28 + 35 + 30);
+    }
+
+    #[test]
+    fn atip_check14_51_only_the_whitespace_inside_the_first_document_is_judged_for_compactness() {
+        use crate::checks::rules::compact_problem;
+        let judged = |text: &str| compact_problem(&first_document_line(text));
+        assert_eq!(judged("{\"a\":1}\n"), None);
+        // The newline is `L0.one-document`'s: a document with none, or with more than one, is compact in its own text.
+        assert_eq!(judged("{\"a\":1}"), None);
+        assert_eq!(judged("{\"a\":1}\n\n"), None);
+        assert!(judged("{\"a\": 1}\n").is_some());
+        assert!(judged("{\n\"a\":1}\n").is_some());
+        assert!(judged(" {\"a\":1}\n").is_some());
+        assert_eq!(judged("{\"a\":\"x y\"}\n"), None);
+    }
+
+    #[test]
+    fn atip_check14_52_the_strength_of_a_row_follows_the_claim_and_the_level() {
+        let entry = |id: &str| {
+            TABLE
+                .iter()
+                .chain(super::l1::table(Claim::V1_4))
+                .chain(super::l2::table())
+                .find(|entry| entry.id == id)
+                .expect(id)
+        };
+        let strength = |id: &str, claim, level| strength_of(entry(id), claim, level);
+        assert_eq!(
+            strength("L0.compact", Claim::V1_3, Level::L1),
+            Strength::Should
+        );
+        assert_eq!(
+            strength("L0.compact", Claim::V1_4, Level::L0),
+            Strength::Must
+        );
+        assert_eq!(
+            strength("L1.check-order", Claim::V1_2, Level::L1),
+            Strength::Must
+        );
+        assert_eq!(
+            strength("L1.check-order", Claim::V1_3, Level::L1),
+            Strength::Should
+        );
+        assert_eq!(
+            strength("L1.code-names", Claim::V1_3, Level::L1),
+            Strength::Must
+        );
+        assert_eq!(
+            strength("L1.schemas", Claim::V1_4, Level::L1),
+            Strength::Must
+        );
+        assert_eq!(
+            strength("L2.effects", Claim::V1_4, Level::L1),
+            Strength::Should
+        );
+        assert_eq!(
+            strength("L2.effects", Claim::V1_4, Level::L2),
+            Strength::Must
         );
     }
 }

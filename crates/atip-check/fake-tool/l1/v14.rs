@@ -16,7 +16,8 @@
 //!   Annex S2 rule 17).
 //! * `walkListsImplied`: every command lists `--json` by name, an option its document implies (spec 9.5, Annex S2 rule 4).
 //! * `walkListsImpliedCode`: every command lists `USAGE` in `errors`, a code its document implies (spec 9.5, Annex S2 rule 4).
-//! * `treeEntryKindCommand`: the entry of a command says `kind: "command"` (spec 9.3; acts in `Model::entry`, here).
+//! * `treeEntryKindCommand`: in the tree answer only, the entry of a command says `kind: "command"` (spec 9.3; group answers keep the
+//!   entries without it).
 //! * `schemasExtraSchema`: a schemas answer holds `Unreached`, which no ref reaches (spec 9.9.3).
 //! * `schemasMissingInput`: no `Input` for a command that has `input` (spec 9.9.3).
 //! * `schemasInputDiffers`: `Input` admits other keys than the options give it (`additionalProperties: true`; spec 9.9.2).
@@ -209,15 +210,12 @@ fn implies_code(command: &Command, code: &str) -> bool {
     }
 }
 
-/// The 1.4 entry of a group or command in a tree, a group or a search answer.
+/// The 1.4 entry of a group or command in a tree, a group or a search answer (no `path`, no `kind` for a command).
 pub fn entry(model: &Model, id: &str, is_group: bool) -> Value {
     let mut entry = Map::new();
     entry.insert("command".into(), json!(id));
-    if is_group || model.kind_command {
-        entry.insert(
-            "kind".into(),
-            json!(if is_group { "group" } else { "command" }),
-        );
+    if is_group {
+        entry.insert("kind".into(), json!("group"));
     }
     entry.insert("summary".into(), json!(model.summary(id)));
     if let Some(command) = model.command(id) {
@@ -261,7 +259,14 @@ pub fn tree_doc(model: &Model, groups_last: bool, level: &str) -> Value {
         "commands".into(),
         Value::Array(
             ids.iter()
-                .map(|(id, is_group)| entry(model, id, *is_group))
+                .map(|(id, is_group)| {
+                    let mut entry = entry(model, id, *is_group);
+                    // Seeded (`treeEntryKindCommand`): in the tree answer only, a command's entry says `kind: "command"`.
+                    if model.kind_command && !is_group {
+                        entry["kind"] = json!("command");
+                    }
+                    entry
+                })
                 .collect(),
         ),
     );

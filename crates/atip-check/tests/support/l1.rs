@@ -73,6 +73,37 @@ pub fn l1_config_1_2(extra: &Value) -> Value {
     config
 }
 
+/// The standard configuration of a fake tool that claims 1.3: the copy named `claims13` claims 1.3 in the runs that get no configuration too.
+pub fn l1_config_1_3(extra: &Value) -> Value {
+    l1_config_of("1.3", "atip-fake-tool-claims13", extra)
+}
+
+/// The standard configuration of a fake tool that claims 1.4 (the compact self-description, `--schemas`).
+pub fn l1_config_1_4(extra: &Value) -> Value {
+    l1_config_of("1.4", "atip-fake-tool-claims14", extra)
+}
+
+/// The standard configuration of the fake of the minor `claims` (a copy of the tool under `alias`), the members of `extra` set.
+pub fn l1_config_of(claims: &str, alias: &str, extra: &Value) -> Value {
+    let mut config = l1_config(&json!({"claims": claims, "binAlias": alias}));
+    if let (Some(config), Some(extra)) = (config.as_object_mut(), extra.as_object()) {
+        for (key, value) in extra {
+            config.insert(key.clone(), value.clone());
+        }
+    }
+    config
+}
+
+/// A pass condition of a row of 1.3 or 1.4: `condition` is `<check>/<condition>`, the configuration the standard one of `claims` with `extra`.
+pub fn l1_case_of(claims: &str, condition: &'static str, extra: Value) -> Case {
+    let alias = format!("atip-fake-tool-claims{}", claims.replace('.', ""));
+    Case {
+        condition,
+        config: l1_config_of(claims, &alias, &extra),
+        tweak: None,
+    }
+}
+
 /// A pass condition of a 1.2 row: `condition` is `<check>/<condition>` as the checker names it, `owner` is the check.
 pub fn l1_case_1_2(condition: &'static str, extra: Value, tweak: Option<fn(&mut Value)>) -> Case {
     Case {
@@ -184,6 +215,145 @@ pub fn l1_cases_1_2() -> Vec<Case> {
     ]
 }
 
+/// A seeded violation of a row of 1.3 or 1.4, at the claim the case's configuration says.
+fn case_14(claims: &str, condition: &'static str, extra: Value) -> Case {
+    l1_case_of(claims, condition, extra)
+}
+
+/// Every pass condition of the 1.3-only rows (`L1.code-names`, the 1.3 half of `L1.warnings`, the 1.3 half of `L1.registry`, the advisory `L0.compact`), each with
+/// the configuration of a 1.3 tool that breaks it (approaches/checker.md 7.2). A 1.3 case fails its owner and no other check at a claim of 1.3.
+/// The first case of an owner is its representative; the rest run under `ATIP_CHECK_ALL_SEEDS=1`.
+pub fn l1_cases_1_3() -> Vec<Case> {
+    let case = |condition, extra| case_14("1.3", condition, extra);
+    vec![
+        case("code-names/grammar", json!({"promoteRefused": true})),
+        case("code-names/exit", json!({"codeWrongExit": true})),
+        case("code-names/retryable", json!({"codeWrongRetryable": true})),
+        // `STOPPED_MIDWAY` is a core code in a 1.2 document only: from 1.3 it ends in no condition.
+        case("code-names/grammar", json!({"stoppedMidway": true})),
+        // A code of the tool's own that takes a core code's name at another exit is a violation of the registry.
+        case(
+            "registry/reserved-exit",
+            json!({"reservedExit": {"INPUT_TOO_LARGE": 1}}),
+        ),
+        // A warning code that only the error registry has.
+        case(
+            "warnings/emitted-in-warning-registry",
+            json!({"warningOnlyInErrors": true}),
+        ),
+        // A constraint violation that names an argument the rule does not mention (spec 9.8.1): judged from 1.3.
+        case(
+            "constraints/field-qualifies",
+            json!({"constraintFieldUnrelated": true}),
+        ),
+        // Below 1.4 the documents keep the full form (spec 15.7): an entry and a group document without their `path`.
+        case(
+            "tree/minor-form",
+            patch(&[("<tree>", vec![remove("/commands/0/path")])]),
+        ),
+        case("walk/minor-form", patch(&[("team", vec![remove("/path")])])),
+        // An indented document: an advisory below 1.4.
+        case("compact/no-indentation", json!({"indentedOutput": true})),
+    ]
+}
+
+/// The seeds of the 1.2 rules that 1.3 relaxed (approaches/checker.md 6, 7.2): at a claim of 1.3 they are advisories and fail no MUST check. Each is
+/// `(owner, the knob)`.
+pub fn relaxed_in_1_3() -> Vec<(&'static str, Value)> {
+    vec![
+        ("L1.check-order", json!({"orderConstraintFirst": true})),
+        ("L1.check-order", json!({"orderDomainFirst": true})),
+        ("L1.check-order", json!({"orderLaterDomain": true})),
+        ("L1.check-order", json!({"orderValidatorFirst": true})),
+        ("L1.check-order", json!({"unknownOptionLast": true})),
+        ("L1.check-order", json!({"unknownOptionDeferred": true})),
+        ("L1.check-order", json!({"rulesReversed": true})),
+        // A `requires` violation that names the rule's other qualifying argument (the `if` one) as its `field`.
+        (
+            "L1.constraints",
+            json!({"constraintFieldOtherQualifying": true}),
+        ),
+        // A cursor that binds an option the invocation gave at its default. (A next-page entry that carries a default or the input is no case here: the entry
+        // is refused when it is run, and "the next entry continues" is a MUST at every claim; the carrying part is an advisory on top.)
+        ("L1.paging", json!({"cursorBindsEffective": true})),
+    ]
+}
+
+/// Every pass condition of the rows of 1.4 that the L1 level reaches, each with the configuration of a 1.4 tool that breaks it: one case per condition, the
+/// extra knobs of a condition run under `ATIP_CHECK_ALL_SEEDS=1`. A 1.4 case fails its owner and no other check at a claim of 1.4.
+pub fn l1_cases_1_4() -> Vec<Case> {
+    let case = |condition, extra| case_14("1.4", condition, extra);
+    vec![
+        // L0.compact: every document, no whitespace outside strings.
+        case("compact/no-whitespace", json!({"indentedOutput": true})),
+        // L1.help-json: `--help --json` and `--version --json` are refused, the path is resolved first.
+        case(
+            "help-json/help-root",
+            json!({"helpJsonAnswersSchema": true}),
+        ),
+        case("help-json/help-unknown", json!({"helpJsonSkipsPath": true})),
+        case(
+            "help-json/version",
+            json!({"versionJsonPrintsVersion": true}),
+        ),
+        // L1.schemas.
+        case("schemas/members", json!({"schemasExtraSchema": true})),
+        case("schemas/input", json!({"schemasMissingInput": true})),
+        case("schemas/input", json!({"schemasInputDiffers": true})),
+        case("schemas/rejects", json!({"schemasWithoutRejects": true})),
+        case("schemas/refusals", json!({"schemasBareAnswers": true})),
+        case(
+            "schemas/kind",
+            patch(&[("touch --schemas", vec![set("/kind", json!("schema"))])]),
+        ),
+        case(
+            "schemas/compile",
+            patch(&[(
+                "member list --schemas",
+                vec![add("/schemas/MemberRow/pattern", json!("("))],
+            )]),
+        ),
+        // L1.tree and L1.walk: Annex S2 rules 16 and 17.
+        // A tree entry that says `kind: "command"`.
+        case("tree/entry-form", json!({"treeEntryKindCommand": true})),
+        case(
+            "tree/entry-form",
+            patch(&[("<tree>", vec![set("/commands/0/kind", json!("command"))])]),
+        ),
+        case("walk/no-default-members", json!({"walkListsDefault": true})),
+        case(
+            "walk/no-retired-members",
+            patch(&[("member list", vec![add("/path", json!(["member", "list"]))])]),
+        ),
+        case(
+            "walk/option-names",
+            patch(&[(
+                "member list",
+                vec![add("/options/-", json!("nosuch-option"))],
+            )]),
+        ),
+        case(
+            "walk/tree-options-named",
+            patch(&[(
+                "<tree>",
+                vec![add(
+                    "/options/-",
+                    json!({"name": "unused-opt", "valueType": "switch", "help": "A tree option no command names"}),
+                )],
+            )]),
+        ),
+        // L1.reserved-applicable: an implied option or code that is listed.
+        case(
+            "reserved-applicable/implied-option",
+            json!({"walkListsImplied": true}),
+        ),
+        case(
+            "reserved-applicable/implied-code",
+            json!({"walkListsImpliedCode": true}),
+        ),
+    ]
+}
+
 /// The 1.2 case fixture: the standard fixture of the tool, changed by the case.
 pub fn l1_fixture_of(harness: &Harness, case: &Case) -> Value {
     let mut fixture = harness.l1_fixture(&case.config);
@@ -209,7 +379,7 @@ pub fn l1_bin(harness: &Harness, config: &Value) -> PathBuf {
 }
 
 /// What the fixture says about the L1 commands of the fake tool (approaches/checker.md 5).
-fn l1_commands(is_1_1: bool, is_1_2: bool) -> Value {
+fn l1_commands(is_1_1: bool, from_1_2: bool) -> Value {
     let mut fields = vec![
         json!(["profile.name"]),
         json!(["owners[].email", "tags"]),
@@ -232,8 +402,8 @@ fn l1_commands(is_1_1: bool, is_1_2: bool) -> Value {
         "schema": {"ok": [["schema", "--errors", "--json"]]},
         "member list": {
             "ok": [["member", "list", "--team", "core", "--limit", "2", "--sort", "name", "--json"]],
-            // A 1.2 tool is paged with no filter given, so that its defaults and environment variables are left to be written out.
-            "paged": if is_1_2 { json!([["member", "list", "--limit", "1", "--json"]]) } else { json!([["member", "list", "--team", "core", "--limit", "1", "--sort", "name", "--json"]]) },
+            // A tool of 1.2 or later is paged with no filter given, so that its defaults and environment variables are left to be written out.
+            "paged": if from_1_2 { json!([["member", "list", "--limit", "1", "--json"]]) } else { json!([["member", "list", "--team", "core", "--limit", "1", "--sort", "name", "--json"]]) },
             "fields": fields
         },
         "member search": {
@@ -316,7 +486,10 @@ impl Harness {
                 fixture["warnings"] = json!(warnings);
             }
         }
-        fixture["commands"] = l1_commands(is_1_1, config["claims"] == "1.2");
+        fixture["commands"] = l1_commands(
+            is_1_1,
+            matches!(config["claims"].as_str(), Some("1.2" | "1.3" | "1.4")),
+        );
         fixture
     }
 

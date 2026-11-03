@@ -1,6 +1,9 @@
 //! Parsing and enforcement derived from the model of `spec.rs`: argv syntax (spec 9.12), typed values (10.7.2),
 //! domains (10.7.4), integers within ±(2^53-1) (10.7.5), constraints (10.8.1) and validators (10.8.3). The seeded
-//! violations of this module are runtime toggles of the configuration; each names the model entry it skips.
+//! violations of this module are runtime toggles of the configuration; each names the model entry it skips. The seeded violations of
+//! the `field` of a constraint refusal (every claim): `constraintFieldOtherQualifying` (a `requires` violation names the rule's `if`
+//! argument, which the caller can remove, instead of the first missing `then` argument; an advisory from 1.3) and
+//! `constraintFieldUnrelated` (the violation names an argument that is not in the rule).
 
 use std::collections::BTreeMap;
 
@@ -502,6 +505,33 @@ fn violation(command: &Command, parsed: &Parsed, rule: &Rule) -> Option<&'static
     }
 }
 
+/// The argument a refusal of `rule` names (spec 9.8.1). Seeded: `constraintFieldOtherQualifying` names the `if` argument of a `requires`
+/// violation, which the caller can remove, where the conforming tool names the first missing `then` argument; `constraintFieldUnrelated`
+/// names the first argument of the command that is not in the rule at all. Only the `field` changes, not the code or the exit.
+fn seeded_field(
+    tool: &Tool,
+    command: &Command,
+    rule: &Rule,
+    at_fault: &'static str,
+) -> &'static str {
+    if tool.flag("constraintFieldUnrelated") {
+        let in_rule = |name: &str| {
+            rule.names.contains(&name)
+                || rule.then.contains(&name)
+                || rule.when.as_ref().is_some_and(|(when, _)| *when == name)
+        };
+        if let Some(arg) = command.args.iter().find(|arg| !in_rule(arg.name)) {
+            return arg.name;
+        }
+    }
+    if tool.flag("constraintFieldOtherQualifying") && rule.rule == "requires" {
+        if let Some((when, _)) = &rule.when {
+            return when;
+        }
+    }
+    at_fault
+}
+
 pub fn check_rules(tool: &Tool, command: &Command, parsed: &Parsed) -> Result<(), Failure> {
     // Seeded: the constraints are judged from the last declared to the first.
     let mut rules: Vec<(usize, &super::spec::Rule)> = command.rules.iter().enumerate().collect();
@@ -519,10 +549,11 @@ pub fn check_rules(tool: &Tool, command: &Command, parsed: &Parsed) -> Result<()
             .code
             .filter(|_| !tool.flag("constraintCodeUsage"))
             .unwrap_or("USAGE");
+        let field = field_of(command, seeded_field(tool, command, rule, name));
         return Err(Failure::Refuse {
             code: code.to_string(),
-            message: format!("{} breaks the rule {}", field_of(command, name), rule.rule),
-            field: Some(field_of(command, name)),
+            message: format!("{field} breaks the rule {}", rule.rule),
+            field: Some(field),
             expected: None,
             source: "constraint",
         });

@@ -152,7 +152,7 @@ impl Harness {
             "timeoutSeconds": 20,
             "probe": "status",
             "globalOptions": [["--repo", "."]],
-            "registry": standard_registry(is_1_1),
+            "registry": standard_registry_of(&config["claims"], is_1_1),
             "commands": {
                 "items": {"ok": [["items", "--json"]]},
                 "touch": {
@@ -231,6 +231,25 @@ pub fn standard_registry(with_reasons: bool) -> Value {
     ]);
     if with_reasons {
         rows[2]["reasons"] = json!(["NOT_JSON", "UNKNOWN_KEY"]);
+    }
+    rows
+}
+
+/// Whether a configuration's `claims` is 1.3 or 1.4: the minors whose code names follow `<SUBJECT>_<CONDITION>` (spec 7.2).
+pub fn claims_1_3_or_later(claims: &Value) -> bool {
+    matches!(claims.as_str(), Some("1.3" | "1.4"))
+}
+
+/// The registry of a conforming fake of the minor `claims` (`Value::Null` for the default): as [`standard_registry`], with `STATE_FAILED`
+/// where a tool of 1.3 or 1.4 says `STATE_ODD` (the fake renames it from 1.3).
+pub fn standard_registry_of(claims: &Value, with_reasons: bool) -> Value {
+    let mut rows = standard_registry(with_reasons);
+    if claims_1_3_or_later(claims) {
+        for row in rows.as_array_mut().into_iter().flatten() {
+            if row["code"] == "STATE_ODD" {
+                row["code"] = json!("STATE_FAILED");
+            }
+        }
     }
     rows
 }

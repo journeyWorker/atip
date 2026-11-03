@@ -13,7 +13,7 @@ pub struct Model {
     pub groups: Vec<Group>,
     /// Whether the tool claims 1.4: its tree entries are the 1.4 form (`v14.rs`).
     pub v14: bool,
-    /// Seeded (1.4 `treeEntryKindCommand`): the entry of a command says `kind: "command"`, which is the default.
+    /// Seeded (1.4 `treeEntryKindCommand`): the entries of commands in the tree answer (not in group answers) say `kind: "command"`, the default.
     pub kind_command: bool,
 }
 

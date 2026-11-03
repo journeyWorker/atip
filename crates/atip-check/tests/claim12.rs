@@ -98,7 +98,7 @@ fn atip_check_100_two_claims_that_differ_or_a_minor_the_checker_does_not_know_ar
         .as_object_mut()
         .expect("object")
         .remove("contractVersion");
-    let output = harness.check_with(&without, true, &["--contract", "1.3"]);
+    let output = harness.check_with(&without, true, &["--contract", "1.5"]);
     let document = output.envelope();
     assert_eq!(
         (
@@ -110,11 +110,14 @@ fn atip_check_100_two_claims_that_differ_or_a_minor_the_checker_does_not_know_ar
         "{}",
         output.stdout
     );
-    assert_eq!(document["error"]["expected"], json!(["1.0", "1.1", "1.2"]));
+    assert_eq!(
+        document["error"]["expected"],
+        json!(["1.0", "1.1", "1.2", "1.3", "1.4"])
+    );
     assert!(!marker.exists());
     // A fixture that claims another minor is refused as a fixture.
     let mut other = fixture.clone();
-    other["contractVersion"] = json!("1.3");
+    other["contractVersion"] = json!("1.5");
     let output = harness.check(&other, true);
     assert_eq!(
         (output.code, output.envelope()["error"]["code"].as_str()),
@@ -209,7 +212,7 @@ fn atip_check_102_the_checker_declares_1_2_and_passes_its_own_l0_checks_as_a_1_2
     // The help and the messages say the three minors and name no list of two.
     let help = atip_in(&cwd, &tmp, &["check", "--help"]);
     let text = format!("{}{}", help.stdout, help.stderr);
-    assert!(text.contains("1.0, 1.1 or 1.2"), "{text}");
+    assert!(text.contains("1.0, 1.1, 1.2, 1.3 or 1.4"), "{text}");
     for old in ["1.0 or 1.1", "1.0 and 1.1", "1.0, 1.1\n"] {
         assert!(!text.contains(old), "{old:?} in {text}");
     }

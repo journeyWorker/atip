@@ -14,7 +14,8 @@ use super::{first_document, in_json_mode, Run};
 use crate::claim::Claim;
 use crate::exec::{Call, RunError};
 use crate::l1::invocation::{self, Invocation, Item};
-use crate::l1::model::{Arg, CommandDoc, GroupDoc, Output, ToolDocs, Tree, TreeEntry};
+use crate::l1::model::{Arg, CommandDoc, Output, ToolDocs, Tree, TreeEntry};
+use crate::l1::view::Answers;
 use crate::l1::witness::{self, DomainProbe, Expect, GroupOutcome, GroupPlan};
 
 /// The word no tool has as a path word, for `schema nosuch-xyz`.
@@ -35,6 +36,25 @@ pub(crate) struct DocCall {
     pub call: usize,
     /// The same again, for `L1.deterministic`.
     pub again: usize,
+}
+
+/// The answer of `schema <path> --schemas --json` for one command (a claim of 1.4, spec 9.9.3).
+#[derive(Debug, Clone)]
+pub(crate) struct SchemasCall {
+    pub id: String,
+    pub call: usize,
+}
+
+/// The calls of `L1.help-json` (a claim of 1.4, spec 4.4.1): `--help --json` and `--version --json` in every mode; in a deep run also `<command> --help --json`,
+/// `nosuch-xyz --help --json` and `nosuch-xyz --version --json`.
+#[derive(Debug, Clone)]
+pub(crate) struct HelpJsonCalls {
+    pub root: usize,
+    pub version: usize,
+    /// The command id and `<command> --help --json`.
+    pub command: Option<(String, usize)>,
+    pub unknown: Option<usize>,
+    pub version_unknown: Option<usize>,
 }
 
 /// One example of a `read` command, run.
@@ -195,6 +215,14 @@ pub(crate) struct L1Run {
     pub paging_gaps: Vec<(String, String)>,
     pub fields: Vec<FieldsRun>,
     pub unknown_fields: Vec<UnknownFieldRun>,
+    /// A claim of 1.4: `schema <path> --schemas --json` of each command the run read (one command, the probe, in an interface run).
+    pub schemas: Vec<SchemasCall>,
+    /// A claim of 1.4: the calls of `schema --schemas --json` and `schema <a group> --schemas --json`, which refuse (spec 9.1.1): the call as written and where it is in the log.
+    pub schemas_refusals: Vec<(String, usize)>,
+    /// A claim of 1.4: `schema <a command> --schemas --errors --json`.
+    pub schemas_errors: Option<usize>,
+    /// A claim of 1.4: `L1.help-json`'s calls.
+    pub help_json: Option<HelpJsonCalls>,
 }
 
 /// `argv` as an envelope's `data` when it printed an ok envelope.
@@ -290,21 +318,161 @@ impl Run<'_> {
     }
 
     /// The L1 invocations of an interface run: the tree `schema --json` printed (`tree`, the call the L0 run made) and `--help`, in the shared copy
-    /// of the state. The documents of the commands, and everything planned from them, are `--deep`'s.
-    pub(crate) fn invoke_l1_interface(&mut self, tree: usize) -> Result<L1Run, RunError> {
+    /// of the state. The documents of the commands, and everything planned from them, are `--deep`'s. A claim of 1.4 adds `--help --json`, `--version --json`,
+    /// `schema --schemas --json` and, when the fixture has a probe, the probe's document and its `schema <probe> --schemas --json` answer, which
+    /// `L1.schemas` judges against the view of the probe: the only command document an interface run reads. `usage` are the registered finer replacements of
+    /// `USAGE` ([`crate::l1::view::usage_replacements`]).
+    pub(crate) fn invoke_l1_interface(
+        &mut self,
+        tree: usize,
+        claim: Claim,
+        usage: &[String],
+    ) -> Result<L1Run, RunError> {
         let mut run = L1Run {
             tree,
             ..L1Run::default()
         };
         self.read_tree(&mut run)?;
         run.root_help = self.invoke(Call::new(["--help"]))?;
+        if claim.declares_1_4() {
+            let root = self.invoke(Call::new(["--help", "--json"]))?;
+            let version = self.invoke(Call::new(["--version", "--json"]))?;
+            run.help_json = Some(HelpJsonCalls {
+                root,
+                version,
+                command: None,
+                unknown: None,
+                version_unknown: None,
+            });
+            let refusal = self.invoke(Call::new(["schema", "--schemas", "--json"]))?;
+            run.schemas_refusals
+                .push(("schema --schemas --json".to_string(), refusal));
+            if let Some(probe) = self.fixture.probe.clone() {
+                self.read_probe(&mut run, &probe, claim, usage)?;
+            }
+        }
         Ok(run)
+    }
+
+    /// The document of the command `probe` (a tree entry's path) and its `--schemas` answer, read into `run.docs` as the view of that one command.
+    fn read_probe(
+        &mut self,
+        run: &mut L1Run,
+        probe: &[String],
+        claim: Claim,
+        usage: &[String],
+    ) -> Result<(), RunError> {
+        let Some(entry) = run
+            .docs
+            .tree
+            .as_ref()
+            .and_then(|tree| tree.commands.iter().find(|entry| entry.path == probe))
+            .filter(|entry| !entry.is_group())
+            .cloned()
+        else {
+            return Ok(());
+        };
+        let call = |extra: &[&str]| {
+            Call::new(
+                ["schema"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .chain(entry.path.iter().cloned())
+                    .chain(extra.iter().map(|word| (*word).to_string())),
+            )
+        };
+        let document = self.invoke(call(&["--json"]))?;
+        let answer = self.invoke(call(&["--schemas", "--json"]))?;
+        run.schemas.push(SchemasCall {
+            id: entry.command.clone(),
+            call: answer,
+        });
+        let tree = ok_data(&self.log[run.tree].stdout);
+        let data = ok_data(&self.log[document].stdout);
+        let schemas = ok_data(&self.log[answer].stdout);
+        let id = entry.command.as_str();
+        let tool = run.docs.tool.clone();
+        let commands: Vec<(&str, &Value)> = data.iter().map(|data| (id, data)).collect();
+        let answers: Vec<(&str, &Value)> = schemas.iter().map(|data| (id, data)).collect();
+        run.docs = ToolDocs::assemble(
+            claim,
+            &tool,
+            &Answers {
+                tree: tree.as_ref(),
+                groups: &[],
+                commands: &commands,
+                schemas: &answers,
+            },
+            usage,
+        );
+        Ok(())
+    }
+
+    /// The calls a deep run of a 1.4 claim adds to the ones of every claim (approaches/checker.md 6): `schema --schemas --json` and `schema <a group> --schemas --json`,
+    /// which refuse; `schema <a command> --schemas --errors --json`, which `L1.schema-errors` expects to be refused; and the calls of `L1.help-json`.
+    fn invoke_l1_14(&mut self, run: &mut L1Run, entries: &[TreeEntry]) -> Result<(), RunError> {
+        let refusal = self.invoke(Call::new(["schema", "--schemas", "--json"]))?;
+        run.schemas_refusals
+            .push(("schema --schemas --json".to_string(), refusal));
+        if let Some(group) = entries.iter().find(|entry| entry.is_group()) {
+            let words = ["schema".to_string()]
+                .into_iter()
+                .chain(group.path.iter().cloned())
+                .chain(["--schemas".to_string(), "--json".to_string()]);
+            let call = self.invoke(Call::new(words))?;
+            run.schemas_refusals.push((
+                format!("schema {} --schemas --json", group.path.join(" ")),
+                call,
+            ));
+        }
+        // The command `L1.help-json` asks about: the fixture's probe when the tree has it, else the first command.
+        let probe = self.fixture.probe.clone().unwrap_or_default();
+        let command = entries
+            .iter()
+            .filter(|entry| !entry.is_group())
+            .find(|entry| entry.path == probe)
+            .or_else(|| entries.iter().find(|entry| !entry.is_group()));
+        if let Some(command) = command {
+            let words = ["schema".to_string()]
+                .into_iter()
+                .chain(command.path.iter().cloned())
+                .chain([
+                    "--schemas".to_string(),
+                    "--errors".to_string(),
+                    "--json".to_string(),
+                ]);
+            run.schemas_errors = Some(self.invoke(Call::new(words))?);
+        }
+        let root = self.invoke(Call::new(["--help", "--json"]))?;
+        let version = self.invoke(Call::new(["--version", "--json"]))?;
+        let command = match command {
+            Some(command) => {
+                let words = command
+                    .path
+                    .iter()
+                    .cloned()
+                    .chain(["--help".to_string(), "--json".to_string()]);
+                Some((command.command.clone(), self.invoke(Call::new(words))?))
+            }
+            None => None,
+        };
+        let unknown = self.invoke(Call::new([NO_SUCH_PATH, "--help", "--json"]))?;
+        let version_unknown = self.invoke(Call::new([NO_SUCH_PATH, "--version", "--json"]))?;
+        run.help_json = Some(HelpJsonCalls {
+            root,
+            version,
+            command,
+            unknown: Some(unknown),
+            version_unknown: Some(version_unknown),
+        });
+        Ok(())
     }
 
     pub(crate) fn invoke_l1(
         &mut self,
         warnings_offered: bool,
         claim: Claim,
+        usage: &[String],
     ) -> Result<L1Run, RunError> {
         let mut run = L1Run {
             tree: self.invoke(Call::new(["schema", "--json"]).measured())?,
@@ -325,6 +493,9 @@ impl Run<'_> {
             run.unknown_warning =
                 Some(self.invoke(Call::new(["schema", "--warning", NO_SUCH_CODE, "--json"]))?);
         }
+        let mut raw_groups: Vec<(String, Value)> = Vec::new();
+        let mut raw_commands: Vec<(String, Value)> = Vec::new();
+        let mut raw_schemas: Vec<(String, Value)> = Vec::new();
         for entry in &entries {
             let words = entry.path.clone();
             let call = |extra: &[&str]| {
@@ -340,15 +511,26 @@ impl Run<'_> {
             let again = self.invoke(call(&["--json"]))?;
             let data = ok_data(&self.log[index].stdout);
             if entry.is_group() {
-                if let Some(group) = data.as_ref().and_then(GroupDoc::parse) {
-                    run.docs.groups.insert(entry.command.clone(), group);
+                if let Some(data) = data {
+                    raw_groups.push((entry.command.clone(), data));
                 }
                 let bare = self.invoke(Call::new(
                     words.iter().cloned().chain(["--json".to_string()]),
                 ))?;
                 run.groups.push((entry.command.clone(), bare));
-            } else if let Some(doc) = data.as_ref().and_then(CommandDoc::parse) {
-                run.docs.commands.insert(entry.command.clone(), doc);
+            } else if let Some(data) = data {
+                raw_commands.push((entry.command.clone(), data));
+                // A 1.4 command document lists less than the command accepts: its schemas, its derived `Input` and the `rejects` of its validators are in the `--schemas` answer (spec 9.9.3).
+                if claim.declares_1_4() {
+                    let answer = self.invoke(call(&["--schemas", "--json"]))?;
+                    run.schemas.push(SchemasCall {
+                        id: entry.command.clone(),
+                        call: answer,
+                    });
+                    if let Some(data) = ok_data(&self.log[answer].stdout) {
+                        raw_schemas.push((entry.command.clone(), data));
+                    }
+                }
             }
             run.doc_calls.push(DocCall {
                 id: entry.command.clone(),
@@ -357,6 +539,31 @@ impl Run<'_> {
                 again,
             });
         }
+        let tree_data = ok_data(&self.log[run.tree].stdout);
+        let group_answers: Vec<(&str, &Value)> = raw_groups
+            .iter()
+            .map(|(id, data)| (id.as_str(), data))
+            .collect();
+        let command_answers: Vec<(&str, &Value)> = raw_commands
+            .iter()
+            .map(|(id, data)| (id.as_str(), data))
+            .collect();
+        let schemas_answers: Vec<(&str, &Value)> = raw_schemas
+            .iter()
+            .map(|(id, data)| (id.as_str(), data))
+            .collect();
+        let tool = run.docs.tool.clone();
+        run.docs = ToolDocs::assemble(
+            claim,
+            &tool,
+            &Answers {
+                tree: tree_data.as_ref(),
+                groups: &group_answers,
+                commands: &command_answers,
+                schemas: &schemas_answers,
+            },
+            usage,
+        );
         if let Some((entry, split)) = entries
             .iter()
             .filter(|entry| !entry.is_group() && entry.path.len() == 2)
@@ -380,6 +587,9 @@ impl Run<'_> {
                 .chain(group.path.iter().cloned())
                 .chain(["--errors".to_string(), "--json".to_string()]);
             run.group_errors = Some(self.invoke(Call::new(words))?);
+        }
+        if claim.declares_1_4() {
+            self.invoke_l1_14(&mut run, &entries)?;
         }
         let tool = run.docs.tool.clone();
         // The plans are keyed by the id the tree gives a command, whatever `command` the document says of itself (`L1.walk` judges that).

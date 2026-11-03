@@ -1,4 +1,5 @@
-//! The 31 L1 checks of approaches/checker.md 6 (contract 1.1): self-description, arguments, data.
+//! The 31 L1 checks of approaches/checker.md 6 (contract 1.1): self-description, arguments, data; the rows of later minors are `L1.check-order` (1.2), `L1.code-names` (1.3)
+//! and `L1.schemas` and `L1.help-json` (1.4, in [`super::l1_14`]).
 //!
 //! The invocations are made by [`super::l1_plan`]; each check here reads the log and the documents the run read from
 //! `schema`. **One owner per pass condition**, as at L0: a condition is judged by exactly one check, so breaking one
@@ -17,6 +18,7 @@ use super::{
 };
 use crate::claim::Claim;
 use crate::exec::Exit;
+use crate::l1::form;
 use crate::l1::invocation;
 use crate::l1::model::{Arg, ToolDocs};
 use crate::l1::project;
@@ -64,18 +66,35 @@ pub(crate) fn ids() -> [&'static str; 31] {
     TABLE.each_ref().map(|entry| entry.id)
 }
 
-/// `L1.check-order`: the only check that only a claim of 1.2 runs (spec 11.7 step 6; approaches/checker.md 6).
+/// `L1.check-order`: run from a claim of 1.2 (spec 11.7 step 6; approaches/checker.md 6); MUST for exactly 1.2, SHOULD from 1.3 (the first failure answers,
+/// and the order of the stateless checks is a recommendation, spec 10.7 step 6).
 pub(crate) const CHECK_ORDER: Entry = must("L1.check-order", &["11.7"], &[Commands]);
 
-/// The L1 table of a claim: the 31 checks, and from 1.2 `L1.check-order` after `L1.validators`.
+/// `L1.code-names`: run from a claim of 1.3 (spec 7.2, Annex S2 rule 14).
+pub(crate) const CODE_NAMES: Entry = must("L1.code-names", &["7.2", "Annex S2 rule 14"], &[]);
+
+/// `L1.schemas`: run for a claim of 1.4 (spec 9.1.1, 9.8.2, 9.9.3, Annex S2 rules 2, 10 and 13).
+pub(crate) const SCHEMAS: Entry = must(
+    "L1.schemas",
+    &["9.1.1", "9.8.2", "9.9.3", "Annex S2 rules 2, 10, 13"],
+    &[],
+);
+
+/// `L1.help-json`: run for a claim of 1.4 (spec 4.4.1).
+pub(crate) const HELP_JSON: Entry = must("L1.help-json", &["4.4.1"], &[]);
+
+/// The L1 table of a claim: the 31 checks of 1.1, `L1.schemas` and `L1.help-json` after `L1.schema-errors` (1.4), `L1.code-names` after
+/// `L1.registry` (from 1.3) and `L1.check-order` after `L1.validators` (from 1.2).
 pub(crate) fn table(claim: Claim) -> Vec<&'static Entry> {
-    let mut rows: Vec<&'static Entry> = TABLE.iter().collect();
-    if claim.at_least(Claim::V1_2) {
-        let at = rows
-            .iter()
-            .position(|entry| entry.id == "L1.validators")
-            .map_or(rows.len(), |at| at + 1);
-        rows.insert(at, &CHECK_ORDER);
+    let mut rows: Vec<&'static Entry> = Vec::with_capacity(TABLE.len() + 4);
+    for entry in &TABLE {
+        rows.push(entry);
+        match entry.id {
+            "L1.schema-errors" if claim.declares_1_4() => rows.extend([&SCHEMAS, &HELP_JSON]),
+            "L1.registry" if claim.declares_1_3() => rows.push(&CODE_NAMES),
+            "L1.validators" if claim.at_least(Claim::V1_2) => rows.push(&CHECK_ORDER),
+            _ => {}
+        }
     }
     rows
 }
@@ -281,7 +300,10 @@ impl<'a> Judge<'a> {
             "L1.walk" => self.l1_walk(),
             "L1.quoted-path" => self.l1_quoted_path(),
             "L1.schema-errors" => self.l1_schema_errors(),
+            "L1.schemas" => self.l1_schemas(),
+            "L1.help-json" => self.l1_help_json(),
             "L1.registry" => self.l1_registry(),
+            "L1.code-names" => self.l1_code_names(),
             "L1.reasons" => self.l1_reasons(),
             "L1.reasons-reserved" => self.l1_reasons_reserved(),
             "L1.warnings" => self.l1_warnings(),
@@ -421,6 +443,15 @@ impl<'a> Judge<'a> {
                     });
                 }
             }
+            // The form of the minor: a 1.4 tree lists no `path`, no `kind: "command"` and nothing at its default (Annex S2 rules 16 and 17); a 1.3 one lacks nothing it carried. A claim
+            // below 1.3 is not judged on the form of its documents beyond the schema (its verdicts are those of before 1.3).
+            if let Some(data) = document.get("data").filter(|_| self.claim.declares_1_3()) {
+                for (condition, problem) in form::tree_form_findings(data, self.claim) {
+                    c.holds_at(l1.tree, condition, problem.is_none(), || {
+                        format!("`schema --json`: {}", problem.clone().unwrap_or_default())
+                    });
+                }
+            }
         }
         c.finish(true)
     }
@@ -495,6 +526,17 @@ impl<'a> Judge<'a> {
                         });
                     }
                 }
+                if let Some(data) = document.get("data").filter(|_| self.claim.declares_1_3()) {
+                    for (condition, problem) in form::group_form_findings(data, self.claim) {
+                        c.holds_at(call.call, condition, problem.is_none(), || {
+                            format!(
+                                "`schema {} --json`: {}",
+                                call.id,
+                                problem.clone().unwrap_or_default()
+                            )
+                        });
+                    }
+                }
             } else if let Some(doc) = l1.docs.commands.get(&call.id) {
                 for (condition, problem) in
                     doc_rules::command_findings(doc, &tool, self.claim, &exit_of)
@@ -508,6 +550,32 @@ impl<'a> Judge<'a> {
                         continue;
                     }
                     c.holds_at(call.call, condition, problem.is_none(), || {
+                        problem.clone().unwrap_or_default()
+                    });
+                }
+                for (condition, problem) in form::command_form_findings(doc, self.claim)
+                    .into_iter()
+                    .filter(|_| self.claim.declares_1_3())
+                {
+                    c.holds_at(call.call, condition, problem.is_none(), || {
+                        format!(
+                            "`schema {} --json`: {}",
+                            call.id,
+                            problem.clone().unwrap_or_default()
+                        )
+                    });
+                }
+            }
+        }
+        // A 1.4 tree defines the options its commands share, and each is named by some command (Annex S2 rule 17).
+        if self.claim.declares_1_4() {
+            if let Some(data) = self
+                .ok_envelope(l1.tree)
+                .and_then(|document| document.get("data"))
+            {
+                let docs: Vec<&crate::l1::model::CommandDoc> = l1.docs.commands.values().collect();
+                for (condition, problem) in form::tree_options_named_findings(data, &docs) {
+                    c.holds_at(l1.tree, condition, problem.is_none(), || {
                         problem.clone().unwrap_or_default()
                     });
                 }
@@ -596,6 +664,9 @@ impl<'a> Judge<'a> {
         expect(&mut c, "overlap", l1.overlap, "USAGE");
         if let Some(index) = l1.group_errors {
             expect(&mut c, "group-with-errors", index, "USAGE");
+        }
+        if let Some(index) = l1.schemas_errors {
+            expect(&mut c, "schemas-with-errors", index, "USAGE");
         }
         expect(&mut c, "unknown-error-code", l1.unknown_error, "USAGE");
         let field = self.failure(l1.unknown_error).and_then(|(_, field)| field);
@@ -804,10 +875,16 @@ impl<'a> Judge<'a> {
     fn l1_warnings(&'a self) -> Finding {
         let mut c = self.check("L1.warnings");
         let Some(entries) = &self.tool_warnings else {
+            // A 1.3 tool registers every warning code it emits in the warning registry (spec 7.5.2): without `schema --warnings` there is none to emit.
+            if self.claim.declares_1_3() {
+                self.judge_emitted_warnings(&mut c, None);
+                return c.finish(true);
+            }
             return c.finish_as(End::Unsupported(
                 "the tool offers no `schema --warnings`".to_string(),
             ));
         };
+        self.judge_emitted_warnings(&mut c, Some(entries));
         c.own(self.calls.schema_warnings);
         for (condition, problem) in documents::warnings_findings(entries) {
             c.holds_at(
@@ -1231,6 +1308,17 @@ impl<'a> Judge<'a> {
                         c.holds_at(call, "declared-code", declared, || {
                             format!("{}: `{}` violates only {labels} and was refused with {}, the rule declares {}", run.command, words.join(" "), code.unwrap_or("no code"), run.group.codes.iter().cloned().collect::<Vec<_>>().join(", "))
                         });
+                    }
+                    if refused && declared {
+                        if let Some(doc) = self.docs().command(&run.command) {
+                            self.judge_constraint_field(
+                                &mut c,
+                                doc,
+                                &run.group.members,
+                                words,
+                                call,
+                            );
+                        }
                     }
                     if refused && declared {
                         Verdict::Pass
@@ -2016,8 +2104,11 @@ impl<'a> Judge<'a> {
         c.finish(true)
     }
 
-    /// The 1.2 half of `L1.paging` for one paged command (spec 6.9, 10.7.2, 12.5): the cursor is bound to what the invocation gave.
+    /// The 1.2 half of `L1.paging` for one paged command (spec 6.9, 10.7.2, 12.5): the cursor is bound to what the invocation gave. For a claim of exactly 1.2 every part
+    /// is a MUST; from 1.3 a cursor is bound to everything but `--json --limit --all --cursor --fields` (`env` values included) and the next page continues, which stay MUST,
+    /// while whether an explicit default rebinds and what the next-page entry carries are recommendations (spec 6.9): their violations are advisories of the check.
     fn judge_paging_1_2(&'a self, c: &mut Conditions<'a>, run: &super::l1_plan::PagingRun) {
+        let required = self.claim.is_1_2();
         let refused_as_cursor = |call: usize| {
             self.failure(call)
                 .is_some_and(|(code, _)| code == Some("CURSOR_INVALID"))
@@ -2030,9 +2121,17 @@ impl<'a> Judge<'a> {
         }
         for (label, call) in &run.defaults {
             c.own(*call);
-            c.holds_at(*call, "cursor-bound-to-given-arguments", self.failure(*call).is_some_and(|(code, field)| code == Some("CURSOR_INVALID") && field == Some("--cursor")), || {
-                format!("{}: the cursor was not refused with CURSOR_INVALID on --cursor with {label}: {}", run.command, refusal_text(self.envelope(*call), self.at(*call).exit))
+            let bound = self.failure(*call).is_some_and(|(code, field)| {
+                code == Some("CURSOR_INVALID") && field == Some("--cursor")
             });
+            let why = || {
+                format!("{}: the cursor was not refused with CURSOR_INVALID on --cursor with {label}: {}", run.command, refusal_text(self.envelope(*call), self.at(*call).exit))
+            };
+            if required {
+                c.holds_at(*call, "cursor-bound-to-given-arguments", bound, why);
+            } else {
+                c.recommends("cursor-bound-to-given-arguments", bound, why);
+            }
         }
         for (label, call) in &run.envs {
             c.own(*call);
@@ -2084,29 +2183,44 @@ impl<'a> Judge<'a> {
                     }
                 }
                 // The next entry is run in the same environment; it has to go on from the page that the document gave.
+                let mut continues: Vec<String> = Vec::new();
                 if let Some(next) = input.next {
                     c.own(next);
                     let second = self
                         .ok_envelope(next)
                         .and_then(|document| document.get("data"));
                     if second.is_none() {
-                        problems.push(format!(
+                        continues.push(format!(
                             "`{}` {}",
                             self.at(next).call.argv.join(" "),
                             refusal_text(self.envelope(next), self.at(next).exit)
                         ));
                     } else if second == first {
-                        problems.push("it returns the first page again".to_string());
+                        continues.push("it returns the first page again".to_string());
                     }
                 }
-                c.holds_at(input.first, "next-after-input", problems.is_empty(), || {
+                let why = |problems: &[String]| {
                     format!(
                         "{}: the next entry of the page given by a document on stdin (`{}`): {}",
                         run.command,
                         next_argv.join(" "),
                         problems.join("; ")
                     )
-                });
+                };
+                if required {
+                    problems.extend(continues);
+                    c.holds_at(input.first, "next-after-input", problems.is_empty(), || {
+                        why(&problems)
+                    });
+                } else {
+                    c.holds_at(
+                        input.first,
+                        "next-after-input",
+                        continues.is_empty(),
+                        || why(&continues),
+                    );
+                    c.recommends("next-after-input", problems.is_empty(), || why(&problems));
+                }
             }
         }
         if !run.unsupported.is_empty() {

@@ -1569,7 +1569,10 @@ fn atip_check_57_the_contract_option_and_the_fixtures_contract_version_pick_the_
         "{}",
         unknown.stdout
     );
-    assert_eq!(document["error"]["expected"], json!(["1.0", "1.1", "1.2"]));
+    assert_eq!(
+        document["error"]["expected"],
+        json!(["1.0", "1.1", "1.2", "1.3", "1.4"])
+    );
     assert!(!marker.exists());
 }
 

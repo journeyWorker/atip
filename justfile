@@ -41,8 +41,8 @@ fmt-check:
 validate:
     scripts/validate.sh
 
-# Run the checker on its own fake tool at L0 in both modes: the fake tool with no configuration is a conforming one.
-check: check-interface check-deep
+# Run the checker on its own fake tool at L0 in both modes: the fake tool with no configuration is a conforming one. Then the same for a fake tool of 1.3 and of 1.4.
+check: check-interface check-deep (check-minor "1.3") (check-minor "1.3" "--deep") (check-minor "1.4") (check-minor "1.4" "--deep")
 
 # The default mode: the interface checks, a few launches of the binary on one shared copy of the fixture state.
 check-interface:
@@ -53,6 +53,12 @@ check-interface:
 check-deep:
     cargo build --locked -p atip-check --features test-support
     {{ target }}/debug/atip check --bin {{ target }}/debug/atip-fake-tool --level L0 --fixture crates/atip-check/fake-tool/fixture.json --deep
+
+# The fake tool as a tool of the minor `minor` (1.3 or 1.4; a copy of the fake named `...claims13` / `...claims14` claims that minor), at L0; `mode` is `--deep` or empty.
+check-minor minor mode="":
+    cargo build --locked -p atip-check --features test-support
+    cp {{ target }}/debug/atip-fake-tool {{ target }}/debug/atip-fake-tool-claims{{ replace(minor, ".", "") }}
+    {{ target }}/debug/atip check --bin {{ target }}/debug/atip-fake-tool-claims{{ replace(minor, ".", "") }} --level L0 --fixture crates/atip-check/fake-tool/fixture-{{ minor }}.json {{ mode }}
 
 # Everything CI does.
 ci: validate fmt-check lint test

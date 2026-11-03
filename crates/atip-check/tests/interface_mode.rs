@@ -46,6 +46,25 @@ fn ids_of(output: &Output) -> Vec<String> {
     output.results().into_iter().map(|(id, _)| id).collect()
 }
 
+/// The rows that 1.3 and 1.4 added (`L1.code-names` from a claim of 1.3, `L1.schemas` and `L1.help-json` from 1.4): all three are interface
+/// checks, each judging the document of one call (`schema --errors --json`; `schema <probe> --schemas --json` and the root refusal;
+/// `--help --json` and `--version --json`). The Modes table of approaches/checker.md 3.1 does not list them yet (the author rewrites that
+/// section), so the table is compared with the checker's INTERFACE table without them; when the document catches up, delete this constant.
+const ROWS_OF_1_3_AND_1_4: [&str; 3] = ["L1.code-names", "L1.schemas", "L1.help-json"];
+
+/// What `--deep` adds to each of the three rows, as the author decided (the lead's table of the pull request).
+const DEEP_PARTS_OF_1_3_AND_1_4: [(&str, &str); 3] = [
+    ("L1.code-names", ""),
+    (
+        "L1.schemas",
+        "`schema <path> --schemas --json` for every other command, and for a group",
+    ),
+    (
+        "L1.help-json",
+        "`<command> --help --json`, `nosuch-xyz --help --json` and `nosuch-xyz --version --json`",
+    ),
+];
+
 /// The ids of the checks of `level` and the levels below it that run in `mode`, for a claim of 1.1, in table order.
 fn ids_in(mode: Mode, level: &str) -> Vec<String> {
     let levels: &[&str] = match level {
@@ -56,7 +75,7 @@ fn ids_in(mode: Mode, level: &str) -> Vec<String> {
     every_id()
         .into_iter()
         // `L1.check-order` is a claim of 1.2's and `L2.effects` is reported at every level (an advisory below L2).
-        .filter(|id| *id != "L1.check-order")
+        .filter(|id| *id != "L1.check-order" && !ROWS_OF_1_3_AND_1_4.contains(id))
         .filter(|id| levels.iter().any(|prefix| id.starts_with(prefix)) || *id == "L2.effects")
         .filter(|id| mode == Mode::Deep || mode_of(id) == Mode::Interface)
         .map(str::to_string)
@@ -502,8 +521,8 @@ fn atip_check_deep_18_every_check_is_interface_or_deep_exactly_once_and_the_chec
     );
     assert_eq!(
         every.len(),
-        28 + 32 + 30,
-        "the 28 of L0, the 31 of L1 and L1.check-order, the 30 of L2"
+        28 + 32 + 3 + 30,
+        "the 28 of L0, the 31 of L1 and L1.check-order, the 3 rows of 1.3 and 1.4, the 30 of L2"
     );
     let interface: Vec<&str> = every
         .iter()
@@ -520,7 +539,12 @@ fn atip_check_deep_18_every_check_is_interface_or_deep_exactly_once_and_the_chec
         every.len(),
         "every check has one mode"
     );
-    assert_eq!((interface.len(), deep.len()), (32, 58));
+    assert_eq!((interface.len(), deep.len()), (32 + 3, 58));
+    // The three rows of 1.3 and 1.4 are interface checks, with the deep parts above.
+    for (id, part) in DEEP_PARTS_OF_1_3_AND_1_4 {
+        assert_eq!(mode_of(id), Mode::Interface, "{id} is an interface check");
+        assert_eq!(deep_part(id), part, "what --deep adds to {id}");
+    }
     // An id that is not a check is deep by default, and says nothing of `--deep`.
     assert_eq!(
         (mode_of("L9.nosuch"), deep_part("L9.nosuch")),
@@ -534,6 +558,10 @@ fn atip_check_deep_18_every_check_is_interface_or_deep_exactly_once_and_the_chec
     let section = &document[start..];
     let section = &section[..section.find("\n## 4.").expect("the next section")];
     let rows = table_rows(section);
+    let interface: Vec<&str> = interface
+        .into_iter()
+        .filter(|id| !ROWS_OF_1_3_AND_1_4.contains(id))
+        .collect();
     assert_eq!(
         rows.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
         interface,
