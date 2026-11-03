@@ -13,6 +13,8 @@ pub enum Minor {
     V1_0,
     V1_1,
     V1_2,
+    V1_3,
+    V1_4,
 }
 
 /// A text that is not a minor this crate knows.
@@ -34,9 +36,15 @@ impl std::error::Error for UnknownMinor {}
 
 impl Minor {
     /// Every minor the crate knows, oldest first.
-    pub const ALL: [Minor; 3] = [Minor::V1_0, Minor::V1_1, Minor::V1_2];
+    pub const ALL: [Minor; 5] = [
+        Minor::V1_0,
+        Minor::V1_1,
+        Minor::V1_2,
+        Minor::V1_3,
+        Minor::V1_4,
+    ];
     /// The newest minor the crate implements. It is not a tool's declaration.
-    pub const LATEST: Minor = Minor::V1_2;
+    pub const LATEST: Minor = Minor::V1_4;
 
     /// The minor written `<major>.<minor>`, or [`UnknownMinor`] for any other text (a later minor, another major, `"1"`, `""`).
     pub fn parse(text: &str) -> Result<Self, UnknownMinor> {
@@ -52,6 +60,8 @@ impl Minor {
             Minor::V1_0 => "1.0",
             Minor::V1_1 => "1.1",
             Minor::V1_2 => "1.2",
+            Minor::V1_3 => "1.3",
+            Minor::V1_4 => "1.4",
         }
     }
 
@@ -72,22 +82,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn atip_crate12_01_the_minors_are_1_0_1_1_and_1_2_and_the_constant_is_the_newest() {
+    fn atip_crate14_01_the_minors_are_1_0_to_1_4_and_the_constant_is_the_newest() {
         assert_eq!(Minor::parse("1.0"), Ok(Minor::V1_0));
         assert_eq!(Minor::parse("1.1"), Ok(Minor::V1_1));
         assert_eq!(Minor::parse("1.2"), Ok(Minor::V1_2));
+        assert_eq!(Minor::parse("1.3"), Ok(Minor::V1_3));
+        assert_eq!(Minor::parse("1.4"), Ok(Minor::V1_4));
         for minor in Minor::ALL {
             assert_eq!(Minor::parse(minor.as_str()), Ok(minor));
             assert_eq!(minor.to_string(), minor.as_str());
         }
-        assert_eq!(crate::CONTRACT_VERSION, "1.2");
+        assert_eq!(crate::CONTRACT_VERSION, "1.4");
         assert_eq!(crate::CONTRACT_VERSION, Minor::LATEST.as_str());
     }
 
     #[test]
     fn atip_crate12_03_a_text_that_is_not_a_known_minor_is_refused() {
         for text in [
-            "1.3", "1.9", "2.0", "1", "", "1.2.0", "1.02", " 1.2", "v1.2",
+            "1.5", "1.9", "2.0", "1", "", "1.2.0", "1.02", " 1.2", "v1.2", "1.4.1",
         ] {
             assert_eq!(
                 Minor::parse(text),
@@ -95,14 +107,17 @@ mod tests {
                 "{text:?}"
             );
         }
-        assert!(Minor::parse("1.3")
+        assert!(Minor::parse("1.5")
             .expect_err("refused")
             .to_string()
-            .contains("1.0, 1.1, 1.2"));
+            .contains("1.0, 1.1, 1.2, 1.3, 1.4"));
     }
 
     #[test]
     fn atip_crate12_01_at_least_orders_the_minors() {
+        assert!(Minor::V1_4.at_least(Minor::V1_3));
+        assert!(Minor::V1_3.at_least(Minor::V1_2));
+        assert!(!Minor::V1_3.at_least(Minor::V1_4));
         assert!(Minor::V1_2.at_least(Minor::V1_1));
         assert!(Minor::V1_2.at_least(Minor::V1_2));
         assert!(Minor::V1_1.at_least(Minor::V1_0));

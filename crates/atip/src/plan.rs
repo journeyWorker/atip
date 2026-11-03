@@ -26,8 +26,6 @@ use crate::constraint::Rule;
 use crate::error::{CliError, CodeInfo};
 use crate::given::{write_argv, Given};
 use crate::jcs;
-use crate::minor::Minor;
-use crate::reserved::reserved_code;
 
 /// The option that makes a destructive command act.
 pub const COMMIT: &str = "commit";
@@ -373,7 +371,10 @@ pub const STOPPED_MIDWAY_REASON: &str = "PLAN_STALE";
 /// An error of the reserved code `name`, with the exit and retryability the contract gives it (spec 7.2.1): a code's row, not a
 /// call site, chooses them (spec 7.3.2).
 fn reserved_error(name: &'static str, message: String) -> CliError {
-    let reserved = reserved_code(name, Minor::LATEST).expect("a reserved code");
+    let reserved = crate::reserved::RESERVED_CODES
+        .iter()
+        .find(|reserved| reserved.name == name)
+        .expect("a reserved code");
     let row = CodeInfo {
         code: reserved.name,
         meaning: "",
@@ -391,6 +392,7 @@ mod tests {
 
     use super::*;
     use crate::constraint::{violation, Given as Seen};
+    use crate::minor::Minor;
 
     fn inputs(value: &Value) -> Map<String, Value> {
         value.as_object().expect("an object").clone()

@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn atip_cratecursor_04_an_unknown_minor_and_an_integer_a_digest_cannot_hold_are_refused() {
-        for text in ["1.3", "2.0", "1", "", "1.2.0"] {
+        for text in ["1.5", "2.0", "1", "", "1.2.0"] {
             assert_eq!(
                 Cursors::for_declared(text),
                 Err(UnknownMinor(text.to_string())),

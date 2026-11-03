@@ -26,12 +26,14 @@
 //!   without a table entry fails.
 //! - [`argv`]: the JSON-mode flag and the argv test that decides it.
 //! - [`envelope`]: a document as one compact line, and printing it.
-//! - [`minor`]: [`Minor`], the minors of atip/1 the crate knows (1.0, 1.1, 1.2), and
+//! - [`minor`]: [`Minor`], the minors of atip/1 the crate knows (1.0 to 1.4), and
 //!   [`CONTRACT_VERSION`], the newest one the crate implements. A tool's own
 //!   declaration of its minor is its own constant, not this one.
-//! - [`reserved`]: the table of the thirteen reserved error codes (name, exit,
-//!   retryability, the minor that introduced it) and the check that a tool
+//! - [`reserved`]: the table of the reserved error codes (name, exit,
+//!   retryability, the minors that reserve it: twelve core codes, and `STOPPED_MIDWAY` in a 1.2 document) and the check that a tool
 //!   registers one as the contract reserves it.
+//! - [`condition`]: the fifteen conditions of the code-name convention (spec 7.2, since 1.3), with their exit and
+//!   retryability, and `code_name_problem`, the check that a code is a core code or `<SUBJECT>_<CONDITION>`.
 //! - [`plan`]: the plan of a destructive command (its effects and inputs), its digest (`sha256:` and the SHA-256 of the RFC 8785
 //!   text of the plan, [`jcs`]), the preview report and its JSON Schema, the commit gate (`PLAN_STALE`, the two options that
 //!   require each other) and the commit call a preview's `meta.next` leads with.
@@ -42,6 +44,7 @@
 //!   `<placeholder>`.
 
 pub mod argv;
+pub mod condition;
 pub mod constraint;
 pub mod cursor;
 pub mod doc;
@@ -60,6 +63,7 @@ pub mod schema;
 pub mod shell;
 
 pub use argv::{argv_wants_json, json_mode, set_json_mode, wants_json};
+pub use condition::{code_name_problem, Condition};
 pub use cursor::{next_page_argv, Binding, CursorInvalid, Cursors, CURSOR_INVALID_REASONS};
 pub use envelope::{line, print_line};
 pub use error::{
@@ -70,7 +74,9 @@ pub use given::{write_argv, Given};
 pub use minor::{Minor, UnknownMinor};
 pub use plan::{Effect, Plan, PlanDigest, Preview};
 pub use project::{flag_only_options, flag_only_problems};
-pub use reserved::{registration_problem, reserved_code, ReservedCode, RESERVED_CODES};
+pub use reserved::{
+    registration_problem, reserved_code, reserved_codes, ReservedCode, RESERVED_CODES,
+};
 #[cfg(feature = "validate")]
 pub use schema::{
     envelope_problems, error_problems, guide_problems, registry_entry_problems,

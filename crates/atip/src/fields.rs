@@ -1432,7 +1432,7 @@ mod tests {
 
     #[test]
     fn atip_crate12_11_a_minor_the_crate_does_not_know_is_refused_never_read_as_the_nearest_one() {
-        for text in ["1.9", "1.3", "2.0", "", "1"] {
+        for text in ["1.9", "1.5", "2.0", "", "1"] {
             assert_eq!(
                 Rules::for_minor(text),
                 Err(UnknownMinor(text.to_string())),
