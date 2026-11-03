@@ -7,7 +7,10 @@ mod support;
 use serde_json::{json, Value};
 
 use support::l1::{l1_bin, l1_cases};
-use support::{atip_in, cases, cases_of, kind_verdict, reason_of_messages, Case, Harness, Output};
+use support::{
+    all_seeds, atip_in, cases, cases_of, kind_verdict, reason_of_messages, representatives, Case,
+    Harness, Output,
+};
 
 /// The messages of the findings of `check`.
 fn messages(check: &Value) -> Vec<String> {
@@ -361,16 +364,31 @@ fn l1_job(case: Case) -> Box<dyn FnOnce() -> Result<(), String> + Send> {
 #[test]
 fn atip_check_83_every_seeded_violation_is_found_by_its_kind_in_the_findings_of_its_owner() {
     let mut jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> =
-        cases().into_iter().map(l0_job).collect();
+        representatives(cases(), Case::owner)
+            .into_iter()
+            .map(l0_job)
+            .collect();
     let l0 = jobs.len();
     jobs.extend(
-        l1_cases()
-            .into_iter()
-            .filter(|case| case.condition != "tree/level")
-            .map(l1_job),
+        representatives(
+            l1_cases()
+                .into_iter()
+                .filter(|case| case.condition != "tree/level")
+                .collect(),
+            |case| {
+                case.condition
+                    .split('/')
+                    .next()
+                    .unwrap_or_default()
+                    .to_string()
+            },
+        )
+        .into_iter()
+        .map(l1_job),
     );
+    // One per owning check by default: the 28 L0 checks and the L1 checks that have a seed; every seed with `ATIP_CHECK_ALL_SEEDS=1`.
     assert!(
-        jobs.len() > l0 && l0 > 70,
+        jobs.len() > l0 && l0 >= if all_seeds() { 70 } else { 28 },
         "the seeded cases of both levels run: {l0} of {}",
         jobs.len()
     );

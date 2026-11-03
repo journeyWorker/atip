@@ -12,16 +12,18 @@ use serde_json::{json, Value};
 
 use atip_check::app::check_binary_mutated;
 use atip_check::cli::{CheckArgs, Level};
-use support::{case_verdict, cases, cases_of, kind_verdict, Case, Harness, FAKE_TOOL};
+use support::{
+    case_verdict, cases, cases_of, kind_verdict, representatives, Case, Harness, FAKE_TOOL,
+};
 
-/// Every case of the check `id`: `atip check` exits as the strength says, fails that check and no other.
+/// The representative case of the check `id` (every case with `ATIP_CHECK_ALL_SEEDS=1`): `atip check` exits as the strength says, fails that check and no other.
 fn proves(id: &str) {
     let owned = cases_of(id);
     assert!(
         !owned.is_empty(),
         "{id} has a seeded violation for each of its conditions"
     );
-    for case in owned {
+    for case in representatives(owned, Case::owner) {
         let harness = Harness::new();
         let output = harness.check(&case.fixture(&harness), true);
         let document = output.envelope();
@@ -459,44 +461,49 @@ fn atip_check_56_each_pass_condition_fails_exactly_its_owner_and_a_run_with_the_
         "the conditions the checker judges and the conditions the tests plant are the same set"
     );
     // For each case: planted, its owner fails and nothing else; skipped, the owner no longer fails (the other conditions of the check hold).
-    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = cases()
-        .into_iter()
-        .map(
-            |case: Case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-                Box::new(move || {
-                    let harness = Harness::new();
-                    let args = args_for(&harness, &case.fixture(&harness));
-                    let owner = case.owner();
-                    let (planted, _) = check_binary_mutated(&args, &[], &[])
-                        .map_err(|failure| format!("{}: {}", case.condition, failure.message))?;
-                    case_verdict(&serde_json::to_value(&planted).expect("json"), &owner)
-                        .map_err(|why| format!("{}: {why}", case.condition))?;
-                    let (skipped, _) = check_binary_mutated(&args, &[], &[case.condition])
-                        .map_err(|failure| format!("{}: {}", case.condition, failure.message))?;
-                    let owner_result = skipped.find(&owner).map(|check| check.result);
-                    if owner_result == Some(atip_check::report::CheckResult::Fail) {
-                        return Err(format!(
-                            "{}: with the condition switched off {owner} still fails: {:?}",
-                            case.condition,
-                            skipped.find(&owner).and_then(|check| check.reason.clone())
-                        ));
-                    }
-                    if !skipped
-                        .checks
-                        .iter()
-                        .all(|check| check.result != atip_check::report::CheckResult::Fail)
-                    {
-                        return Err(format!(
-                            "{}: with the condition switched off something else fails: {}",
-                            case.condition,
-                            skipped.text()
-                        ));
-                    }
-                    Ok(())
-                })
-            },
-        )
-        .collect();
+    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> =
+        representatives(cases(), Case::owner)
+            .into_iter()
+            .map(
+                |case: Case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
+                    Box::new(move || {
+                        let harness = Harness::new();
+                        let args = args_for(&harness, &case.fixture(&harness));
+                        let owner = case.owner();
+                        let (planted, _) =
+                            check_binary_mutated(&args, &[], &[]).map_err(|failure| {
+                                format!("{}: {}", case.condition, failure.message)
+                            })?;
+                        case_verdict(&serde_json::to_value(&planted).expect("json"), &owner)
+                            .map_err(|why| format!("{}: {why}", case.condition))?;
+                        let (skipped, _) = check_binary_mutated(&args, &[], &[case.condition])
+                            .map_err(|failure| {
+                                format!("{}: {}", case.condition, failure.message)
+                            })?;
+                        let owner_result = skipped.find(&owner).map(|check| check.result);
+                        if owner_result == Some(atip_check::report::CheckResult::Fail) {
+                            return Err(format!(
+                                "{}: with the condition switched off {owner} still fails: {:?}",
+                                case.condition,
+                                skipped.find(&owner).and_then(|check| check.reason.clone())
+                            ));
+                        }
+                        if !skipped
+                            .checks
+                            .iter()
+                            .all(|check| check.result != atip_check::report::CheckResult::Fail)
+                        {
+                            return Err(format!(
+                                "{}: with the condition switched off something else fails: {}",
+                                case.condition,
+                                skipped.text()
+                            ));
+                        }
+                        Ok(())
+                    })
+                },
+            )
+            .collect();
     let failures: Vec<String> = in_parallel(jobs)
         .into_iter()
         .filter_map(Result::err)

@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use atip_check::app::check_binary_mutated;
 use atip_check::cli::{CheckArgs, Level};
 use support::l1::{l1_bin, l1_cases_1_2, l1_config_1_2, l1_fixture_of};
-use support::{atip_in, kind_verdict, Case, Harness, Output, ATIP};
+use support::{atip_in, kind_verdict, representatives, Case, Harness, Output, ATIP};
 
 fn result_of(output: &Output, id: &str) -> String {
     output.check(id)["result"]
@@ -314,71 +314,73 @@ fn atip_check_103_each_1_2_violation_fails_the_row_that_owns_it_and_no_other_row
         ],
         "every 1.2 row has a violation"
     );
-    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = cases
-        .into_iter()
-        .map(|case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-            Box::new(move || {
-                let output = run_case(&case);
-                only_owner_fails(&output, &case)?;
-                let expected_exit = if matches!(
-                    owner_of(&case).as_str(),
-                    "L1.paging" | "L1.check-order" | "L1.grammar" | "L1.registry" | "L1.fields"
-                ) {
-                    Some(1)
-                } else {
-                    Some(0)
-                };
-                // The registry reserved exit and the MUST rows fail the level; `L1.grammar` and `L1.registry` judge MUST rules too.
-                if output.code != expected_exit && output.code != Some(0) {
-                    return Err(format!("{}: exit {:?}", case.condition, output.code));
-                }
-                Ok(())
+    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> =
+        representatives(cases, owner_of)
+            .into_iter()
+            .map(|case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
+                Box::new(move || {
+                    let output = run_case(&case);
+                    only_owner_fails(&output, &case)?;
+                    let expected_exit = if matches!(
+                        owner_of(&case).as_str(),
+                        "L1.paging" | "L1.check-order" | "L1.grammar" | "L1.registry" | "L1.fields"
+                    ) {
+                        Some(1)
+                    } else {
+                        Some(0)
+                    };
+                    // The registry reserved exit and the MUST rows fail the level; `L1.grammar` and `L1.registry` judge MUST rules too.
+                    if output.code != expected_exit && output.code != Some(0) {
+                        return Err(format!("{}: exit {:?}", case.condition, output.code));
+                    }
+                    Ok(())
+                })
             })
-        })
-        .collect();
+            .collect();
     let failures = in_parallel(jobs);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]
 fn atip_check_104_the_same_violations_at_a_claim_of_1_1_fail_no_row_and_the_1_2_rows_are_not_run() {
-    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = l1_cases_1_2()
-        .into_iter()
-        .map(|case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-            Box::new(move || {
-                let harness = Harness::new();
-                let mut config = case.config.clone();
-                config["claims"] = json!("1.1");
-                config.as_object_mut().expect("object").remove("binAlias");
-                let mut fixture = harness.l1_fixture(&config);
-                if let Some(tweak) = case.tweak {
-                    tweak(&mut fixture);
-                }
-                // A 1.1 registry that lists STOPPED_MIDWAY as the tool's own code: any exit, retryable or not.
-                let output = run_l1(&harness, &config, &fixture);
-                report_of(&output, &case)?;
-                let results = output.results();
-                if results.iter().any(|(id, _)| id == "L1.check-order") {
-                    return Err(format!(
-                        "{}: L1.check-order is in a 1.1 report",
-                        case.condition
-                    ));
-                }
-                let failing = failing(&output);
-                if !failing.is_empty() {
-                    return Err(format!(
-                        "{}: a 1.1 claim fails {failing:?}\n{}",
-                        case.condition,
-                        output.stdout.chars().take(600).collect::<String>()
-                    ));
-                }
-                if output.code != Some(0) {
-                    return Err(format!("{}: exit {:?}", case.condition, output.code));
-                }
-                Ok(())
+    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> =
+        representatives(l1_cases_1_2(), owner_of)
+            .into_iter()
+            .map(|case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
+                Box::new(move || {
+                    let harness = Harness::new();
+                    let mut config = case.config.clone();
+                    config["claims"] = json!("1.1");
+                    config.as_object_mut().expect("object").remove("binAlias");
+                    let mut fixture = harness.l1_fixture(&config);
+                    if let Some(tweak) = case.tweak {
+                        tweak(&mut fixture);
+                    }
+                    // A 1.1 registry that lists STOPPED_MIDWAY as the tool's own code: any exit, retryable or not.
+                    let output = run_l1(&harness, &config, &fixture);
+                    report_of(&output, &case)?;
+                    let results = output.results();
+                    if results.iter().any(|(id, _)| id == "L1.check-order") {
+                        return Err(format!(
+                            "{}: L1.check-order is in a 1.1 report",
+                            case.condition
+                        ));
+                    }
+                    let failing = failing(&output);
+                    if !failing.is_empty() {
+                        return Err(format!(
+                            "{}: a 1.1 claim fails {failing:?}\n{}",
+                            case.condition,
+                            output.stdout.chars().take(600).collect::<String>()
+                        ));
+                    }
+                    if output.code != Some(0) {
+                        return Err(format!("{}: exit {:?}", case.condition, output.code));
+                    }
+                    Ok(())
+                })
             })
-        })
-        .collect();
+            .collect();
     let failures = in_parallel(jobs);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
@@ -508,7 +510,7 @@ fn atip_check_106_a_row_forced_to_pass_or_a_condition_switched_off_makes_its_1_2
     assert!(!only_12.is_empty());
     // Each case: with its own condition switched off the owner no longer fails; the first case of each owner: the owner forced to pass.
     let mut seen: BTreeSet<String> = BTreeSet::new();
-    let firsts: Vec<(Case, bool)> = l1_cases_1_2()
+    let firsts: Vec<(Case, bool)> = representatives(l1_cases_1_2(), owner_of)
         .into_iter()
         .map(|case| {
             let first = seen.insert(owner_of(&case));

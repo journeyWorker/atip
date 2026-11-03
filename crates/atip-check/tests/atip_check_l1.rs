@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use atip_check::app::check_binary_mutated;
 use atip_check::cli::{CheckArgs, Level};
 use support::l1::{l1_bin, l1_cases, l1_config, l1_engine_difference_case, l1_standard_config};
-use support::{atip_in, kind_verdict, Case, Harness, Output};
+use support::{atip_in, kind_verdict, representatives, Case, Harness, Output};
 
 /// The L0 checks of a run and the L1 ones that apply to a 1.1 claim.
 const L0_CHECKS: usize = 28;
@@ -126,7 +126,7 @@ fn in_parallel<T: Send>(jobs: Vec<Box<dyn FnOnce() -> T + Send>>) -> Vec<T> {
     results.into_iter().map(|(_, value)| value).collect()
 }
 
-/// Every case of each of the checks `ids` (`tree`, `walk`, ...): `atip check --level L1` exits as the strength says, fails that check and no other.
+/// The representative case of each of the checks `ids` (`tree`, `walk`, ..., every case with `ATIP_CHECK_ALL_SEEDS=1`): `atip check --level L1` exits as the strength says, fails that check and no other.
 fn proves(ids: &[&str]) {
     let cases: Vec<Case> = l1_cases()
         .into_iter()
@@ -142,60 +142,61 @@ fn proves(ids: &[&str]) {
             "L1.{id} has a seeded violation for each of its conditions"
         );
     }
-    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = cases
-        .into_iter()
-        .map(|case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-            Box::new(move || {
-                let owner = owner_of(&case);
-                let output = run_case(&case);
-                let document = output.envelope();
-                verdict(&document["data"], &owner).map_err(|why| {
-                    format!(
-                        "{}: {why}\n{}",
-                        case.condition,
-                        output.stdout.chars().take(600).collect::<String>()
+    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> =
+        representatives(cases, owner_of)
+            .into_iter()
+            .map(|case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
+                Box::new(move || {
+                    let owner = owner_of(&case);
+                    let output = run_case(&case);
+                    let document = output.envelope();
+                    verdict(&document["data"], &owner).map_err(|why| {
+                        format!(
+                            "{}: {why}\n{}",
+                            case.condition,
+                            output.stdout.chars().take(600).collect::<String>()
+                        )
+                    })?;
+                    kind_verdict(
+                        &document["data"],
+                        &owner,
+                        case.condition.split('/').nth(1).unwrap_or_default(),
                     )
-                })?;
-                kind_verdict(
-                    &document["data"],
-                    &owner,
-                    case.condition.split('/').nth(1).unwrap_or_default(),
-                )
-                .map_err(|why| format!("{}: {why}", case.condition))?;
-                let must = check_of(&document["data"], &owner)["strength"] == "MUST";
-                let expected = if must {
-                    (Some(1), Some(false))
-                } else {
-                    (Some(0), Some(true))
-                };
-                let got = (output.code, document["ok"].as_bool());
-                if got != expected {
-                    return Err(format!(
-                        "{}: exit {got:?}, expected {expected:?}",
-                        case.condition
-                    ));
-                }
-                if must && document["error"]["code"] != "LEVEL_NOT_MET" {
-                    return Err(format!(
-                        "{}: a MUST failure is LEVEL_NOT_MET",
-                        case.condition
-                    ));
-                }
-                if must
-                    && !document["error"]["message"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .contains(&owner)
-                {
-                    return Err(format!(
-                        "{}: the error names the failing check",
-                        case.condition
-                    ));
-                }
-                Ok(())
+                    .map_err(|why| format!("{}: {why}", case.condition))?;
+                    let must = check_of(&document["data"], &owner)["strength"] == "MUST";
+                    let expected = if must {
+                        (Some(1), Some(false))
+                    } else {
+                        (Some(0), Some(true))
+                    };
+                    let got = (output.code, document["ok"].as_bool());
+                    if got != expected {
+                        return Err(format!(
+                            "{}: exit {got:?}, expected {expected:?}",
+                            case.condition
+                        ));
+                    }
+                    if must && document["error"]["code"] != "LEVEL_NOT_MET" {
+                        return Err(format!(
+                            "{}: a MUST failure is LEVEL_NOT_MET",
+                            case.condition
+                        ));
+                    }
+                    if must
+                        && !document["error"]["message"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .contains(&owner)
+                    {
+                        return Err(format!(
+                            "{}: the error names the failing check",
+                            case.condition
+                        ));
+                    }
+                    Ok(())
+                })
             })
-        })
-        .collect();
+            .collect();
     let failures: Vec<String> = in_parallel(jobs)
         .into_iter()
         .filter_map(Result::err)
@@ -1043,7 +1044,7 @@ fn atip_checkl1_28_a_check_forced_to_pass_makes_its_seeded_case_fail_and_every_c
     // Every case: with its own condition switched off, the owner no longer fails (so the condition is independently proven: the planted document breaks nothing else
     // the owner judges). For the first case of each check, the owner forced to pass no longer fails either.
     let mut seen: BTreeSet<String> = BTreeSet::new();
-    let firsts: Vec<(Case, bool)> = l1_cases()
+    let firsts: Vec<(Case, bool)> = representatives(l1_cases(), owner_of)
         .into_iter()
         .map(|case| {
             let first = seen.insert(owner_of(&case));

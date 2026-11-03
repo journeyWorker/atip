@@ -16,6 +16,26 @@ pub const FAKE_TOOL: &str = env!("CARGO_BIN_EXE_atip-fake-tool");
 /// The number of checks of a run at L0: the 28 L0 checks of contract 1.1 and `L2.effects`, which every level reports (an advisory below L2).
 pub const CHECKS: usize = 29;
 
+/// Whether the family tests plant every seeded violation (`ATIP_CHECK_ALL_SEEDS` set to anything but `0`) or, by default, one
+/// representative per owning check. A full `atip check` run is hundreds of process launches at L2, so a whole family planted
+/// seed by seed is most of the suite's cost; the representatives keep every check proved against a real violation, and
+/// `just test-all-seeds` runs the whole family before a release or after a change to a check's conditions.
+pub fn all_seeds() -> bool {
+    std::env::var_os("ATIP_CHECK_ALL_SEEDS").is_some_and(|value| value != "0")
+}
+
+/// The seeds a family test runs: all of them when [`all_seeds`], else the first of each owner (`owner` names it), in order.
+pub fn representatives<T>(seeds: Vec<T>, owner: impl Fn(&T) -> String) -> Vec<T> {
+    if all_seeds() {
+        return seeds;
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    seeds
+        .into_iter()
+        .filter(|seed| seen.insert(owner(seed)))
+        .collect()
+}
+
 /// The result of one run of `atip`.
 #[derive(Debug)]
 pub struct Output {

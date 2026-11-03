@@ -14,9 +14,15 @@ default:
 build:
     cargo build --workspace --locked
 
-# The tests of the whole workspace: the `atip` crate and the checker with its fake tool.
+# The tests of the whole workspace: the `atip` crate and the checker with its fake tool. The checker's family tests plant one
+# representative seeded violation per check.
 test:
     cargo test --workspace --locked
+
+# The checker's tests with every seeded violation planted, not one per check: slow (an hour of CPU); run it after a change to
+# a check's conditions or to the fake tool, and before a release.
+test-all-seeds:
+    ATIP_CHECK_ALL_SEEDS=1 cargo test -p atip-check --locked
 
 # Clippy over every target, warnings denied, and the visibility rule (no pub(super) / pub(in ..)).
 lint:

@@ -9,7 +9,7 @@
 
 use serde_json::{json, Map, Value};
 
-use super::{Case, Harness, Output};
+use super::{representatives, Case, Harness, Output};
 
 /// The L0 checks of a run and the L1 ones that apply to a 1.2 claim.
 pub const L0_CHECKS: usize = 28;
@@ -503,6 +503,12 @@ pub fn proves(cases: Vec<Case>, names: &[&str]) {
             "{name} has a seeded violation for each of its conditions"
         );
     }
+    // One representative per check, unless a condition is named with `ONLY` or `ATIP_CHECK_ALL_SEEDS=1` asks for every seed.
+    let cases = if only.is_empty() {
+        representatives(cases, |case| owner_of(case.condition))
+    } else {
+        cases
+    };
     let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = cases
         .into_iter()
         .map(|case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
@@ -611,14 +617,19 @@ pub fn covers(cases: Vec<Case>, checks: &[&str], exempt: &[&str]) {
         "planted, never judged by a conforming run, and not named as exempt: {unjudged:?}"
     );
     let mut seen: BTreeSet<String> = BTreeSet::new();
-    let firsts: Vec<(Case, bool)> = cases
-        .into_iter()
-        .filter(|case| checks.contains(&case.condition.split('/').next().unwrap_or_default()))
-        .map(|case| {
-            let first = seen.insert(owner_of(case.condition));
-            (case, first)
-        })
-        .collect();
+    let firsts: Vec<(Case, bool)> = representatives(
+        cases
+            .into_iter()
+            .filter(|case| checks.contains(&case.condition.split('/').next().unwrap_or_default()))
+            .collect(),
+        |case| owner_of(case.condition),
+    )
+    .into_iter()
+    .map(|case| {
+        let first = seen.insert(owner_of(case.condition));
+        (case, first)
+    })
+    .collect();
     let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = firsts
         .into_iter()
         .map(
