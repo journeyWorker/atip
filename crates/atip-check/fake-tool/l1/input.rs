@@ -5,6 +5,10 @@
 //! A single document is converted to the argv that says the same (spec 11.9) and the ordinary handler of the command runs it; a
 //! batch is executed item by item by [`super::run::execute_batch`]. The seeded violations are members of the configuration; each
 //! names the rule it breaks where it acts.
+//!
+//! From 1.4 a document that gives `[]` for a repeatable option says "none" (spec 9.9.2 as of 1.4.2: the empty array is read as none or refused
+//! with `INPUT_INVALID` and the pointer `/<key>`, either conforms); below 1.4 the tool refuses it. Seeded (1.4 only): `emptyArrayRefused`
+//! refuses it with `INPUT_INVALID`, `field` `/<key>`; the answer a checker observes then is the other of the two.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{IsTerminal, Read};
@@ -311,7 +315,7 @@ fn fragment_problems(
         }
         let ok = match value {
             Value::Array(items) if arg.repeatable && arg.value_type != "count" => {
-                !items.is_empty()
+                (!items.is_empty() || (tool.is_1_4() && !tool.flag("emptyArrayRefused")))
                     && items
                         .iter()
                         .all(|item| !item.is_null() && element_ok(tool, arg, item))

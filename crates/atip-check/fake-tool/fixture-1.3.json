@@ -1,0 +1,26 @@
+{
+  "setup": [["init"]],
+  "timeoutSeconds": 20,
+  "probe": "status",
+  "contractVersion": "1.3",
+  "globalOptions": [["--repo", "."]],
+  "registry": [
+    {"code": "COMMAND_REQUIRED", "exit": 2, "retryable": false},
+    {"code": "CURSOR_INVALID", "exit": 2, "retryable": false},
+    {"code": "INPUT_INVALID", "exit": 2, "reasons": ["NOT_JSON", "UNKNOWN_KEY"], "retryable": false},
+    {"code": "INTERNAL", "exit": 1, "retryable": false},
+    {"code": "STATE_FAILED", "exit": 1, "retryable": false},
+    {"code": "UNKNOWN_COMMAND", "exit": 2, "retryable": false},
+    {"code": "USAGE", "exit": 2, "retryable": false}
+  ],
+  "warnings": ["STALE_VIEW"],
+  "commands": {
+    "items": {"ok": [["items", "--json"]]},
+    "touch": {
+      "missingValue": [["touch", "--json"]],
+      "refused": [["touch", "--input", "nope", "--json"]]
+    },
+    "team add": {"ok": [["team", "add", "--json"]]},
+    "reject": {"refused": [["reject", "--json"]]}
+  }
+}

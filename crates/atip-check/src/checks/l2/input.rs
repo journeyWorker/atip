@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 
 use serde_json::Value;
 
+use super::super::documents;
 use super::super::l1_plan::refusal_of;
 use super::super::{
     exit_text, must, should, Conditions, End, Entry, Finding, Judge, Need::Commands,
@@ -392,6 +393,14 @@ impl<'a> Judge<'a> {
                         format!("{}: {} has {found} entries in details, one for each of the {count} problems of the document", command.command, run.label)
                     });
                 }
+            }
+            // The empty array of a repeatable option (condition `empty-array`, a claim of 1.4): a tool reads it as none or refuses it, and both conform (spec 9.9.2); the check says which.
+            for (key, call) in &command.empty_arrays {
+                c.own(*call);
+                c.recommends("empty-array", true, String::new);
+                let answer = documents::empty_array_answer(key, self.envelope(*call));
+                c.notes
+                    .push(format!("{}: {}", command.command, answer.note(key)));
             }
         }
         if commands.is_empty() {

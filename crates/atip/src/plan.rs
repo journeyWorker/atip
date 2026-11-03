@@ -22,12 +22,13 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::condition::Condition;
 use crate::constraint::Rule;
-use crate::error::{CliError, CodeInfo};
+use crate::error::{CliError, CodeInfo, EXIT_REFUSED};
 use crate::given::{write_argv, Given};
 use crate::jcs;
 use crate::minor::Minor;
-use crate::reserved::reserved_code;
+use crate::reserved::{reserved_code, reserved_error};
 
 /// The option that makes a destructive command act.
 pub const COMMIT: &str = "commit";
@@ -342,8 +343,10 @@ pub fn gate(mode: &Mode, current: &str, preview: Next) -> Result<bool, Stale> {
     }
 }
 
-/// A commit that stopped after some of its effects because the plan changed (spec 12.7, 8.3.2): `STOPPED_MIDWAY` (exit 1, not
-/// retryable) with the reason `PLAN_STALE`, and a `meta.next` that leads with the command that reads what was done.
+/// A commit that stopped after some of its effects because the plan changed (spec 12.7, 8.3.2). In a document that declares 1.2
+/// it is `STOPPED_MIDWAY` (exit 1, not retryable) with the reason `PLAN_STALE` ([`stopped_by_stale`]); from 1.3 it is the tool's
+/// own `<SUBJECT>_INCOMPLETE` code with the refused code as `reason` ([`stopped_part_way`]). Either way `meta.next` leads with
+/// the command that reads what was done.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stopped {
     pub error: CliError,
@@ -367,23 +370,70 @@ pub fn stopped_by_stale(done: usize, of: usize, what_was_done: Next) -> Stopped 
     }
 }
 
+/// A command that works in steps and, after a step made effects, met a situation it refuses before its work, for a tool that
+/// declares 1.3 or later (spec 8.3.2): the tool's own `<SUBJECT>_INCOMPLETE` code (`incomplete`, its row: the exit and the
+/// retryability are the row's), `reason` the refused code alone (`refused`, a code of the tool or a core code of exit 2, and
+/// one of the reasons registered under `incomplete`), and a `meta.next` that leads with `what_was_done`, the command that reads
+/// what was done. `message` says what stopped and what was left.
+///
+/// # Panics
+/// When `incomplete` is not a row whose code is `<SUBJECT>_INCOMPLETE`, when `refused` is not one of its registered reasons or
+/// is a core code that exits 1: the tool's table is wrong, which its tests catch.
+pub fn stopped_part_way(
+    incomplete: &'static CodeInfo,
+    refused: &'static str,
+    message: impl Into<String>,
+    what_was_done: Next,
+) -> Stopped {
+    assert!(
+        Condition::of_code(incomplete.code)
+            .is_some_and(|(_, condition)| condition == Condition::Incomplete),
+        "{} is not a <SUBJECT>_INCOMPLETE code (spec 8.3.2)",
+        incomplete.code
+    );
+    assert!(
+        incomplete.find_reason(refused).is_some(),
+        "{refused} is not a reason registered under {} (spec 8.3.2)",
+        incomplete.code
+    );
+    assert!(
+        reserved_code(refused, Minor::LATEST).is_none_or(|reserved| reserved.exit == EXIT_REFUSED),
+        "{refused} is a core code of exit 1, not a refusal (spec 8.3.2)"
+    );
+    let error = CliError::from_row(incomplete.code, message, Some(incomplete))
+        .reason(refused)
+        .hint(format!(
+            "read what was done with `{}` before running anything again",
+            what_was_done.command
+        ));
+    Stopped {
+        error,
+        next: vec![what_was_done],
+    }
+}
+
+/// The stop of a commit that met a changed plan after `done` effects of `of` were made, for a tool that declares 1.3 or later:
+/// [`stopped_part_way`] with the core code `PLAN_STALE` as the reason (spec 12.7). `what_was_done` is the command that reads
+/// the effects made; repeating the commit blindly could repeat the steps that ran, so it is not what the `next` leads with.
+///
+/// # Panics
+/// As [`stopped_part_way`]: `incomplete` must list `PLAN_STALE` among its reasons.
+pub fn stopped_by_changed_plan(
+    incomplete: &'static CodeInfo,
+    done: usize,
+    of: usize,
+    what_was_done: Next,
+) -> Stopped {
+    stopped_part_way(
+        incomplete,
+        "PLAN_STALE",
+        format!("the plan changed after {done} of {of} effects were made; the effects already made were not undone"),
+        what_was_done,
+    )
+}
+
 /// The `reason` of the `STOPPED_MIDWAY` error a changed plan gives: the name of the exit-2 code, `PLAN_STALE` (spec 8.3.2).
 pub const STOPPED_MIDWAY_REASON: &str = "PLAN_STALE";
-
-/// An error of the reserved code `name`, with the exit and retryability the contract gives it (spec 7.2.1): a code's row, not a
-/// call site, chooses them (spec 7.3.2).
-fn reserved_error(name: &'static str, message: String) -> CliError {
-    let reserved = reserved_code(name, Minor::LATEST).expect("a reserved code");
-    let row = CodeInfo {
-        code: reserved.name,
-        meaning: "",
-        exit: reserved.exit,
-        retryable: reserved.retryable,
-        fix: "",
-        reasons: &[],
-    };
-    CliError::from_row(reserved.name, message, Some(&row))
-}
 
 #[cfg(test)]
 mod tests {

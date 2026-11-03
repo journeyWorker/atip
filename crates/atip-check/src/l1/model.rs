@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Map, Value};
 
+use super::view::ViewNotes;
 use crate::schema::schemas;
 
 /// The `#/schemas/<Name>` form of a reference (spec 10.9.2): the name, when it has that form.
@@ -33,7 +34,7 @@ pub fn camel(kebab: &str) -> String {
     out
 }
 
-fn text(value: &Value, key: &str) -> String {
+pub(crate) fn text(value: &Value, key: &str) -> String {
     value
         .get(key)
         .and_then(Value::as_str)
@@ -41,11 +42,11 @@ fn text(value: &Value, key: &str) -> String {
         .to_string()
 }
 
-fn flag(value: &Value, key: &str) -> bool {
+pub(crate) fn flag(value: &Value, key: &str) -> bool {
     value.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
-fn words(value: &Value, key: &str) -> Vec<String> {
+pub(crate) fn words(value: &Value, key: &str) -> Vec<String> {
     value
         .get(key)
         .and_then(Value::as_array)
@@ -260,8 +261,11 @@ pub struct CommandDoc {
     pub examples: Vec<String>,
     /// `schemas`: every JSON Schema the command's refs name, by name.
     pub schemas: Map<String, Value>,
-    /// The whole `data` the document was read from.
+    /// The whole `data` the document was read from: for a 1.4 document, what the tool listed, not the view.
     pub raw: Value,
+    /// How a 1.4 document's names were read and what its `--schemas` answer held; `Some` for a document built by
+    /// [`command_view`](super::view::command_view), whose other members are then the full view of the command.
+    pub v14: Option<Box<ViewNotes>>,
 }
 
 impl CommandDoc {
@@ -317,6 +321,7 @@ impl CommandDoc {
                 .cloned()
                 .unwrap_or_default(),
             raw: data.clone(),
+            v14: None,
         })
     }
 
@@ -378,7 +383,9 @@ pub fn escape_pointer(token: &str) -> String {
     token.replace('~', "~0").replace('/', "~1")
 }
 
-/// One entry of a `tree` or `group` answer (spec 10.3.1).
+/// One entry of a `tree` or `group` answer (spec 9.3). A 1.4 entry has no `path` and no `kind` for a command: the words
+/// of `command` are its path and an absent `kind` is `command`; a document before 1.4 carries both (a missing one is
+/// `L1.tree`'s to report, and reads here as the same).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeEntry {
     pub command: String,
@@ -394,16 +401,35 @@ impl TreeEntry {
     }
 
     fn parse(value: &Value) -> Self {
+        let command = text(value, "command");
+        let path = if value.get("path").is_some() {
+            words(value, "path")
+        } else {
+            path_of(&command)
+        };
         Self {
-            command: text(value, "command"),
-            path: words(value, "path"),
-            kind: text(value, "kind"),
+            path,
+            command,
+            kind: value
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("command")
+                .to_string(),
             effect: value
                 .get("effect")
                 .and_then(Value::as_str)
                 .map(str::to_string),
         }
     }
+}
+
+/// The words of a command id.
+fn path_of(command: &str) -> Vec<String> {
+    command
+        .split(' ')
+        .filter(|word| !word.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// The `data` of a `tree` answer.
@@ -444,14 +470,21 @@ pub struct GroupDoc {
 
 impl GroupDoc {
     pub fn parse(data: &Value) -> Option<Self> {
-        (data.get("kind").and_then(Value::as_str) == Some("group")).then(|| Self {
-            command: text(data, "command"),
-            path: words(data, "path"),
-            commands: data
-                .get("commands")
-                .and_then(Value::as_array)
-                .map(|list| list.iter().map(TreeEntry::parse).collect())
-                .unwrap_or_default(),
+        (data.get("kind").and_then(Value::as_str) == Some("group")).then(|| {
+            let command = text(data, "command");
+            Self {
+                path: if data.get("path").is_some() {
+                    words(data, "path")
+                } else {
+                    path_of(&command)
+                },
+                command,
+                commands: data
+                    .get("commands")
+                    .and_then(Value::as_array)
+                    .map(|list| list.iter().map(TreeEntry::parse).collect())
+                    .unwrap_or_default(),
+            }
         })
     }
 }
@@ -462,6 +495,9 @@ pub struct ToolDocs {
     /// `meta.tool` of the answers.
     pub tool: String,
     pub tree: Option<Tree>,
+    /// The `options` of the tree answer, the options commands share (spec 9.3), as the tree lists them: empty when it has none (only the
+    /// 1.4 view reads them). The 1.4 view of a command reads them ([`ToolDocs::assemble`]).
+    pub tree_options: Vec<Value>,
     /// The command documents by command id.
     pub commands: BTreeMap<String, CommandDoc>,
     /// The group documents by command id.

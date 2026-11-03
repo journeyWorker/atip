@@ -3,6 +3,11 @@
 //! The checks of a run call these on every document the run saw, and the tests of the contract's examples call them on a
 //! file, so one implementation judges both (as [`super::rules`] does for L0). Each function returns one
 //! `(condition, problem)` pair per condition judged, `None` when it holds.
+//!
+//! The rows of a 1.3 or 1.4 claim are here too: `L1.code-names` ([`code_names_findings`]), the 1.3 half of `L1.warnings`
+//! ([`emitted_warnings_findings`]), `L1.schemas` ([`schemas_answer_findings`], [`schemas_refusal_findings`]), `L1.help-json`
+//! ([`help_json_findings`]) and the probe of the empty array of a repeatable option ([`empty_array_answer`]). What they read of
+//! a 1.4 command is its full view (`crate::l1::view`), which the rules of this module read as they read any command document.
 
 use std::collections::BTreeSet;
 
@@ -14,6 +19,12 @@ use crate::l1::model::CommandDoc;
 use crate::l1::project;
 use crate::l1::regex;
 use crate::schema::schemas;
+
+mod help_json;
+mod schemas_answer;
+
+pub use help_json::{help_json_findings, Answer, HelpJsonAnswers};
+pub use schemas_answer::{schemas_answer_findings, schemas_refusal_findings};
 
 /// One condition judged: its id, and what is wrong when something is.
 pub type Finding = (&'static str, Option<String>);
@@ -143,6 +154,93 @@ pub fn warnings_findings(entries: &[Value]) -> Vec<Finding> {
             )
         }),
     )]
+}
+
+/// `L1.warnings`, for a claim of 1.3 or later (spec 7.5.2): every warning code a run emitted (`emitted`) is in the warning
+/// registry (`registry`, the entries of `schema --warnings`; `None` when the tool offers none). A code that only the error
+/// registry has fails, and so does a tool that emits a warning without offering `schema --warnings`; whether a code of the error
+/// registry is also reported as an error is not mechanical. A claim below 1.3 registers its warning codes in either registry
+/// (`L0.registry`) and has nothing here. The condition is `emitted-in-warning-registry`.
+pub fn emitted_warnings_findings(
+    claim: Claim,
+    emitted: &[String],
+    registry: Option<&[Value]>,
+) -> Vec<Finding> {
+    if !claim.declares_1_3() {
+        return Vec::new();
+    }
+    let mut codes: Vec<&str> = emitted.iter().map(String::as_str).collect();
+    codes.sort_unstable();
+    codes.dedup();
+    let problem = match registry {
+        None => (!codes.is_empty()).then(|| {
+            format!(
+                "the tool emitted the warning {} but offers no `schema --warnings`, where a {} tool registers its warning codes (spec 7.5.2)",
+                codes.join(", "),
+                claim.as_str()
+            )
+        }),
+        Some(entries) => {
+            let unregistered: Vec<&str> = codes
+                .iter()
+                .copied()
+                .filter(|code| !entries.iter().any(|entry| code_of(entry) == *code))
+                .collect();
+            (!unregistered.is_empty()).then(|| {
+                format!(
+                    "the tool emitted the warning {}, which the warning registry does not list: a {} tool registers its warning codes there, not in the error registry (spec 7.5.2)",
+                    unregistered.join(", "),
+                    claim.as_str()
+                )
+            })
+        }
+    };
+    vec![("emitted-in-warning-registry", problem)]
+}
+
+/// `L1.code-names`, for the entries of an `errors` answer of a document that declares `minor` (1.3 or later; empty below): every
+/// code is a core code (spec 7.3.1, judged by `L1.registry`) or follows `<SUBJECT>_<CONDITION>` with one of the fifteen
+/// conditions (`grammar`), at its condition's exit (`exit`) and retryability (`retryable`; a `FAILED`, `INCOMPLETE` or `TIMEOUT`
+/// code may be either). The grammar and the table of conditions are the `atip` crate's (`atip::code_name_problem`): the cause
+/// of its problem is read by giving it the one value that is right, so that what is left is the other. `STOPPED_MIDWAY` ends in no
+/// condition, and fails `grammar` in a 1.3 or later document.
+pub fn code_names_findings(entries: &[Value], minor: atip::Minor) -> Vec<Finding> {
+    if !minor.at_least(atip::Minor::V1_3) {
+        return Vec::new();
+    }
+    let mut grammar: Vec<String> = Vec::new();
+    let mut exits: Vec<String> = Vec::new();
+    let mut retryables: Vec<String> = Vec::new();
+    for entry in entries {
+        let code = code_of(entry);
+        if atip::reserved_code(code, minor).is_some() {
+            continue;
+        }
+        let exit = entry.get("exit").and_then(Value::as_i64);
+        let retryable = entry.get("retryable").and_then(Value::as_bool);
+        let Some((_, condition)) = atip::Condition::of_code(code) else {
+            grammar.extend(atip::code_name_problem(minor, code, exit, retryable));
+            continue;
+        };
+        exits.extend(atip::code_name_problem(
+            minor,
+            code,
+            exit,
+            Some(condition.retryable()),
+        ));
+        retryables.extend(atip::code_name_problem(
+            minor,
+            code,
+            Some(i64::from(condition.exit())),
+            retryable,
+        ));
+    }
+    let report = |problems: &[String]| (!problems.is_empty()).then(|| join(problems));
+    vec![
+        ("grammar", report(&grammar)),
+        ("exit", report(&exits)),
+        ("retryable", report(&retryables)),
+    ]
 }
 
 /// `UPPER_SNAKE_CASE` as the registry writes reasons and codes.
@@ -432,6 +530,11 @@ fn neutralise_grammar(data: &mut Value) {
             continue;
         };
         for (at, arg) in list.iter_mut().enumerate() {
+            // Since 1.4 an entry of `options` may be the name of a tree option or of a reserved option (spec 9.5).
+            if let Some(name) = arg.as_str() {
+                *arg = Value::String(kebab_for(name, at));
+                continue;
+            }
             let Some(object) = arg.as_object_mut() else {
                 continue;
             };
@@ -696,7 +799,7 @@ pub fn reserved_applicable_findings(doc: &CommandDoc) -> Vec<Finding> {
         ),
         ("cursor-code", doc.has_option("cursor"), &["CURSOR_INVALID"]),
     ];
-    features
+    let mut findings: Vec<Finding> = features
         .into_iter()
         .map(|(condition, offered, codes)| {
             let missing = if offered { lists(codes) } else { Vec::new() };
@@ -712,7 +815,88 @@ pub fn reserved_applicable_findings(doc: &CommandDoc) -> Vec<Finding> {
                 }),
             )
         })
-        .collect()
+        .collect();
+    // A 1.4 document does not list what it implies (spec 9.5): the implied reserved options and the implied codes it lists are
+    // what these two conditions report; the view (`command_view`) adds both to the document it is read as.
+    if let Some(notes) = &doc.v14 {
+        findings.push((
+            "implied-option",
+            (!notes.implied_options_listed.is_empty()).then(|| {
+                format!(
+                    "{} lists {}, which its document implies (spec 9.5, Annex S2 rule 4)",
+                    doc.command,
+                    notes
+                        .implied_options_listed
+                        .iter()
+                        .map(|name| format!("--{name}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }),
+        ));
+        findings.push((
+            "implied-code",
+            (!notes.implied_codes_listed.is_empty()).then(|| {
+                format!(
+                    "{} lists {} in errors, which its document implies (spec 9.5, Annex S2 rule 4)",
+                    doc.command,
+                    notes.implied_codes_listed.join(", ")
+                )
+            }),
+        ));
+    }
+    findings
+}
+
+/// What a 1.4 tool answered to `--input '{"<key>":[]}'`, the empty array of a repeatable option (spec 9.7.2, 9.9.2, 1.4.2): the
+/// schema derived for `Input` says neither, so both answers conform and the probe never fails a tool; it reports which one it saw.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EmptyArray {
+    /// The document was accepted: the empty array reads as "none".
+    ReadAsNone,
+    /// Refused with `INPUT_INVALID` and `field` the pointer `/<key>`.
+    Refused,
+    /// Anything else (a refusal with another code or field, no document): what was seen, for the note.
+    Other(String),
+}
+
+impl EmptyArray {
+    /// The note of `L2.input-refusals` (condition `empty-array`): what the tool did with `{"<key>":[]}`.
+    pub fn note(&self, key: &str) -> String {
+        match self {
+            Self::ReadAsNone => {
+                format!("`{{\"{key}\":[]}}` was accepted: the tool reads the empty array as none")
+            }
+            Self::Refused => format!(
+                "`{{\"{key}\":[]}}` was refused with INPUT_INVALID at /{key}: the tool does not read an empty array as none"
+            ),
+            Self::Other(seen) => format!("`{{\"{key}\":[]}}` was answered with {seen}"),
+        }
+    }
+}
+
+/// The answer to `--input '{"<key>":[]}'` read from its envelope (`None`: the call printed no document). Neither reading fails
+/// the tool; the condition `empty-array` of `L2.input-refusals` is a note.
+pub fn empty_array_answer(key: &str, document: Option<&Value>) -> EmptyArray {
+    let Some(document) = document else {
+        return EmptyArray::Other("no JSON document".to_string());
+    };
+    if document.get("ok") == Some(&Value::Bool(true)) {
+        return EmptyArray::ReadAsNone;
+    }
+    let code = document
+        .pointer("/error/code")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let field = document.pointer("/error/field").and_then(Value::as_str);
+    if code == "INPUT_INVALID" && field == Some(&format!("/{key}")) {
+        EmptyArray::Refused
+    } else {
+        EmptyArray::Other(format!(
+            "{code} with field {}",
+            field.map_or("none".to_string(), str::to_string)
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -757,5 +941,69 @@ mod tests {
             problems(reasons_findings(&reasons)),
             ["reason-form", "reasons-unique", "no-exit-on-reason"]
         );
+    }
+
+    #[test]
+    fn atip_check14_15_code_names_are_judged_from_1_3_by_grammar_exit_and_retryability() {
+        use super::code_names_findings;
+        let entry = |code: &str, exit: i64, retryable: bool| json!({"code": code, "exit": exit, "retryable": retryable});
+        let good = vec![
+            entry("USAGE", 2, false),
+            entry("FINDING_NOT_FOUND", 2, false),
+            entry("STORE_UNAVAILABLE", 2, true),
+            entry("DEPLOYMENT_TIMEOUT", 1, true),
+            entry("DEPLOYMENT_INCOMPLETE", 1, false),
+            entry("BUILD_FAILED", 1, true),
+        ];
+        assert!(problems(code_names_findings(&good, Minor::V1_3)).is_empty());
+        assert_eq!(code_names_findings(&good, Minor::V1_4).len(), 3);
+        assert!(
+            code_names_findings(&good, Minor::V1_2).is_empty(),
+            "below 1.3 a tool's codes are its own"
+        );
+        for (bad, condition) in [
+            (entry("PROMOTE_REFUSED", 2, false), "grammar"),
+            (entry("STOPPED_MIDWAY", 1, false), "grammar"),
+            (entry("FINDING_NOT_FOUND", 1, false), "exit"),
+            (entry("TAG_INCOMPLETE", 2, false), "exit"),
+            (entry("STORE_UNAVAILABLE", 2, false), "retryable"),
+            (entry("TAG_INVALID", 2, true), "retryable"),
+        ] {
+            assert_eq!(
+                problems(code_names_findings(std::slice::from_ref(&bad), Minor::V1_4)),
+                [condition],
+                "{bad}"
+            );
+        }
+        // `STOPPED_MIDWAY` is a core code in a 1.2 document only: `L1.registry` judges it there, and not at 1.3.
+        let stopped = vec![entry("STOPPED_MIDWAY", 2, false)];
+        assert_eq!(
+            problems(registry_findings(&stopped, Minor::V1_2)),
+            ["reserved-exit"]
+        );
+        assert!(problems(registry_findings(&stopped, Minor::V1_3)).is_empty());
+    }
+
+    #[test]
+    fn atip_check14_16_a_1_3_tool_registers_its_warning_codes_in_the_warning_registry() {
+        use super::emitted_warnings_findings;
+        use crate::claim::Claim;
+        let registry = vec![json!({"code": "MEMBER_ARCHIVED"})];
+        let emitted = vec!["MEMBER_ARCHIVED".to_string(), "OTHER".to_string()];
+        let findings = emitted_warnings_findings(Claim::V1_3, &emitted, Some(&registry));
+        assert_eq!(problems(findings), ["emitted-in-warning-registry"]);
+        assert!(problems(emitted_warnings_findings(
+            Claim::V1_3,
+            &emitted[..1],
+            Some(&registry)
+        ))
+        .is_empty());
+        assert_eq!(
+            problems(emitted_warnings_findings(Claim::V1_4, &emitted[..1], None)),
+            ["emitted-in-warning-registry"],
+            "a warning without `schema --warnings`"
+        );
+        assert!(problems(emitted_warnings_findings(Claim::V1_4, &[], None)).is_empty());
+        assert!(emitted_warnings_findings(Claim::V1_2, &emitted, None).is_empty());
     }
 }

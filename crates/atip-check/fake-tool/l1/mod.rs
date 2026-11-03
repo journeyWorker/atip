@@ -1,6 +1,6 @@
-//! The L1 part of the fake tool: a model of its commands (`spec`) from which the documents `schema` prints
-//! (`doc`), `--help` (`help`) and the enforcement at run time (`parse`) are all derived, the generic seeded patch
-//! of a printed document (`patch`), field selection (`project`) and the handlers (`run`).
+//! The L1 part of the fake tool: a model of its commands (`spec`) from which the printed documents `schema` prints
+//! (`doc`, and `v14` for a tool that claims 1.4), `--help` (`help`) and the enforcement at run time (`parse`) are all derived, the generic
+//! seeded patch of a printed document (`patch`), field selection (`project`) and the handlers (`run`).
 
 mod doc;
 mod guides;
@@ -13,10 +13,11 @@ mod project;
 mod run;
 mod safety;
 mod spec;
+mod v14;
 
 pub use doc::patched;
 pub use input::{prepare as prepare_input, Prepared};
-pub use run::{execute_batch, handle};
+pub use run::{execute_batch, handle, interface_refusal};
 pub use spec::{MAX_BATCH_ITEMS, MAX_INPUT_BYTES};
 
 /// The registry rows an L1 fake adds to the L0 ones: code, exit, meaning and fix (none is retryable). `{tool}`

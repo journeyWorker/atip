@@ -115,7 +115,7 @@ fn atip_check_89_a_fixture_call_refused_with_a_registered_precondition_code_make
         json!({"ok": [["items", "--json"]], "paged": [["items", "--json"]]});
     let output = harness.check(&fixture, true);
     assert_eq!(output.code, Some(1), "{}", output.stdout);
-    assert_eq!(output.envelope()["error"]["code"], "LEVEL_NOT_MET");
+    assert_eq!(output.envelope()["error"]["code"], "LEVEL_FAILED");
     assert!(
         with_result(&output, "fail").is_empty(),
         "{:?}",

@@ -648,7 +648,7 @@ pub struct Rules {
 }
 
 impl Rules {
-    /// The rules of a document that declares `minor`: 1.1 and 1.2 keep the same rules, 1.0 has no bracketed path, no map key and no map cut node.
+    /// The rules of a document that declares `minor`: 1.1 to 1.4 keep the same rules, 1.0 has no bracketed path, no map key and no map cut node.
     pub const fn at(minor: Minor) -> Self {
         Self {
             v11: minor.at_least(Minor::V1_1),
@@ -1432,7 +1432,7 @@ mod tests {
 
     #[test]
     fn atip_crate12_11_a_minor_the_crate_does_not_know_is_refused_never_read_as_the_nearest_one() {
-        for text in ["1.9", "1.3", "2.0", "", "1"] {
+        for text in ["1.9", "1.5", "2.0", "", "1"] {
             assert_eq!(
                 Rules::for_minor(text),
                 Err(UnknownMinor(text.to_string())),

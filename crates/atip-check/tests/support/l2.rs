@@ -37,6 +37,28 @@ pub fn l2_standard_config() -> Value {
     })
 }
 
+/// The configuration of the conforming L2 fake of the minor `claims` (`1.2`, `1.3` or `1.4`): the same tool under the name of that minor.
+pub fn l2_standard_config_of(claims: &str) -> Value {
+    let mut config = l2_standard_config();
+    config["claims"] = json!(claims);
+    config["binAlias"] = json!(format!(
+        "atip-fake-tool-claims{}-l2",
+        claims.replace('.', "")
+    ));
+    config
+}
+
+/// The configuration of the L2 fake of `claims` with the members of `extra` set.
+pub fn l2_config_of(claims: &str, extra: &Value) -> Value {
+    let mut config = l2_standard_config_of(claims);
+    if let (Some(config), Some(extra)) = (config.as_object_mut(), extra.as_object()) {
+        for (key, value) in extra {
+            config.insert(key.clone(), value.clone());
+        }
+    }
+    config
+}
+
 /// The standard configuration with the members of `extra` set.
 pub fn l2_config(extra: &Value) -> Value {
     let mut config = l2_standard_config();
@@ -105,7 +127,7 @@ impl Harness {
         let mut fixture = self.l1_fixture(config);
         fixture["commands"] = l2_commands();
         fixture["search"] = json!([{"query": "tag a member", "expect": "member tag"}, {"query": "remove old logs", "expect": "purge"}]);
-        fixture["contractVersion"] = json!("1.2");
+        fixture["contractVersion"] = json!(config["claims"].as_str().unwrap_or("1.2"));
         fixture
     }
 
@@ -517,9 +539,9 @@ pub fn prove_case(case: &Case) -> Result<Output, String> {
             case.condition
         ));
     }
-    if must && document["error"]["code"] != "LEVEL_NOT_MET" {
+    if must && document["error"]["code"] != "LEVEL_FAILED" {
         return Err(format!(
-            "{}: a MUST failure is LEVEL_NOT_MET",
+            "{}: a MUST failure is LEVEL_FAILED",
             case.condition
         ));
     }

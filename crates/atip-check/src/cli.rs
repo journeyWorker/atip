@@ -83,7 +83,7 @@ Options:
       --level <LEVEL>    The level the tool claims: L0, L1 or L2 (cumulative: L2 also runs the checks of L0 and L1). Defaults to the level of the tool's own `schema --json`, and to L0 when it has none
       --fixture <FILE>   The tool's fixture file: JSON with contractVersion, prepare, setup, env, timeoutSeconds, probe, globalOptions, registry, warnings, commands (and, in commands, ok, refused, paged, missingValue, fields, domainRejects, batchFailsAt, batchFailsFirst, preview, async and allowedEffects), search and notRun (the ids of commands that do not end on their own, such as a server: each runs once, up to its first JSON document, and is then signalled)
       --contract <MAJOR.MINOR>
-                         The contract minor the tool claims: 1.0, 1.1 or 1.2. Defaults to the fixture's contractVersion, and to 1.0
+                         The contract minor the tool claims: 1.0, 1.1, 1.2, 1.3 or 1.4. Defaults to the fixture's contractVersion, and to 1.0
       --deep             Run every check of the level, not only the interface checks (see Modes)
       --json             Print one JSON envelope on stdout instead of text
   -h, --help             Print help
@@ -100,12 +100,13 @@ Modes:
   default  The interface checks of the level: the envelope, the exit status, error codes and the registry, `next`, the shape of the `schema` document, one document in JSON mode, no prompt. About ten launches of the binary on one shared copy of the fixture state (the calls are read-only by construction). Its verdict reads `interface checks passed`, never that the level is met
   --deep   Every check of the level, each call in a fresh copy of the state: the declarations against the behaviour (walk, constraints, domains, validators, check order, paging, input, batch, effects, destructive, notRun), the grammar probes and the run on a terminal. Hundreds of launches at L1, about a thousand at L2
 
-Every MUST check run passing exits 0, a failed check exits 1 (LEVEL_NOT_MET), a refusal exits 2.";
+Every MUST check run passing exits 0, a failed check exits 1 (LEVEL_FAILED), a refusal exits 2.";
 
 /// Parses the arguments after the program name.
 pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
     let mut version = false;
     let mut help = false;
+    let json = atip::wants_json(args);
     let mut position = 0;
     let mut command_at = None;
     while let Some(arg) = args.get(position) {
@@ -128,7 +129,10 @@ pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
         }
         position += 1;
     }
-    if version {
+    // In JSON mode a command word is resolved first (spec 4.4.1): `--version nosuch --json` is `UNKNOWN_COMMAND`, and the refusal of
+    // `--version --json` is the run's to make.
+    let resolve_first = json && command_at.is_some();
+    if version && !resolve_first {
         return Ok(Command::Version);
     }
     let Some(command_at) = command_at else {
@@ -152,6 +156,9 @@ pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
         .expected(COMMANDS)
         .received(word.as_ref())
         .suggestions(close(&word, &COMMANDS)));
+    }
+    if version {
+        return Ok(Command::Version);
     }
     parse_check(&args[command_at + 1..])
 }

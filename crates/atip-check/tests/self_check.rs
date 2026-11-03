@@ -1,6 +1,6 @@
 //! The checker follows the contract it checks: `atip check` passes on `atip`.
 //!
-//! The fixture is `atip.fixture.json`: it claims 1.1, its `probe` is `check`, its `registry` and `warnings` are the checker's own
+//! The fixture is `atip.fixture.json`: it claims 1.4, its `probe` is `check`, its `registry` and `warnings` are the checker's own
 //! ([`atip_check::output::REGISTRY`] and [`atip_check::output::WARNINGS`]), and its `commands` are the refusals it can make, so the file
 //! is generated from the code and a test fails when the two differ.
 //! `ATIP_CHECK_BLESS_FIXTURE=1 cargo test -p atip-check --test self_check` rewrites it.
@@ -79,7 +79,7 @@ fn atip_check_37_atip_check_passes_on_atip_itself() {
     assert_eq!(text.code, Some(0), "{}{}", text.stdout, text.stderr);
     assert!(
         text.stdout.lines().last().expect("summary").starts_with(
-            "L0 met: 18 MUST passed, 0 MUST failed, 0 MUST unprovided, 6 not applicable"
+            "L0 met: 19 MUST passed, 0 MUST failed, 0 MUST unprovided, 6 not applicable"
         ),
         "{}",
         text.stdout
@@ -92,7 +92,7 @@ fn atip_check_37_atip_check_passes_on_atip_itself() {
     assert_eq!(document["data"]["passed"], true);
     let results = output.results();
     assert_eq!(results.len(), 29);
-    // atip's own answers carry no `meta.next` and no page, offer no `schema`, and name no USAGE without a field; it claims 1.1 and has
+    // atip's own answers carry no `meta.next` and no page, offer no `schema`, and name no USAGE without a field; it claims 1.4 (L0.compact is a MUST there) and has
     // no group: six checks do not apply and the other 22 pass.
     for (id, result) in &results {
         let expected = if [
@@ -111,4 +111,56 @@ fn atip_check_37_atip_check_passes_on_atip_itself() {
         };
         assert_eq!(result, expected, "{id}");
     }
+}
+
+#[test]
+fn atip_check14_60_atip_declares_1_4_so_json_mode_refuses_help_and_version_after_resolving_the_path(
+) {
+    let harness = Harness::new();
+    let (cwd, tmp) = (harness.path("cwd"), harness.path("tmp"));
+    std::fs::create_dir_all(&cwd).expect("cwd");
+    std::fs::create_dir_all(&tmp).expect("tmp");
+    let refused = |args: &[&str]| {
+        let output = support::atip_as_given(&cwd, &tmp, args);
+        assert_eq!(output.code, Some(2), "{args:?}: {}", output.stdout);
+        // One document and one newline (L0.compact judges the whitespace).
+        assert_eq!(output.stdout.matches('\n').count(), 1, "{}", output.stdout);
+        let document = output.envelope();
+        assert_eq!(document["meta"]["contractVersion"], "1.4");
+        document["error"].clone()
+    };
+    for (args, field, hint) in [
+        (&["--help", "--json"][..], "--help", "atip --help"),
+        (
+            &["check", "--help", "--json"][..],
+            "--help",
+            "atip check --help",
+        ),
+        (&["--version", "--json"][..], "--version", "atip --version"),
+        (&["-V", "--json"][..], "--version", "atip --version"),
+    ] {
+        let error = refused(args);
+        assert_eq!(
+            (
+                error["code"].as_str(),
+                error["field"].as_str(),
+                error["hint"].as_str()
+            ),
+            (Some("USAGE"), Some(field), Some(hint)),
+            "{args:?}"
+        );
+    }
+    for args in [
+        &["nosuch", "--help", "--json"][..],
+        &["nosuch", "--version", "--json"][..],
+        &["--version", "nosuch", "--json"][..],
+    ] {
+        assert_eq!(refused(args)["code"], "UNKNOWN_COMMAND", "{args:?}");
+    }
+    // Text mode is unchanged.
+    let version = support::atip_as_given(&cwd, &tmp, &["--version"]);
+    assert_eq!(
+        (version.code, version.stdout.starts_with("atip ")),
+        (Some(0), true)
+    );
 }

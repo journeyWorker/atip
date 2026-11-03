@@ -8,7 +8,7 @@
 use serde_json::Value;
 
 /// The minors this checker knows.
-pub const MINORS: [&str; 3] = ["1.0", "1.1", "1.2"];
+pub const MINORS: [&str; 5] = ["1.0", "1.1", "1.2", "1.3", "1.4"];
 
 /// The minor a tool claims.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +16,8 @@ pub enum Claim {
     V1_0,
     V1_1,
     V1_2,
+    V1_3,
+    V1_4,
 }
 
 impl Claim {
@@ -25,6 +27,8 @@ impl Claim {
             "1.0" => Some(Self::V1_0),
             "1.1" => Some(Self::V1_1),
             "1.2" => Some(Self::V1_2),
+            "1.3" => Some(Self::V1_3),
+            "1.4" => Some(Self::V1_4),
             _ => None,
         }
     }
@@ -34,12 +38,32 @@ impl Claim {
             Self::V1_0 => "1.0",
             Self::V1_1 => "1.1",
             Self::V1_2 => "1.2",
+            Self::V1_3 => "1.3",
+            Self::V1_4 => "1.4",
         }
     }
 
-    /// Whether the claim is `other` or a later minor: a 1.2 tool implements everything 1.1 and 1.0 do (spec 15.1).
+    /// Whether the claim is `other` or a later minor: a 1.4 tool implements everything 1.3, 1.2, 1.1 and 1.0 do (spec 15.1).
     pub fn at_least(self, other: Self) -> bool {
         self.rank() >= other.rank()
+    }
+
+    /// Whether the claim is exactly 1.2: the minor whose stricter rules 1.3 turned into recommendations (the order of the
+    /// stateless checks, the `field` of a constraint, the parts of the next-page rule; spec 15.7). The rows that tested
+    /// "1.2 or later" for those keep their meaning for 1.3 and 1.4 as a recommendation only.
+    pub fn is_1_2(self) -> bool {
+        self == Self::V1_2
+    }
+
+    /// Whether the claim is 1.3 or later: the code names of spec 7.2, the warning registry of 7.5.2, `--input` step 3.
+    pub fn declares_1_3(self) -> bool {
+        self.at_least(Self::V1_3)
+    }
+
+    /// Whether the claim is 1.4 or later: compact documents (5.1), the 1.4 form of the self-description (9), the
+    /// `--help --json` and `--version --json` refusals (4.4.1).
+    pub fn declares_1_4(self) -> bool {
+        self.at_least(Self::V1_4)
     }
 
     fn rank(self) -> u8 {
@@ -47,6 +71,8 @@ impl Claim {
             Self::V1_0 => 0,
             Self::V1_1 => 1,
             Self::V1_2 => 2,
+            Self::V1_3 => 3,
+            Self::V1_4 => 4,
         }
     }
 }
@@ -137,7 +163,7 @@ pub fn without_later_members(document: &Value) -> Value {
 pub fn for_envelope_schema(document: &Value, claim: Claim) -> Value {
     let mut copy = match claim {
         Claim::V1_0 => without_later_members(document),
-        Claim::V1_1 | Claim::V1_2 => document.clone(),
+        Claim::V1_1 | Claim::V1_2 | Claim::V1_3 | Claim::V1_4 => document.clone(),
     };
     for member in ["meta", "error"] {
         if let Some(value) = copy.get_mut(member) {
@@ -352,5 +378,45 @@ mod tests {
         ] {
             assert!(command_line_problem(bad).is_some(), "{bad}");
         }
+    }
+
+    #[test]
+    fn atip_check14_13_the_claim_knows_five_minors_and_what_each_adds() {
+        let claims = [
+            Claim::V1_0,
+            Claim::V1_1,
+            Claim::V1_2,
+            Claim::V1_3,
+            Claim::V1_4,
+        ];
+        assert_eq!(MINORS, ["1.0", "1.1", "1.2", "1.3", "1.4"]);
+        for (claim, minor) in claims.into_iter().zip(MINORS) {
+            assert_eq!(claim.as_str(), minor);
+            assert_eq!(Claim::parse(minor), Some(claim));
+        }
+        assert_eq!(Claim::parse("1.5"), None);
+        assert!(Claim::V1_4.at_least(Claim::V1_3) && !Claim::V1_3.at_least(Claim::V1_4));
+        assert!(
+            Claim::V1_3.at_least(Claim::V1_2),
+            "1.3 keeps what 1.2 binds, except what it relaxed"
+        );
+        let exactly_1_2: Vec<Claim> = claims.into_iter().filter(|claim| claim.is_1_2()).collect();
+        assert_eq!(exactly_1_2, [Claim::V1_2]);
+        let from_1_3: Vec<Claim> = claims
+            .into_iter()
+            .filter(|claim| claim.declares_1_3())
+            .collect();
+        assert_eq!(from_1_3, [Claim::V1_3, Claim::V1_4]);
+        let from_1_4: Vec<Claim> = claims
+            .into_iter()
+            .filter(|claim| claim.declares_1_4())
+            .collect();
+        assert_eq!(from_1_4, [Claim::V1_4]);
+        // A 1.3 or 1.4 document is read like a 1.2 one by the envelope schema.
+        let document = json!({"ok": true, "data": {}, "meta": {"contractVersion": "1.4"}});
+        assert_eq!(
+            for_envelope_schema(&document, Claim::V1_4)["meta"]["contract"],
+            "atip/1"
+        );
     }
 }

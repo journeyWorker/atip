@@ -249,7 +249,14 @@ impl<'a> Judge<'a> {
             judged = true;
             for name in ["commit", "plan-digest"] {
                 let option = doc.option(name);
-                c.holds("option-present", option.is_some(), || format!("{id} is destructive and has no --{name} option: spec 12.4 gives every destructive command --commit and --plan-digest"));
+                c.holds("option-present", option.is_some(), || {
+                    let listed = if self.claim.declares_1_4() {
+                        " (a 1.4 document lists them, as an object or as the reserved name: they are not implied, spec 9.5)"
+                    } else {
+                        ""
+                    };
+                    format!("{id} is destructive and has no --{name} option: spec 12.4 gives every destructive command --commit and --plan-digest{listed}")
+                });
                 if let Some(option) = option {
                     c.holds("option-flag-only", option.flag_only, || format!("{id}: --{name} is not `flagOnly`: a document must never carry it (spec 12.8)"));
                 }

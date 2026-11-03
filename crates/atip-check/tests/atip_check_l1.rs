@@ -195,9 +195,9 @@ fn proves(ids: &[&str]) {
                             case.condition
                         ));
                     }
-                    if must && document["error"]["code"] != "LEVEL_NOT_MET" {
+                    if must && document["error"]["code"] != "LEVEL_FAILED" {
                         return Err(format!(
-                            "{}: a MUST failure is LEVEL_NOT_MET",
+                            "{}: a MUST failure is LEVEL_FAILED",
                             case.condition
                         ));
                     }
@@ -647,7 +647,7 @@ fn atip_checkl1_18_paging_is_decided_by_the_command_documents_a_paged_entry_is_u
     );
     assert_eq!(
         (none.code, document["error"]["code"].as_str()),
-        (Some(1), Some("LEVEL_NOT_MET"))
+        (Some(1), Some("LEVEL_FAILED"))
     );
 }
 
@@ -695,7 +695,7 @@ fn atip_checkl1_21_a_fixture_without_the_entries_a_must_check_needs_makes_it_unp
     let document = output.envelope();
     assert_eq!(
         (output.code, document["error"]["code"].as_str()),
-        (Some(1), Some("LEVEL_NOT_MET")),
+        (Some(1), Some("LEVEL_FAILED")),
         "{}",
         output.stdout
     );

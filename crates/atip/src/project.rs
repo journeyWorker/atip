@@ -515,9 +515,10 @@ pub fn option_doc(
     })
 }
 
-/// The options no document can carry in a tool that declares `minor` (spec 11.6): `json`, `input`, `commit` and
-/// `plan-digest`, and since 1.2 `limit`, `cursor`, `all` and `fields` too. A tool adds its own flag-only options
-/// (canon's `repo` and `as`) to this set before it passes it to [`option_doc`]; the crate does not know their names.
+/// The options no document can carry in a tool that declares `minor` (spec 4.5): `json`, `input`, `commit` and
+/// `plan-digest`, and since 1.2 (so in 1.3 and 1.4 too) `limit`, `cursor`, `all` and `fields` too. A tool adds its own
+/// flag-only options (canon's `repo` and `as`) to this set before it passes it to [`option_doc`]; the crate does not know
+/// their names.
 pub const fn flag_only_options(minor: Minor) -> &'static [&'static str] {
     if minor.at_least(Minor::V1_2) {
         &[
@@ -600,9 +601,9 @@ pub fn camel_case(name: &str) -> String {
 }
 
 /// A JSON number as a string, per RFC 8259 section 6.
-const NUMBER_PATTERN: &str = "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$";
+pub(crate) const NUMBER_PATTERN: &str = "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$";
 /// A JSON integer as a string (spec 11.5).
-const INTEGER_PATTERN: &str = "^-?(0|[1-9][0-9]*)$";
+pub(crate) const INTEGER_PATTERN: &str = "^-?(0|[1-9][0-9]*)$";
 
 /// The encoded form one value of `value_type` takes in an `--input` document (spec 10.7.2, 11.5).
 fn encoded(value_type: ValueType, members: Option<&[String]>) -> Value {

@@ -48,6 +48,46 @@ pub fn null_problems(document: &Value) -> Vec<String> {
         .collect()
 }
 
+/// `L0.compact`, for a claim of 1.4 (spec 5.1): `text` is one document as the tool printed it, with its newline. Compact means
+/// no space, tab, carriage return or line feed outside a string, and then exactly one newline; the problem names the first
+/// offender. The text is tokenised, never compared with a re-serialisation, which would also rewrite what compactness leaves free:
+/// the spelling of a number (`60.0`) and the escapes of a string (`\u00e9`). Whether the text is JSON is `L0.one-document`'s: an
+/// unterminated string simply leaves the rest of the text inside it.
+pub fn compact_problem(text: &str) -> Option<String> {
+    let Some(document) = text.strip_suffix('\n') else {
+        return Some("the document is not followed by a newline (spec 5.1)".to_string());
+    };
+    let mut in_string = false;
+    let mut escaped = false;
+    for (at, c) in document.char_indices() {
+        if in_string {
+            match (escaped, c) {
+                (true, _) => escaped = false,
+                (false, '\\') => escaped = true,
+                (false, '"') => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        let name = match c {
+            '"' => {
+                in_string = true;
+                continue;
+            }
+            ' ' => "a space",
+            '\t' => "a tab",
+            '\r' => "a carriage return",
+            '\n' => "a line feed",
+            _ => continue,
+        };
+        let line = document[..at].matches('\n').count() + 1;
+        return Some(format!(
+            "{name} at byte {at} (line {line}) is outside a string: a 1.4 document is compact, and one newline ends it (spec 5.1)"
+        ));
+    }
+    None
+}
+
 /// One condition of `L0.contract-version` as judged on one document: its id and what is wrong, when something is.
 pub type Finding = (&'static str, Option<String>);
 
@@ -56,7 +96,7 @@ pub fn contract_version_findings(document: &Value, claim: Claim) -> Vec<Finding>
     let meta = |member: &str| document.pointer(&format!("/meta/{member}"));
     let mut findings: Vec<Finding> = Vec::new();
     match claim {
-        Claim::V1_1 | Claim::V1_2 => {
+        Claim::V1_1 | Claim::V1_2 | Claim::V1_3 | Claim::V1_4 => {
             let missing: Vec<&str> = ["contract", "contractVersion"]
                 .into_iter()
                 .filter(|member| meta(member).is_none())
@@ -697,5 +737,30 @@ mod tests {
             ),
             ["A"]
         );
+    }
+
+    #[test]
+    fn atip_check14_14_a_compact_document_has_no_whitespace_outside_strings_and_one_newline() {
+        use super::compact_problem;
+        for good in [
+            "{\"a\":1}\n",
+            "{\"a b\":\"x y\\\" z\",\"n\":60.0,\"e\":\"\\u00e9\"}\n",
+            "[]\n",
+            "\"\\\\\"\n",
+        ] {
+            assert_eq!(compact_problem(good), None, "{good:?}");
+        }
+        for (bad, what) in [
+            ("{\"a\": 1}\n", "a space"),
+            ("{\"a\":\t1}\n", "a tab"),
+            ("{\"a\":1}\r\n", "a carriage return"),
+            ("{\n\"a\":1}\n", "a line feed"),
+            ("{\"a\":1}\n\n", "a line feed"),
+            ("{\"a\":1}", "not followed by a newline"),
+            (" {\"a\":1}\n", "a space"),
+        ] {
+            let problem = compact_problem(bad).unwrap_or_default();
+            assert!(problem.contains(what), "{bad:?}: {problem}");
+        }
     }
 }

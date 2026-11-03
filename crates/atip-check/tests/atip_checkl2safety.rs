@@ -321,14 +321,14 @@ fn atip_checkl2safety_02_a_seed_of_each_row_planted_together_fails_its_own_row_w
         .unwrap_or_else(|why| panic!("{condition}: {why}"));
         assert_eq!(check_of(data, &owner)["strength"], "MUST", "{condition}");
     }
-    // A MUST failure is `LEVEL_NOT_MET`, exit 1, and the error names the failing checks.
+    // A MUST failure is `LEVEL_FAILED`, exit 1, and the error names the failing checks.
     assert_eq!(
         (output.code, document["ok"].as_bool()),
         (Some(1), Some(false)),
         "{}",
         output.stdout
     );
-    assert_eq!(document["error"]["code"], "LEVEL_NOT_MET");
+    assert_eq!(document["error"]["code"], "LEVEL_FAILED");
     let message = document["error"]["message"].as_str().unwrap_or_default();
     for row in SAFETY_ROWS {
         assert!(message.contains(row), "the error names {row}: {message}");

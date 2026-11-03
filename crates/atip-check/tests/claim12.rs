@@ -98,7 +98,7 @@ fn atip_check_100_two_claims_that_differ_or_a_minor_the_checker_does_not_know_ar
         .as_object_mut()
         .expect("object")
         .remove("contractVersion");
-    let output = harness.check_with(&without, true, &["--contract", "1.3"]);
+    let output = harness.check_with(&without, true, &["--contract", "1.5"]);
     let document = output.envelope();
     assert_eq!(
         (
@@ -110,11 +110,14 @@ fn atip_check_100_two_claims_that_differ_or_a_minor_the_checker_does_not_know_ar
         "{}",
         output.stdout
     );
-    assert_eq!(document["error"]["expected"], json!(["1.0", "1.1", "1.2"]));
+    assert_eq!(
+        document["error"]["expected"],
+        json!(["1.0", "1.1", "1.2", "1.3", "1.4"])
+    );
     assert!(!marker.exists());
     // A fixture that claims another minor is refused as a fixture.
     let mut other = fixture.clone();
-    other["contractVersion"] = json!("1.3");
+    other["contractVersion"] = json!("1.5");
     let output = harness.check(&other, true);
     assert_eq!(
         (output.code, output.envelope()["error"]["code"].as_str()),
@@ -168,7 +171,7 @@ fn atip_check_101_a_1_2_claim_whose_plain_answer_says_1_1_fails_l0_contract_vers
 }
 
 #[test]
-fn atip_check_102_the_checker_declares_1_2_and_passes_its_own_l0_checks_as_a_1_2_claim() {
+fn atip_check_102_the_checker_declares_1_4_and_passes_its_own_l0_checks_as_a_1_4_claim() {
     let harness = Harness::new();
     let (cwd, tmp) = (harness.path("cwd"), harness.path("tmp"));
     std::fs::create_dir_all(&cwd).expect("cwd");
@@ -184,19 +187,19 @@ fn atip_check_102_the_checker_declares_1_2_and_passes_its_own_l0_checks_as_a_1_2
         "--fixture",
         fixture,
         "--contract",
-        "1.2",
+        "1.4",
         "--json",
     ];
     let output = atip_in(&cwd, &tmp, &args);
     assert_eq!(output.code, Some(0), "{}{}", output.stdout, output.stderr);
     let document = output.envelope();
-    assert_eq!(document["meta"]["contractVersion"], "1.2");
-    assert_eq!(document["data"]["contractVersion"], "1.2");
+    assert_eq!(document["meta"]["contractVersion"], "1.4");
+    assert_eq!(document["data"]["contractVersion"], "1.4");
     assert_eq!(document["data"]["passed"], true);
     // The fixture is the one that declares it, and the checker run as a 1.1 claim is refused for the difference.
     let committed: Value =
         serde_json::from_str(&std::fs::read_to_string(fixture).expect("fixture")).expect("json");
-    assert_eq!(committed["contractVersion"], "1.2");
+    assert_eq!(committed["contractVersion"], "1.4");
     let mut other = args.to_vec();
     other[8] = "1.1";
     let refused = atip_in(&cwd, &tmp, &other);
@@ -209,7 +212,7 @@ fn atip_check_102_the_checker_declares_1_2_and_passes_its_own_l0_checks_as_a_1_2
     // The help and the messages say the three minors and name no list of two.
     let help = atip_in(&cwd, &tmp, &["check", "--help"]);
     let text = format!("{}{}", help.stdout, help.stderr);
-    assert!(text.contains("1.0, 1.1 or 1.2"), "{text}");
+    assert!(text.contains("1.0, 1.1, 1.2, 1.3 or 1.4"), "{text}");
     for old in ["1.0 or 1.1", "1.0 and 1.1", "1.0, 1.1\n"] {
         assert!(!text.contains(old), "{old:?} in {text}");
     }
@@ -346,6 +349,7 @@ fn atip_check_103_each_1_2_violation_fails_the_row_that_owns_it_and_no_other_row
         owners.iter().map(String::as_str).collect::<Vec<_>>(),
         [
             "L1.check-order",
+            "L1.constraints",
             "L1.fields",
             "L1.grammar",
             "L1.paging",
@@ -362,7 +366,12 @@ fn atip_check_103_each_1_2_violation_fails_the_row_that_owns_it_and_no_other_row
                     only_owner_fails(&output, &case)?;
                     let expected_exit = if matches!(
                         owner_of(&case).as_str(),
-                        "L1.paging" | "L1.check-order" | "L1.grammar" | "L1.registry" | "L1.fields"
+                        "L1.paging"
+                            | "L1.check-order"
+                            | "L1.constraints"
+                            | "L1.grammar"
+                            | "L1.registry"
+                            | "L1.fields"
                     ) {
                         Some(1)
                     } else {

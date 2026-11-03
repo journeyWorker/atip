@@ -7,11 +7,13 @@
 //! ([`CursorInvalid::expired`]).
 //!
 //! Which arguments bind is the contract's, by the minor a tool declares ([`Cursors`]): a tool that declares 1.1 binds to
-//! every explicit argument except `--limit`, `--cursor` and `--fields`; one that declares 1.2 binds to every explicit
+//! every explicit argument except `--limit`, `--cursor` and `--fields`; one that declares 1.2, 1.3 or 1.4 binds to every explicit
 //! argument except `--json`, `--limit`, `--all`, `--cursor` and `--fields`, counts an argument given with its default value
-//! as given, and binds the values an option's `env` variable supplied too, marked as environment. The binding is the
-//! SHA-256 of the RFC 8785 text ([`crate::jcs`]) of those arguments, so the same arguments give the same binding in every tool
-//! and however they were spelled. [`next_page_argv`] writes the call that continues a page from the explicit arguments.
+//! as given, and binds the values an option's `env` variable supplied too, marked as environment (from 1.3 whether a default
+//! given explicitly rebinds, and what the next-page entry carries, are recommendations, which the crate keeps following).
+//! The binding is the SHA-256 of the RFC 8785 text ([`crate::jcs`]) of those arguments, so the same arguments give the same
+//! binding in every tool and however they were spelled. [`next_page_argv`] writes the call that continues a page from the
+//! explicit arguments.
 //!
 //! The text of a cursor is the crate's to change between releases; a caller never reads it (spec 6.9), and a tool never
 //! parses one it did not get from [`Cursors::encode`].
@@ -38,7 +40,7 @@ const LEFT_OUT_12: [&str; 6] = ["json", "limit", "all", "cursor", "fields", "inp
 /// The cursors of a tool that declares one minor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cursors {
-    /// The minor whose binding rules apply: 1.1 for a tool that declares 1.0 or 1.1, else 1.2.
+    /// The minor whose binding rules apply: 1.1 for a tool that declares 1.0 or 1.1, else 1.2 (which 1.3 and 1.4 keep).
     rules: Minor,
 }
 
@@ -59,7 +61,8 @@ impl fmt::Display for Binding {
 }
 
 impl Cursors {
-    /// The cursors of a tool that declares `declared`. 1.0 has no rule of its own for cursors and follows 1.1's.
+    /// The cursors of a tool that declares `declared`. 1.0 has no rule of its own for cursors and follows 1.1's; 1.3 and 1.4
+    /// follow 1.2's.
     pub const fn new(declared: Minor) -> Self {
         Cursors {
             rules: if declared.at_least(Minor::V1_2) {
@@ -76,7 +79,7 @@ impl Cursors {
     }
 
     /// The binding of an invocation whose arguments are `given`: the explicit arguments the rules of the minor name, the
-    /// tool's flag-only options apart from them, and, for 1.2, the environment values. A switch that is `false`, a count of
+    /// tool's flag-only options apart from them, and, for 1.2 and later, the environment values. A switch that is `false`, a count of
     /// `0` and an empty list are not given (spec 10.7.2), and an argument given twice counts once, the last. An integer
     /// that is not within ±(2^53-1), or a number that is not an integer, is an error (see [`crate::jcs`]).
     pub fn binding(&self, given: &[Given]) -> Result<Binding, jcs::Error> {
@@ -518,7 +521,7 @@ mod tests {
 
     #[test]
     fn atip_cratecursor_04_an_unknown_minor_and_an_integer_a_digest_cannot_hold_are_refused() {
-        for text in ["1.3", "2.0", "1", "", "1.2.0"] {
+        for text in ["1.5", "2.0", "1", "", "1.2.0"] {
             assert_eq!(
                 Cursors::for_declared(text),
                 Err(UnknownMinor(text.to_string())),

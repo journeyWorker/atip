@@ -17,6 +17,20 @@
 //! are derived. The members of the configuration that seed an L1 violation are described where they act; the
 //! generic one is `docPatch`: a map from a document key (`<tree>`, a command or group id, `--errors`,
 //! `--error <CODE>`, `--warnings`, `--warning <CODE>`) to JSON-patch operations applied to the printed `data`.
+//!
+//! atip/1 1.3 and 1.4: `"claims": "1.3"` or `"1.4"` (or a binary named `...claims13...` / `...claims14...`) makes a conforming tool of that
+//! minor, at L0, L1 and (with `l2`) L2, with no knob set. From 1.3 its own codes follow `<SUBJECT>_<CONDITION>` (spec 7.2): `STATE_ODD` is
+//! `STATE_FAILED` and `ALREADY_SEALED` is `SEAL_EXISTS` in everything it prints and registers (the names of `extraCodes` and
+//! `retryableCodes` are renamed the same way, so a configuration written for 1.2 serves). From 1.4 it prints the 1.4 form of the
+//! self-description (`l1/v14.rs`), refuses `--help --json` and `--version --json` (`l1/run.rs`) and answers `schema <command> --schemas`.
+//! Seeded violations whose rule is acted on in this file (each breaks the one rule it names):
+//!
+//! * `indentedOutput`: every document is printed indented (spec 5.1; a violation from 1.4, an advisory at 1.3).
+//! * From 1.3, in the error registry: `promoteRefused` adds the code `PROMOTE_REFUSED`, which ends in no condition (7.2.1);
+//!   `codeWrongExit` adds `ITEM_NOT_FOUND` at exit 1 where `NOT_FOUND` is exit 2 (7.2.2); `codeWrongRetryable` adds `STORE_UNAVAILABLE`, not
+//!   retryable where `UNAVAILABLE` is (7.2.2); `warningOnlyInErrors` makes the probe's warning `VIEW_STALE`, a code the error registry has and
+//!   the warning registry has not (7.5.2). `stoppedMidway` keeps registering `STOPPED_MIDWAY`: a core code at 1.2, and a code that
+//!   ends in no condition from 1.3 (so a violation there).
 
 use std::io::{BufRead, IsTerminal, Read, Write};
 use std::process::ExitCode;
@@ -87,16 +101,27 @@ impl Tool {
         self.text("tool", "fake")
     }
 
-    /// The minor the tool claims (`"claims"`: `1.0`, `1.1` the default, or `1.2`). A copy of the tool whose name has `claims12` in it claims
-    /// 1.2 by default, so that the runs that get no configuration (`L1.no-state` runs in an empty directory) say what the configured ones say.
+    /// The minor the tool claims (`"claims"`: `1.0`, `1.1` the default, `1.2`, `1.3` or `1.4`). A copy of the tool whose name has `claims12`,
+    /// `claims13` or `claims14` in it claims that minor by default, so that the runs that get no configuration (`L1.no-state` runs in an empty
+    /// directory) say what the configured ones say.
     fn minor(&self) -> String {
         let alias = std::env::args().next().unwrap_or_default();
-        let default = if alias.contains("claims12") {
-            "1.2"
-        } else {
-            "1.1"
-        };
+        let default = [("12", "1.2"), ("13", "1.3"), ("14", "1.4")]
+            .iter()
+            .find(|(digits, _)| alias.contains(&format!("claims{digits}")))
+            .map_or("1.1", |(_, minor)| *minor);
         self.text("claims", default)
+    }
+
+    /// The claimed minor as a number: 0 for 1.0 to 4 for 1.4 (a spelling that is none of them reads as 1.1, as `is_1_1` does).
+    fn minor_rank(&self) -> u8 {
+        match self.minor().as_str() {
+            "1.0" => 0,
+            "1.2" => 2,
+            "1.3" => 3,
+            "1.4" => 4,
+            _ => 1,
+        }
     }
 
     /// Whether the tool claims 1.1 or later.
@@ -104,9 +129,32 @@ impl Tool {
         self.minor() != "1.0"
     }
 
-    /// Whether the tool claims 1.2.
+    /// Whether the tool claims 1.2 or later (1.3 and 1.4 keep the 1.2 rules of cursors, flag-only options and `--input`).
     fn is_1_2(&self) -> bool {
-        self.minor() == "1.2"
+        self.minor_rank() >= 2
+    }
+
+    /// Whether the tool claims 1.3 or later (the code names of spec 7.2, the warning registry only for warnings).
+    fn is_1_3(&self) -> bool {
+        self.minor_rank() >= 3
+    }
+
+    /// Whether the tool claims 1.4 (the compact self-description, `--schemas`, `--help --json` refused).
+    fn is_1_4(&self) -> bool {
+        self.minor_rank() >= 4
+    }
+
+    /// The name of one of the tool's own codes under the claim: from 1.3 a code is `<SUBJECT>_<CONDITION>` (spec 7.2), so the two codes of
+    /// this tool that predate the grammar are renamed.
+    fn own_code<'a>(&self, code: &'a str) -> &'a str {
+        if !self.is_1_3() {
+            return code;
+        }
+        match code {
+            "STATE_ODD" => "STATE_FAILED",
+            "ALREADY_SEALED" => "SEAL_EXISTS",
+            other => other,
+        }
     }
 
     fn commands(&self) -> Vec<&'static str> {
@@ -143,6 +191,11 @@ impl Tool {
     }
 
     fn registered_exit(code: &str) -> u8 {
+        let code = if code == "STATE_FAILED" {
+            "STATE_ODD"
+        } else {
+            code
+        };
         REGISTRY
             .iter()
             .find(|(name, _, _)| *name == code)
@@ -214,7 +267,7 @@ impl Tool {
     }
 
     fn print_document(&self, document: &Value) {
-        let text = if self.flag("pretty") {
+        let text = if self.flag("pretty") || self.flag("indentedOutput") {
             serde_json::to_string_pretty(document)
         } else {
             serde_json::to_string(document)
@@ -550,6 +603,8 @@ impl Tool {
         if !self.flag("noWarning") {
             let code = if self.flag("unregisteredWarning") {
                 "NOT_A_WARNING".to_string()
+            } else if self.is_1_3() && self.flag("warningOnlyInErrors") {
+                "VIEW_STALE".to_string()
             } else if self.is_1_1() {
                 WARNINGS[0].to_string()
             } else {
@@ -574,7 +629,7 @@ impl Tool {
     /// `status` when the environment changes its result: fails with the registered `STATE_ODD` and the same data.
     fn status_failure_in_ci(&self) -> ExitCode {
         let mut error = Map::new();
-        error.insert("code".into(), json!("STATE_ODD"));
+        error.insert("code".into(), json!(self.own_code("STATE_ODD")));
         error.insert("message".into(), json!("odd state"));
         error.insert("retryable".into(), json!(false));
         let document = json!({"ok": false, "error": error, "data": {"items": 0, "remote": self.remote_count(), "state": "ok"}, "meta": self.meta(Some("status"))});
@@ -838,7 +893,13 @@ impl Tool {
         {
             table.push((
                 row["code"].as_str().unwrap_or_default().to_string(),
-                row["exit"].as_i64().unwrap_or(2),
+                // `BUILD_FAILED` is a failure after the work began: from 1.3 its exit is the one of its condition `FAILED`, whatever a
+                // configuration written for 1.2 registers (`reservedExit` seeds another).
+                if self.is_1_3() && row["code"] == "BUILD_FAILED" {
+                    1
+                } else {
+                    row["exit"].as_i64().unwrap_or(2)
+                },
                 &[][..],
                 "m".to_string(),
                 "f".to_string(),
@@ -850,11 +911,33 @@ impl Tool {
                 row.0 = replacement.clone();
             }
         }
+        if self.is_1_3() {
+            // The seeded violations of the code-name rules (7.2): each adds one row that breaks the one rule it names.
+            for (knob, code, exit) in [
+                ("promoteRefused", "PROMOTE_REFUSED", 2),
+                ("codeWrongExit", "ITEM_NOT_FOUND", 1),
+                ("codeWrongRetryable", "STORE_UNAVAILABLE", 2),
+                ("warningOnlyInErrors", "VIEW_STALE", 2),
+            ] {
+                if self.flag(knob) {
+                    table.push((
+                        code.to_string(),
+                        exit,
+                        &[][..],
+                        "m".to_string(),
+                        "f".to_string(),
+                    ));
+                }
+            }
+            for row in &mut table {
+                row.0 = self.own_code(&row.0).to_string();
+            }
+        }
         table.sort_by(|left, right| left.0.cmp(&right.0));
         table
             .into_iter()
             .map(|(code, exit, reasons, meaning, fix)| {
-                let exit = if self.flag("schemaErrorsDrift") && code == "STATE_ODD" {
+                let exit = if self.flag("schemaErrorsDrift") && code == self.own_code("STATE_ODD") {
                     2
                 } else if code == "UNKNOWN_COMMAND" {
                     self.number("reservedUnknownCommandExit").map_or(exit, |exit| i64::try_from(exit).unwrap_or(2))
@@ -866,7 +949,7 @@ impl Tool {
                         .unwrap_or(exit)
                 };
                 let retryable = (code == "STOPPED_MIDWAY" && self.flag("stoppedMidwayRetryable"))
-                    || self.config.get("retryableCodes").and_then(Value::as_array).is_some_and(|codes| codes.iter().any(|retryable| retryable == &code));
+                    || self.config.get("retryableCodes").and_then(Value::as_array).is_some_and(|codes| codes.iter().any(|retryable| retryable.as_str().is_some_and(|name| self.own_code(name) == code)));
                 let mut row = json!({"code": code, "exit": exit, "retryable": retryable, "meaning": meaning, "fix": fix});
                 if self.is_1_1() && !reasons.is_empty() {
                     row["reasons"] = json!(reasons
@@ -897,7 +980,7 @@ impl Tool {
             rows.push(json!({"code": "EXTRA_WARNING", "meaning": "m", "fix": "f"}));
         }
         if self.flag("dualWarning") {
-            rows.push(json!({"code": "STATE_ODD", "meaning": "another meaning", "fix": "f"}));
+            rows.push(json!({"code": self.own_code("STATE_ODD"), "meaning": "another meaning", "fix": "f"}));
         }
         if self.flag("warningEntryInvalid") {
             rows[0]["exit"] = json!(1);
@@ -945,8 +1028,10 @@ fn main() -> ExitCode {
                     .map(|file| file.to_string_lossy().into_owned())
             })
             .unwrap_or_default();
-        if name.contains("claims12") {
-            config.insert("claims".to_string(), json!("1.2"));
+        for (digits, minor) in [("12", "1.2"), ("13", "1.3"), ("14", "1.4")] {
+            if name.contains(&format!("claims{digits}")) {
+                config.insert("claims".to_string(), json!(minor));
+            }
         }
         // An L2 tool answers `skills show` in an empty directory with a minimal environment, which has no configuration to read.
         if name.contains("-l2") {
@@ -1152,6 +1237,12 @@ fn die_by_signal() {
 }
 
 fn run(tool: &Tool, args: &[String]) -> ExitCode {
+    // From 1.4 `--help` and `--version` with `--json` are refused, whatever else the call says (spec 4.4.1).
+    if tool.is_1_4() && tool.json {
+        if let Some(code) = l1::interface_refusal(tool, args) {
+            return code;
+        }
+    }
     // An L2 tool reads `--input` first (spec 11.7): a refusal, a batch, or the argv that says what the document and argv say.
     let synthesized: Vec<String>;
     let args: &[String] = if tool.flag("l2") {
