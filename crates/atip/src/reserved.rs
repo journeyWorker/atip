@@ -8,7 +8,29 @@
 //! document judged.
 
 use crate::condition::Condition;
+use crate::error::{CliError, CodeInfo};
 use crate::minor::Minor;
+
+/// An error of the reserved code `name`, with the exit and retryability the contract gives it (spec 7.3.1): the table, not a
+/// call site, chooses them (spec 7.3.2).
+///
+/// # Panics
+/// When `name` is not a code of [`RESERVED_CODES`]: the call is a bug of this crate.
+pub(crate) fn reserved_error(name: &'static str, message: String) -> CliError {
+    let reserved = RESERVED_CODES
+        .iter()
+        .find(|reserved| reserved.name == name)
+        .expect("a reserved code");
+    let row = CodeInfo {
+        code: reserved.name,
+        meaning: "",
+        exit: reserved.exit,
+        retryable: reserved.retryable,
+        fix: "",
+        reasons: &[],
+    };
+    CliError::from_row(reserved.name, message, Some(&row))
+}
 
 /// One reserved code: its name, exit, retryability, the minors in which it is reserved and, for a code that ends in a
 /// condition (spec 7.3.1), that condition.

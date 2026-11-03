@@ -249,6 +249,12 @@ fn value_issues(arg: &Arg, value: &Value) -> Vec<String> {
 /// `rule-3-domain-compile`, `rule-4-names`, `rule-4-codes`, `rule-4-relation-once`, `rule-5`, `rule-6`, `rule-7`, `rule-9`, `rule-10`, `rule-11`, `rule-13`
 /// (rule 8 is `L1.grammar`'s).
 /// `exit_of` gives the registered exit of a code; `claim` decides whether a declared map is a cut node (rule 16).
+///
+/// For a claim of 1.4 `doc` is the full view of the command ([`super::view::command_view`]): the rules read its full option set,
+/// its `errors` with the implied codes, the `schemas` of its `--schemas` answer with the derived `Input`, and each validator's
+/// `rejects` from that answer. The refs, the compilation of the schemas, `Input` and the `rejects` lists are then `L1.schemas`'
+/// (rule 2 and rule 10 are not judged here: `rule-2-refs`, `rule-2-compile` and `rule-10` are left out), and what the 1.4
+/// document lists is [`super::form::command_form_findings`]'s.
 pub fn command_findings(
     doc: &CommandDoc,
     tool: &str,
@@ -257,8 +263,10 @@ pub fn command_findings(
 ) -> Findings {
     let mut findings: Findings = vec![("rule-1", rule_1(doc))];
 
-    findings.push(("rule-2-refs", rule_2_refs(doc)));
-    findings.push(("rule-2-compile", rule_2_compile(doc)));
+    if !claim.declares_1_4() {
+        findings.push(("rule-2-refs", rule_2_refs(doc)));
+        findings.push(("rule-2-compile", rule_2_compile(doc)));
+    }
     findings.push(("rule-2-outputs", rule_2_outputs(doc)));
 
     let domains = DomainStates::new(doc);
@@ -295,7 +303,7 @@ pub fn command_findings(
         findings.push(("rule-7", rule_7(doc, &domains)));
     }
     findings.push(("rule-9", rule_9(doc)));
-    if doc.input.is_some() {
+    if doc.input.is_some() && !claim.declares_1_4() {
         findings.push(("rule-10", rule_10(doc)));
     }
     if doc.outputs.iter().any(|output| output.fields.is_some()) {

@@ -648,7 +648,7 @@ pub struct Rules {
 }
 
 impl Rules {
-    /// The rules of a document that declares `minor`: 1.1 and 1.2 keep the same rules, 1.0 has no bracketed path, no map key and no map cut node.
+    /// The rules of a document that declares `minor`: 1.1 to 1.4 keep the same rules, 1.0 has no bracketed path, no map key and no map cut node.
     pub const fn at(minor: Minor) -> Self {
         Self {
             v11: minor.at_least(Minor::V1_1),

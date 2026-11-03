@@ -422,7 +422,7 @@ fn seal_run(tool: &Tool, _args: &[String], _parsed: &Parsed) -> ExitCode {
     let sealed = std::path::Path::new(".sealed").exists();
     if sealed && !tool.flag("onceTwice") {
         return tool.refuse(
-            "ALREADY_SEALED",
+            tool.own_code("ALREADY_SEALED"),
             "the directory is sealed already",
             "seal",
             &[],

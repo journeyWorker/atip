@@ -309,7 +309,12 @@ fn build_run(tool: &Tool, args: &[String]) -> ExitCode {
         tool.print_document(
             &json!({"type": "end", "result": {"ok": false, "error": error, "meta": meta}}),
         );
-        return ExitCode::from(if tool.flag("streamBrokenExit0") { 0 } else { 2 });
+        let exit = if tool.is_1_3() { 1 } else { 2 };
+        return ExitCode::from(if tool.flag("streamBrokenExit0") {
+            0
+        } else {
+            exit
+        });
     }
     if tool.flag("streamEndOutputMismatch") {
         meta.insert(
@@ -385,6 +390,10 @@ pub fn search_tree(tool: &Tool, model: &Model, query: &str) -> Value {
         entries = rest;
     }
     let mut tree = tree_doc(model, false, "L2");
+    // A search answer is not the tree of the tool: the shared options are not part of it (spec 9.10.1).
+    if let Some(members) = tree.as_object_mut() {
+        members.remove("options");
+    }
     tree["commands"] = Value::Array(entries.into_iter().map(|(_, entry)| entry).collect());
     if !tool.flag("searchNoQuery") {
         tree["query"] = json!(query);

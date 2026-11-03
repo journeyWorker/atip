@@ -1,4 +1,14 @@
 //! What the L1 part of the fake tool does when it is run: `--help`, `schema`, and the `member` commands.
+//!
+//! From 1.4 (spec 4.4.1, 9.1.1) this file also refuses `--help --json` and `--version --json` (`interface_refusal`) and answers
+//! `schema <command> --schemas --json`; a bare `--schemas`, one for a group and one with another selector are refused with `USAGE`, `field`
+//! `--schemas`. Seeded violations acting here (every one only for a tool that claims 1.4, each breaking the one rule it names):
+//!
+//! * `helpJsonAnswersSchema`: `--help --json` at the root prints the `schema` tree instead of refusing.
+//! * `helpJsonSkipsPath`: `nosuch-xyz --help --json` is `USAGE`, the path is not resolved first.
+//! * `versionJsonPrintsVersion`: `--version --json` prints the version.
+//! * `schemasBareAnswers`: `schema --schemas --json` and `schema <group> --schemas --json` answer a document (the tree, the group) instead
+//!   of refusing.
 
 use std::process::ExitCode;
 
@@ -97,6 +107,108 @@ fn help_for(tool: &Tool, words: &[String]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// The refusals of 1.4 for `--help` and `--version` with `--json` (spec 4.4.1); the caller has seen the claim is 1.4 and JSON mode is on.
+/// The path the call names is resolved first, so an unknown word is `UNKNOWN_COMMAND`; then `--help` is `USAGE` with the field `--help` and
+/// the hint `<tool> schema <PATH> --json` (`<tool> schema --json` at the root), and `--version` `USAGE` with the field `--version` and the
+/// hint `<tool> --version`.
+pub fn interface_refusal(tool: &Tool, args: &[String]) -> Option<ExitCode> {
+    let before: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .take_while(|arg| *arg != "--")
+        .collect();
+    let help = before.iter().any(|arg| matches!(*arg, "--help" | "-h"));
+    let version = before.iter().any(|arg| matches!(*arg, "--version" | "-V"));
+    if !help && !version {
+        return None;
+    }
+    let words = path_words(args);
+    if help && words.is_empty() && tool.flag("helpJsonAnswersSchema") {
+        // Seeded: the root `--help --json` answers the `schema` tree.
+        return Some(schema(tool, &["schema".to_string(), "--json".to_string()]));
+    }
+    let model = Model::of(tool);
+    let path = if help && tool.flag("helpJsonSkipsPath") {
+        // Seeded: the words are not resolved, so an unknown one is refused as usage.
+        words.join(" ")
+    } else {
+        match resolve_path(tool, &model, &words) {
+            Ok(path) => path,
+            Err(refusal) => return Some(refusal),
+        }
+    };
+    let name = tool.name();
+    let command = (!path.is_empty()).then_some(path.as_str());
+    Some(if help {
+        let hint = if path.is_empty() {
+            format!("{name} schema --json")
+        } else {
+            format!("{name} schema {path} --json")
+        };
+        tool.fail(
+            "usage",
+            "USAGE",
+            "--help is text for people; the machine-readable description is schema",
+            command,
+            &[("field", json!("--help")), ("hint", json!(hint))],
+            2,
+        )
+    } else if tool.flag("versionJsonPrintsVersion") {
+        // Seeded: `--version --json` prints the version.
+        crate::version(tool)
+    } else {
+        tool.fail(
+            "usage",
+            "USAGE",
+            "--version is text for people; every envelope carries the version in meta.toolVersion",
+            command,
+            &[
+                ("field", json!("--version")),
+                ("hint", json!(format!("{name} --version"))),
+            ],
+            2,
+        )
+    })
+}
+
+/// The node the words of a call name: a group or a command (the words after a command are its operands), or the refusal of the first
+/// word that is none.
+fn resolve_path(tool: &Tool, model: &Model, words: &[String]) -> Result<String, ExitCode> {
+    let mut current = String::new();
+    for word in words {
+        let candidate = if current.is_empty() {
+            word.clone()
+        } else {
+            format!("{current} {word}")
+        };
+        if model.command(&candidate).is_some() {
+            return Ok(candidate);
+        }
+        if model.group(&candidate).is_none() {
+            let expected: Vec<String> = if current.is_empty() {
+                tool.commands()
+                    .into_iter()
+                    .map(ToString::to_string)
+                    .collect()
+            } else {
+                model
+                    .children(&current)
+                    .iter()
+                    .map(|(id, _)| id.rsplit(' ').next().unwrap_or_default().to_string())
+                    .collect()
+            };
+            let expected: Vec<&str> = expected.iter().map(String::as_str).collect();
+            return Err(tool.unknown_command(
+                word,
+                &expected,
+                (!current.is_empty()).then_some(current.as_str()),
+            ));
+        }
+        current = candidate;
+    }
+    Ok(current)
+}
+
 /// A refusal of the model's own rules, in the shape the configuration asks for.
 pub fn refuse_failure(tool: &Tool, command: &str, failure: Failure) -> ExitCode {
     match failure {
@@ -154,6 +266,22 @@ fn schema(tool: &Tool, args: &[String]) -> ExitCode {
             std::fs::write("schema-cache.txt", "written by schema").unwrap_or_default();
         }
     };
+    // From 1.4 `--schemas` takes a command path and no other selector (spec 9.1.1): the refusal names `--schemas`.
+    if tool.is_1_4() {
+        let before: Vec<&str> = args
+            .iter()
+            .map(String::as_str)
+            .take_while(|arg| *arg != "--")
+            .collect();
+        let selected = before.iter().any(|arg| {
+            ["--errors", "--error", "--warnings", "--warning", "--search"]
+                .iter()
+                .any(|name| arg == name || arg.starts_with(&format!("{name}=")))
+        });
+        if selected && before.contains(&"--schemas") {
+            return refuse_schemas(tool, "--schemas takes a command path and no other selector");
+        }
+    }
     let mut parsed = parse(tool, command, args, false);
     if let Err(Failure::Refuse {
         source: "constraint",
@@ -190,6 +318,19 @@ fn schema(tool: &Tool, args: &[String]) -> ExitCode {
         .flat_map(str::split_whitespace)
         .map(ToString::to_string)
         .collect();
+    if parsed.has("schemas") {
+        if words.is_empty() && !tool.flag("schemasBareAnswers") {
+            return refuse_schemas(tool, "--schemas needs a command path");
+        }
+        if !words.is_empty() {
+            let quoted = parsed
+                .values("path")
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|word| word.contains(char::is_whitespace));
+            return schema_path(tool, &model, &words, quoted, &cache, true);
+        }
+    }
     if let Some(query) = parsed.text("search") {
         cache();
         let tree = patched(
@@ -224,7 +365,7 @@ fn schema(tool: &Tool, args: &[String]) -> ExitCode {
             .iter()
             .filter_map(Value::as_str)
             .any(|word| word.contains(char::is_whitespace));
-        return schema_path(tool, &model, &words, quoted, &cache);
+        return schema_path(tool, &model, &words, quoted, &cache, false);
     }
     // The L0 tests' older seeding of a tree of one or two entries: the unchanged answer of the L0 fake.
     if tool.config.get("schemaTree").is_some() {
@@ -257,6 +398,7 @@ fn schema_path(
     words: &[String],
     quoted: bool,
     cache: &dyn Fn(),
+    schemas: bool,
 ) -> ExitCode {
     let mut current = String::new();
     for (index, word) in words.iter().enumerate() {
@@ -307,13 +449,34 @@ fn schema_path(
         }
     }
     let mut doc = if let Some(command) = model.command(&current) {
-        let mut doc = command_doc(&tool.name(), command);
+        if schemas {
+            cache();
+            return tool.success(
+                "schema",
+                patched(
+                    tool,
+                    &format!("{current} --schemas"),
+                    super::v14::schemas_doc(tool, command),
+                ),
+            );
+        }
+        let mut doc = if tool.is_1_4() {
+            super::v14::command_doc(tool, model, command)
+        } else {
+            command_doc(&tool.name(), command)
+        };
         // Seeded: a tool whose documents carry no example (so no read command has an invocation to change into a pair).
         if tool.flag("noExamples") || (tool.flag("examplesOnlyServe") && current != "serve") {
             doc["examples"] = json!([]);
         }
         doc
     } else {
+        if schemas && !tool.flag("schemasBareAnswers") {
+            return refuse_schemas(
+                tool,
+                &format!("{current} is a group: --schemas needs a command"),
+            );
+        }
         group_doc(model, &current)
     };
     if quoted && tool.flag("quotedPathDiffers") {
@@ -321,6 +484,11 @@ fn schema_path(
     }
     cache();
     tool.success("schema", patched(tool, &current, doc))
+}
+
+/// The refusal of `--schemas` that is not given a command path alone (spec 9.1.1).
+fn refuse_schemas(tool: &Tool, message: &str) -> ExitCode {
+    tool.refuse("USAGE", message, "schema", &[("field", json!("--schemas"))])
 }
 
 // ---- member ----
@@ -1015,7 +1183,7 @@ fn put(tool: &Tool, parsed: &Parsed) -> ExitCode {
             } else {
                 Vec::new()
             };
-            let code = tool.text("dashPreconditionCode", "ALREADY_SEALED");
+            let code = tool.text("dashPreconditionCode", tool.own_code("ALREADY_SEALED"));
             return tool.fail(
                 "usage",
                 &code,

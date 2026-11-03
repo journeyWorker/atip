@@ -484,7 +484,7 @@ pub struct Shape {
     pub tag_flag_only_rule: bool,
     /// Whether the tool claims 1.1 (the warning registry, `--warning`).
     pub is_1_1: bool,
-    /// Whether the tool claims 1.2 (`limit`, `cursor`, `all` and `fields` are flag-only; `member list` reads `--input -`).
+    /// Whether the tool claims 1.2 or later (`limit`, `cursor`, `all` and `fields` are flag-only; `member list` reads `--input -`).
     pub is_1_2: bool,
     /// Seeded: a 1.2 document that leaves `--limit` without `flagOnly`.
     pub limit_not_flag_only: bool,
@@ -496,6 +496,10 @@ pub struct Shape {
     pub serve_without_note: bool,
     /// Whether the tree has a path of three words (`team roster list`).
     pub deep: bool,
+    /// The `schemaVersion` of a `schema` answer: the claimed minor, `1.0` to `1.4`.
+    pub schema_version: &'static str,
+    /// Whether the tool claims 1.4 (`schema <command> --schemas`).
+    pub is_1_4: bool,
 }
 
 pub fn groups(shape: Shape) -> Vec<Group> {
@@ -909,31 +913,58 @@ fn schema_command(shape: Shape) -> Command {
         );
         names.extend(["warnings", "warning"]);
     }
-    Command::new("schema", "Describe the commands of the tool, or its registries, as JSON")
-        .operand(
-            Arg::operand("path", "string", "Words of a command path, or one quoted string")
-                .value("PATH")
-                .repeatable(),
+    if shape.is_1_4 {
+        // `--schemas` needs a command path and none of the others (spec 9.1.1): the refusals are made where the answer is built
+        // (`run.rs`), so that `field` is `--schemas` whichever it is combined with, and no constraint names it.
+        options.push(Arg::option(
+            "schemas",
+            "switch",
+            "Print the JSON Schemas a command refers to",
+        ));
+    }
+    let kinds = if shape.is_1_4 {
+        json!(["tree", "group", "command", "schemas", "errors", "error", "warnings", "warning"])
+    } else {
+        json!(["tree", "group", "command", "errors", "error", "warnings", "warning"])
+    };
+    let mut command = Command::new(
+        "schema",
+        "Describe the commands of the tool, or its registries, as JSON",
+    )
+    .operand(
+        Arg::operand(
+            "path",
+            "string",
+            "Words of a command path, or one quoted string",
         )
-        .options(options)
-        .rule(Rule::at_most_one(&names))
-        .errors(&["UNKNOWN_COMMAND", "USAGE"])
-        .output(
-            "SchemaDocument",
-            json!({
-                "type": "object",
-                "required": ["kind"],
-                "properties": {
-                    "kind": {"enum": ["tree", "group", "command", "errors", "error", "warnings", "warning"]}
-                }
-            }),
-        )
-        .version(if shape.is_1_2 { "1.2" } else if shape.is_1_1 { "1.1" } else { "1.0" })
-        .examples(&[
-            "{tool} schema --json",
-            "{tool} schema member list --json",
-            "{tool} schema --errors --json",
-        ])
+        .value("PATH")
+        .repeatable(),
+    )
+    .options(options)
+    .rule(Rule::at_most_one(&names))
+    .errors(&["UNKNOWN_COMMAND", "USAGE"])
+    .output(
+        "SchemaDocument",
+        json!({
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+                "kind": {"enum": kinds}
+            }
+        }),
+    )
+    .version(shape.schema_version)
+    .examples(&[
+        "{tool} schema --json",
+        "{tool} schema member list --json",
+        "{tool} schema --errors --json",
+    ]);
+    if shape.is_1_4 {
+        command
+            .examples
+            .push("{tool} schema member list --schemas --json");
+    }
+    command
 }
 
 fn touch() -> Command {

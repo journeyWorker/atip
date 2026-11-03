@@ -6,9 +6,9 @@
 //! `L1.code-names` share. Whether a subject is a noun and not a verb is the author's judgement (`approaches/implementation.md`
 //! §7); nothing here decides it.
 
-use crate::error::{EXIT_FAILED, EXIT_REFUSED};
+use crate::error::{CodeInfo, ReasonInfo, EXIT_FAILED, EXIT_REFUSED};
 use crate::minor::Minor;
-use crate::reserved::reserved_code;
+use crate::reserved::{reserved_code, RESERVED_CODES};
 
 /// One of the fifteen conditions of spec 7.2.2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -165,6 +165,123 @@ pub fn code_name_problem(
             }
         )
     })
+}
+
+const fn bytes_equal(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut at = 0;
+    while at < a.len() {
+        if a[at] != b[at] {
+            return false;
+        }
+        at += 1;
+    }
+    true
+}
+
+/// [`is_subject`] for a `const` context: non-empty, starts with `A-Z`, then `A-Z`, `0-9` and single `_` between words, no
+/// `_` at either end.
+const fn is_subject_const(subject: &[u8]) -> bool {
+    if subject.is_empty() || !subject[0].is_ascii_uppercase() || subject[subject.len() - 1] == b'_'
+    {
+        return false;
+    }
+    let mut at = 1;
+    while at < subject.len() {
+        let byte = subject[at];
+        let word_byte = byte.is_ascii_uppercase() || byte.is_ascii_digit();
+        if !(word_byte || (byte == b'_' && subject[at - 1] != b'_')) {
+            return false;
+        }
+        at += 1;
+    }
+    true
+}
+
+/// Whether `code` is `<subject>_<suffix of condition>` with a subject of spec 7.2.1.
+const fn names_condition(code: &str, condition: Condition) -> bool {
+    let (code, suffix) = (code.as_bytes(), condition.suffix().as_bytes());
+    if code.len() <= suffix.len() + 1 || code[code.len() - suffix.len() - 1] != b'_' {
+        return false;
+    }
+    let (subject, tail) = code.split_at(code.len() - suffix.len() - 1);
+    let (_, word) = tail.split_at(1);
+    bytes_equal(word, suffix) && is_subject_const(subject)
+}
+
+/// Whether `code` is a core code (spec 7.3.1) of any minor: a tool's own code never takes one's name (spec 7.2.3).
+const fn is_core_name(code: &str) -> bool {
+    let mut at = 0;
+    while at < RESERVED_CODES.len() {
+        if bytes_equal(RESERVED_CODES[at].name.as_bytes(), code.as_bytes()) {
+            return true;
+        }
+        at += 1;
+    }
+    false
+}
+
+impl CodeInfo {
+    /// The row of a tool's own error code `code`, which is `<SUBJECT>_<CONDITION>` (spec 7.2.1): its `exit` and its
+    /// `retryable` are the condition's (spec 7.2.2), never a call site's. A code that is not `<subject>_<suffix of condition>`,
+    /// whose subject breaks the grammar, or that takes a core code's name does not build: in a `const` or `static` initializer
+    /// that is a compile error, so a table of rows cannot hold one. A code whose condition may be registered either way
+    /// (`FAILED`, `INCOMPLETE`, `TIMEOUT`) and is retryable takes [`CodeInfo::of_retryable`].
+    ///
+    /// The name is written out in full because a `const` cannot join strings; naming the condition beside it is what lets the
+    /// compiler check the one against the other. Whether the subject is a noun is the author's (`approaches/implementation.md` §7).
+    ///
+    /// # Panics
+    /// As above, when the arguments do not build a row (a compile error in a `const` context).
+    pub const fn of(
+        code: &'static str,
+        condition: Condition,
+        meaning: &'static str,
+        fix: &'static str,
+        reasons: &'static [ReasonInfo],
+    ) -> CodeInfo {
+        assert!(
+            names_condition(code, condition),
+            "the code is not <SUBJECT>_<CONDITION> with the condition given (spec 7.2.1)"
+        );
+        assert!(
+            !is_core_name(code),
+            "a tool's own code never takes a core code's name (spec 7.2.3)"
+        );
+        CodeInfo {
+            code,
+            meaning,
+            exit: condition.exit(),
+            retryable: condition.retryable(),
+            fix,
+            reasons,
+        }
+    }
+
+    /// [`CodeInfo::of`] for a `FAILED`, `INCOMPLETE` or `TIMEOUT` code with the retryability the tool registers: `true` when
+    /// repeating the same invocation is safe (it resumes, or an operation key reconciles it), else `false` (spec 7.2.3). Any
+    /// other condition has one retryability, so another value does not build.
+    ///
+    /// # Panics
+    /// As [`CodeInfo::of`], and when the condition is not one of the three.
+    pub const fn of_retryable(
+        code: &'static str,
+        condition: Condition,
+        retryable: bool,
+        meaning: &'static str,
+        fix: &'static str,
+        reasons: &'static [ReasonInfo],
+    ) -> CodeInfo {
+        assert!(
+            condition.retryable_either_way() || retryable == condition.retryable(),
+            "only a FAILED, INCOMPLETE or TIMEOUT code may differ from the default retryability of its condition (spec 7.2.3)"
+        );
+        let mut row = CodeInfo::of(code, condition, meaning, fix, reasons);
+        row.retryable = retryable;
+        row
+    }
 }
 
 #[cfg(test)]

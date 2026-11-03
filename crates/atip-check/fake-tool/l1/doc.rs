@@ -11,6 +11,10 @@ use crate::Tool;
 pub struct Model {
     pub commands: Vec<Command>,
     pub groups: Vec<Group>,
+    /// Whether the tool claims 1.4: its tree entries are the 1.4 form (`v14.rs`).
+    pub v14: bool,
+    /// Seeded (1.4 `treeEntryKindCommand`): the entry of a command says `kind: "command"`, which is the default.
+    pub kind_command: bool,
 }
 
 impl Model {
@@ -18,6 +22,8 @@ impl Model {
         let shape = Shape {
             is_1_1: tool.is_1_1(),
             is_1_2: tool.is_1_2(),
+            schema_version: ["1.0", "1.1", "1.2", "1.3", "1.4"][usize::from(tool.minor_rank())],
+            is_1_4: tool.is_1_4(),
             limit_not_flag_only: tool.flag("limitNotFlagOnly"),
             repeatable_default: tool.flag("repeatableDefault"),
             serve: tool.config.contains_key("serveMode"),
@@ -43,9 +49,19 @@ impl Model {
                 stamp.effect_note = Some("appends one line to .stamp-audit.log");
             }
         }
+        if tool.is_1_3() {
+            // From 1.3 the tool's own codes follow the code-name grammar (spec 7.2): the commands list them by their new names.
+            for command in &mut commands {
+                for code in &mut command.errors {
+                    *code = tool.own_code(code);
+                }
+            }
+        }
         Self {
             commands,
             groups: super::spec::groups(shape),
+            v14: tool.is_1_4(),
+            kind_command: tool.is_1_4() && tool.flag("treeEntryKindCommand"),
         }
     }
 
@@ -78,7 +94,7 @@ impl Model {
         nodes
     }
 
-    fn summary(&self, id: &str) -> &'static str {
+    pub fn summary(&self, id: &str) -> &'static str {
         self.command(id)
             .map(|command| command.summary)
             .or_else(|| self.group(id).map(|group| group.summary))
@@ -86,6 +102,9 @@ impl Model {
     }
 
     pub fn entry(&self, id: &str, is_group: bool) -> Value {
+        if self.v14 {
+            return super::v14::entry(self, id, is_group);
+        }
         let mut entry = json!({
             "command": id,
             "path": id.split(' ').collect::<Vec<_>>(),
@@ -173,7 +192,7 @@ fn extras(arg: &Arg, doc: &mut Map<String, Value>) {
     }
 }
 
-fn rule_doc(rule: &Rule) -> Value {
+pub fn rule_doc(rule: &Rule) -> Value {
     let mut doc = Map::new();
     doc.insert("rule".into(), json!(rule.rule));
     if let Some((name, values)) = &rule.when {
@@ -300,6 +319,9 @@ pub fn command_doc(tool_name: &str, command: &Command) -> Value {
 
 /// The group document of `id`, before any seeded patch.
 pub fn group_doc(model: &Model, id: &str) -> Value {
+    if model.v14 {
+        return super::v14::group_doc(model, id);
+    }
     let children: Vec<Value> = model
         .children(id)
         .iter()
@@ -316,6 +338,9 @@ pub fn group_doc(model: &Model, id: &str) -> Value {
 
 /// The tree document, before any seeded patch.
 pub fn tree_doc(model: &Model, groups_last: bool, level: &str) -> Value {
+    if model.v14 {
+        return super::v14::tree_doc(model, groups_last, level);
+    }
     let mut ids = model.all_ids();
     if groups_last {
         ids.sort_by_key(|(_, is_group)| *is_group);

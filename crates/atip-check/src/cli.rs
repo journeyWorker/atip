@@ -83,7 +83,7 @@ Options:
       --level <LEVEL>    The level the tool claims: L0, L1 or L2 (cumulative: L2 also runs the checks of L0 and L1). Defaults to the level of the tool's own `schema --json`, and to L0 when it has none
       --fixture <FILE>   The tool's fixture file: JSON with contractVersion, prepare, setup, env, timeoutSeconds, probe, globalOptions, registry, warnings, commands (and, in commands, ok, refused, paged, missingValue, fields, domainRejects, batchFailsAt, batchFailsFirst, preview, async and allowedEffects), search and notRun (the ids of commands that do not end on their own, such as a server: each runs once, up to its first JSON document, and is then signalled)
       --contract <MAJOR.MINOR>
-                         The contract minor the tool claims: 1.0, 1.1 or 1.2. Defaults to the fixture's contractVersion, and to 1.0
+                         The contract minor the tool claims: 1.0, 1.1, 1.2, 1.3 or 1.4. Defaults to the fixture's contractVersion, and to 1.0
       --deep             Run every check of the level, not only the interface checks (see Modes)
       --json             Print one JSON envelope on stdout instead of text
   -h, --help             Print help

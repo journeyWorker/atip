@@ -440,6 +440,9 @@ pub struct CommandDoc {
     /// Every effect the effect class does not say.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effect_note: Option<String>,
+    /// True when exit 0 means accepted, not done (spec 12.2); absent when false.
+    #[serde(rename = "async", skip_serializing_if = "is_false")]
+    pub is_async: bool,
     pub operands: Vec<OperandDoc>,
     pub options: Vec<OptionDoc>,
     /// Every relation between arguments the parser or the command enforces without reading state (spec 10.8.1); absent when there is none.
