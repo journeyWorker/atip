@@ -358,19 +358,19 @@ that is not flag-only (camelCase name; type from valueType in its encoded form, 
 `count`), `operands` typed per operand, `additionalProperties: false`, and **no `required`**. canon's published
 `FindingCloseInput` already accepts `round` as integer or string; it has to drop its `required` list.
 
-**The 1.4 form.** A tool that declares 1.4 projects the same typed nodes, and one serializer writes the document of
-spec 9 (approaches/implementation.md §8). It omits every member at its default and the options and codes the document
-implies (`--json`, `--input` with `input`, `--fields` with `fields`; `USAGE`, its registered finer replacements,
-`INTERNAL` and the feature codes), and prints compact JSON. `--commit` and `--plan-digest` are not implied: a
-`destructive` node lists them, as the reserved names, so that `SafetyArgs` is projected like any other reserved
-option. It collects the shared options from the nodes: an option with the same definition on two or more commands
-moves into the tree's `options`, and each command names it. The map above is no longer a
-member of the command document: `schema <path> --schemas --json` serves the schemas that the command's refs reach and
-those they reference, with the same lifting of `$defs`, and also the fragment schema generated from the clap node, under
-the name `Input` when the command has `input`, and `rejects`, one list per validator in the order of `validators`
-(spec 9.9.3; the test of L1.schemas compares `Input` with a derivation from the options). `--help --json` and
-`--version --json` are refused with `USAGE`, `field` `--help` or `--version` (spec 4.4.1), after clap has resolved the
-path, so `tool bogus --help --json` is `UNKNOWN_COMMAND`; `schema` is the only JSON self-description.
+**The 1.4 form.** A tool that declares 1.4 projects the same typed nodes, and one serializer writes the document of spec
+9 (approaches/implementation.md §8). It omits every member at its default and the options and codes the document implies
+(`--json`, `--input` with `input`, `--fields` with `fields`; `USAGE`, its registered `OPTION_*`/`OPERAND_*` replacements
+(spec 7.3.2), `INTERNAL` and the feature codes), and prints compact JSON. `--commit` and `--plan-digest` are not
+implied: a `destructive` node lists them, as the reserved names, so that `SafetyArgs` is projected like any other
+reserved option. It collects the shared options from the nodes: an option with the same definition on two or more
+commands moves into the tree's `options`, and each command names it. The map above is no longer a member of the command
+document: `schema <path> --schemas --json` serves the schemas that the command's refs reach and those they reference,
+with the same lifting of `$defs`, and also the fragment schema generated from the clap node, under the name `Input` when
+the command has `input`, and `rejects`, one list per validator in the order of `validators` (spec 9.9.3; the test of
+L1.schemas compares `Input` with a derivation from the options). `--help --json` and `--version --json` are refused with
+`USAGE`, `field` `--help` or `--version` (spec 4.4.1), after clap has resolved the path, so `tool bogus --help --json`
+is `UNKNOWN_COMMAND`; `schema` is the only JSON self-description.
 
 ## 6. `--input` in Rust
 

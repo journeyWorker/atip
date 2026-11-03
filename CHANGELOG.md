@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.1 (unreleased)
+
+A patch (15.1) from implementer feedback and round 23 (D39). No rule changes strength; `meta.contractVersion` stays
+`"1.4"`, and a tool or caller that conformed to 1.4.0 still conforms.
+
+- **Compactness is whitespace only (5.1).** A compact document has no space, tab, CR or LF outside strings; number
+  spellings (`60.0`) and escapes (`\u00e9`) are the tool's. `scripts/check.ts` tokenises the text instead of comparing
+  it with `JSON.stringify(JSON.parse(line))`, which also rewrote numbers and escapes and rejected compact output of a
+  Rust serializer; `approaches/checker.md` L0.compact says the same. New example
+  `report-acme-filter-test-number-escape.json`; the indented invalid examples stay.
+- **The implied `USAGE` replacements are a closed list (7.3.2, 9.5).** A 1.4 command document leaves out of `errors`
+  exactly `OPTION_INVALID`, `OPTION_REQUIRED`, `OPERAND_INVALID` and `OPERAND_REQUIRED` when the tool registers them;
+  any other finer code is listed. 7.3.2's naming applies to documents that declare 1.3 or later. `check.ts` no longer
+  reads a code's `meaning` to decide.
+- **15.1 MINOR row** covers members a change replaces as well as members it leaves out.
+
 ## 1.4.0 (2026-11-04)
 
 A minor (15.1): a small, compact self-description for agents, and distinct roles for `--help` and `schema` (D38). Its

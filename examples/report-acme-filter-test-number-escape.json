@@ -1,0 +1,1 @@
+{"ok":true,"data":{"matched":60.0},"meta":{"command":"filter test","contract":"atip/1","contractVersion":"1.4","schemaVersion":"1.0","tool":"acme","toolVersion":"1.0.0","next":[{"command":"acme lint --json","argv":["lint","--json"],"reason":"lint the r\u00e9sum\u00e9 pages next"}]}}

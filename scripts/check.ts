@@ -39,11 +39,9 @@
 // structurally with the derivation) and one `rejects` list per validator, in order (rule 13 runs on those).
 //
 // Implied codes (spec 9.5) are `USAGE`, `INTERNAL`, the codes of the features the options and `input` offer, and the
-// tool's registered finer replacements of `USAGE` (spec 7.3.2). The registry has no marker for a replacement, so this
-// checker takes a replacement to be a registered exit-2 code that is not a core code and is either `OPTION_INVALID` or
-// `OPTION_REQUIRED` (the names spec 7.3.2 gives) or has a `meaning` that says it replaces `USAGE` or is used instead of or
-// in place of it (`usageReplacements`). `--commit` and `--plan-digest` are never implied: a destructive command lists
-// them, as an object or as the reserved name.
+// finer replacements of `USAGE` the tool registers, a closed list (spec 7.3.2: `OPTION_INVALID`, `OPTION_REQUIRED`,
+// `OPERAND_INVALID`, `OPERAND_REQUIRED`; `usageReplacements`). `--commit` and `--plan-digest` are never implied: a
+// destructive command lists them, as an object or as the reserved name.
 //
 // The command documents and registries of the valid examples (examples/schema-*.json) are the reference that
 // reports, inputs and streams are checked against. Every document is validated against its JSON Schema before
@@ -1167,12 +1165,11 @@ function impliedOptionNames(doc: RawCommandDoc): string[] {
   return ["json", ...(doc.input ? ["input"] : []), ...(doc.outputs.some((o) => o.fields) ? ["fields"] : [])]
 }
 
-/** The tool's registered finer replacements of `USAGE` (spec 7.3.2), by the rule in the header of this file. */
-const REPLACES_USAGE = /\b(replaces?|instead of|in place of) `?USAGE\b/i
+/** The finer replacements of `USAGE` a 1.4 command document implies when the tool registers them (spec 7.3.2, 9.5). */
+const USAGE_REPLACEMENTS = ["OPTION_INVALID", "OPTION_REQUIRED", "OPERAND_INVALID", "OPERAND_REQUIRED"]
 function usageReplacements(tool: string): string[] {
-  return (registries.get(tool) ?? [])
-    .filter((e) => e.exit === 2 && !RESERVED[e.code] && (e.code === "OPTION_INVALID" || e.code === "OPTION_REQUIRED" || REPLACES_USAGE.test(e.meaning ?? "")))
-    .map((e) => e.code)
+  const registered = new Set((registries.get(tool) ?? []).map((e) => e.code))
+  return USAGE_REPLACEMENTS.filter((c) => registered.has(c))
 }
 
 /** The error codes a 1.4 document implies, and so does not list (spec 9.5), given its full option set. */
@@ -2249,10 +2246,32 @@ function compactProblems(name: string, text: string, problems: string[]) {
   const first = JSON.parse(documents[0]) as { contractVersion?: string; meta?: Meta }
   const minor = first.contractVersion ?? first.meta?.contractVersion ?? "1.0"
   if (MINORS.indexOf(minor) < MINORS.indexOf("1.4")) return
-  const expected = documents.map((d) => `${JSON.stringify(JSON.parse(d))}\n`).join("")
-  if (text === expected) return
-  const at = [...text].findIndex((c, i) => c !== expected[i])
-  problems.push(`the file is not compact JSON: it differs from JSON.stringify(JSON.parse(line)) at offset ${at < 0 ? text.length : at}, which a document that declares 1.4 must be (spec 5.1)`)
+  // Spec 5.1 forbids whitespace outside strings and nothing else: number spellings and escapes stay as written.
+  if (!text.endsWith("\n") || text.includes("\n\n"))
+    problems.push("the file is not compact JSON: each document is followed by exactly one newline (spec 5.1)")
+  let offset = 0
+  for (const document of documents) {
+    const at = whitespaceOutsideStrings(document)
+    if (at >= 0) {
+      problems.push(`the file is not compact JSON: whitespace outside a string at offset ${offset + at}, which a document that declares 1.4 must not have (spec 5.1)`)
+      return
+    }
+    offset += document.length + 1
+  }
+}
+
+/** The offset of the first space, tab, CR or LF outside a JSON string, or -1. */
+function whitespaceOutsideStrings(document: string): number {
+  let inString = false
+  for (let i = 0; i < document.length; i++) {
+    const c = document[i]
+    if (inString) {
+      if (c === "\\") i++
+      else if (c === '"') inString = false
+    } else if (c === '"') inString = true
+    else if (c === " " || c === "\t" || c === "\r" || c === "\n") return i
+  }
+  return -1
 }
 
 function check(path: string): string[] {

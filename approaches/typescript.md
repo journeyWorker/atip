@@ -217,14 +217,14 @@ with no value, is `USAGE` with `field` `--input` (spec 10.2), raised by the argv
    ignores commas inside brackets. In a tool that declares 1.1, a map the output schema declares (`Schema.Record`) has selectable keys and is a cut
    node; a tool that declares 1.0 keeps it whole. A
    test round-trips every path of the examples and one with a quote, a backslash and a comma in the key.
-9. **The 1.4 form.** A tool that declares 1.4 maps the same declarations, and one serializer writes the document of
-   spec 9 (approaches/implementation.md §8): it omits every member at its default and the options and codes the
-   document implies (`--json`, `--input` with `input`, `--fields` with `fields`; `USAGE`, its registered finer
-   replacements, `INTERNAL` and the feature codes), and prints compact JSON. A destructive command lists `--commit`
-   and `--plan-digest` as reserved names, since they are not implied. It collects the shared options from the
+9. **The 1.4 form.** A tool that declares 1.4 maps the same declarations, and one serializer writes the document of spec
+   9 (approaches/implementation.md §8): it omits every member at its default and the options and codes the document
+   implies (`--json`, `--input` with `input`, `--fields` with `fields`; `USAGE`, its registered `OPTION_*`/`OPERAND_*`
+   replacements (spec 7.3.2), `INTERNAL` and the feature codes), and prints compact JSON. A destructive command lists
+   `--commit` and `--plan-digest` as reserved names, since they are not implied. It collects the shared options from the
    declarations, an option with the same definition on two or more commands going into the tree's `options` and each
-   command naming it. The lifted `schemas` of item 6 are served by `schema <path> --schemas --json`, holding the
-   schemas the command's refs reach and those they reference, and the command document has no `schemas`, `path`,
+   command naming it. The lifted `schemas` of item 6 are served by `schema <path> --schemas --json`, holding the schemas
+   the command's refs reach and those they reference, and the command document has no `schemas`, `path`,
    `input.schemaRef`, `input.option` or `validators[].rejects`. The same answer holds the fragment schema of item 1
    under the name `Input` when the command has `input` (a reader may derive it from the options instead, spec 9.9.2;
    `defineTool` keeps using it to decode documents), and `rejects`, one list per declared validator in order (§3.3).

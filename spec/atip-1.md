@@ -1,11 +1,10 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.4.0**, adopted 2026-11-04 after two rounds of independent review: a minor (15.1) that makes the
-self-description small and compact for agents (command documents without embedded JSON Schemas, shared options
-declared once, defaults omitted, compact JSON) and separates `--help` from `schema` (Appendix A D38). Version 1.3.1,
-adopted 2026-11-03, is a patch that aligns the checker's description with the reference checker (D37); 1.3.0, adopted
-2026-11-03 after two rounds of independent review and three implementer reviews, restates the contract as a protocol
-(D36).
+Status: **1.4.1, release candidate**: a patch (15.1) that states the compactness rule as whitespace outside strings
+only, closes the set of `USAGE` replacements a command document implies, and words the MINOR row for replaced members
+(Appendix A D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a minor (15.1) that
+makes the self-description small and compact for agents and separates `--help` from `schema` (D38); 1.3.1 and 1.3.0
+are described in D37 and D36.
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
 (V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 
@@ -180,8 +179,8 @@ refused, and tool-wide options accepted after a group word. [Appendix A D4, D11.
 ## 5. Output channels
 
 5.1. In JSON mode stdout MUST hold exactly one UTF-8 JSON document and a newline, on success and on failure; a stream
-(13) prints one document per line. Every document is compact, without whitespace outside strings: MUST in a document
-that declares 1.4, SHOULD before.
+(13) prints one document per line. Every document is compact, without whitespace (space, tab, CR, LF) outside
+strings: MUST in a document that declares 1.4, SHOULD before. Number spellings and string escapes are the tool's.
 
 5.2. In JSON mode stderr MUST NOT carry the result or the error and SHOULD be empty except for progress; callers MUST
 NOT parse it.
@@ -351,9 +350,11 @@ of the features it offers in `errors` (`--input`: `INPUT_*`; batches: `BATCH_INC
 | `OPERATION_REUSED` | 2 | no | — | an operation key reused with another payload (12.4) |
 | `CURSOR_INVALID` | 2 | no | `INVALID` | a cursor not issued by this command, or for other arguments (6.9) |
 
-7.3.2. Finer parse codes MAY replace `USAGE` for a situation the tool never reports as `USAGE`; in a 1.3 document they
-follow 7.2 (`OPTION_INVALID` for an unknown or malformed option, `OPTION_REQUIRED` for a missing one). A caller treats
-any exit-2 code whose `field` names an argument as a usage problem. Under any other core code, situations are told
+7.3.2. Finer parse codes MAY replace `USAGE` for a situation the tool never reports as `USAGE`; in a document that
+declares 1.3 or later they follow 7.2: `OPTION_INVALID` for an unknown or malformed option, `OPTION_REQUIRED` for a
+missing one, `OPERAND_INVALID` and `OPERAND_REQUIRED` for operands. These four are the **finer replacements** a 1.4
+command document implies (9.5); a tool's other finer codes are listed where emitted. A caller treats any exit-2 code
+whose `field` names an argument as a usage problem. Under any other core code, situations are told
 apart by reasons.
 
 7.3.3. **Reserved reasons**, SHOULD names for these situations: `INPUT_INVALID` `UNREADABLE`, `STDIN_TTY`, `EMPTY`,
@@ -484,8 +485,9 @@ satisfying the command's requirements; none reads a file or stdin.
   included, so that the document alone says whether a bare run of a destructive command acts or previews (11.4);
   `--help` and `--version` never are. A command that needs another `required`, default or enum subset of a shared
   option (Annex S1 item 4) declares it in full.
-- **Errors.** `errors` lists every code the command can emit except the implied ones: `USAGE`, its registered finer
-  replacements (7.3.2) and `INTERNAL`; the `INPUT_*` codes with `input`; `BATCH_INCOMPLETE` with `input.batch`;
+- **Errors.** `errors` lists every code the command can emit except the implied ones: `USAGE`, the finer
+  replacements of 7.3.2 that the tool registers (`OPTION_INVALID`, `OPTION_REQUIRED`, `OPERAND_INVALID`,
+  `OPERAND_REQUIRED`) and `INTERNAL`; the `INPUT_*` codes with `input`; `BATCH_INCOMPLETE` with `input.batch`;
   `PLAN_STALE` with `--commit`; `OPERATION_REUSED` with `--operation`; `CURSOR_INVALID` with `--cursor`.
 - **Defaults.** A member whose value is its default is absent; `schema/schema-doc.schema.json` gives each default:
   `required`, `repeatable` (a count is always repeatable and does not say so), `variadic`, `flagOnly` and `async`
@@ -740,11 +742,11 @@ placeholders are substituted (shell pipelines are exempt). Guides SHOULD tell ag
 15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.4.0`). A PATCH changes no
 rule. A MINOR adds OPTIONAL members, options, kinds and values, SHOULD and MAY rules, and MUST rules that bind only
 documents that declare it. For those documents it may withdraw a core code whose use the previous minor only
-recommended, and change the shape of the self-description (9) when every member the change leaves out reads, when
-absent, as the earlier minor's default or as a feature not offered, so that an earlier caller uses less of the tool,
-never more. It relaxes a rule only where every answer it then permits is one callers already handle. A MAJOR
-(`atip/2`) removes or renames a member, option, core code or kind, changes a meaning, or adds a MUST an existing tool
-can fail. A tool that conforms to `1.x` keeps conforming as a `1.x` tool. [Appendix A D20, D38]
+recommended, and change the shape of the self-description (9) when every member the change leaves out or replaces reads,
+as an earlier caller reads it, as the earlier minor's default or as a feature not offered, so that an earlier caller
+uses less of the tool, never more. It relaxes a rule only where every answer it then permits is one callers already
+handle. A MAJOR (`atip/2`) removes or renames a member, option, core code or kind, changes a meaning, or adds a MUST an
+existing tool can fail. A tool that conforms to `1.x` keeps conforming as a `1.x` tool. [Appendix A D20, D38]
 
 15.2. `meta.toolVersion` says nothing about compatibility; the self-description's version is the declared minor. Every
 output has its own `schemaVersion` `<major>.<minor>`: an added member or value bumps the minor, a removed or changed
@@ -937,6 +939,10 @@ sections of this version.
 | # | Owner decision 2026-11-04, version 1.4.0, a minor (15.1) | Where |
 |---|---|---|
 | D38 | The self-description is read by agents, so it is small and compact, and `--help` and `schema` have distinct roles. For a document that declares 1.4: every JSON document is compact (no whitespace outside strings). A command document is the call surface only: it embeds no JSON Schema; `schema <PATH> --schemas` returns exactly the schemas its refs reach, resolved there. The input fragment schema is no longer declared but derived from the options and 9.7.2, because it is fully determined by them and a declared copy could only disagree (1.3's Annex S2 rule 10 existed to keep the two equal). Options that commands share are defined once in the tree's `options` and a command names them; a name may also be a reserved option's, whose shape is fixed. A command does not list the reserved options its document implies (`--json`; `--input` with `input`; `--fields` with an output's `fields`) nor the codes its features imply (`USAGE` and its registered finer replacements, `INTERNAL`, `INPUT_*`, `BATCH_INCOMPLETE`, `PLAN_STALE`, `OPERATION_REUSED`, `CURSOR_INVALID`). `--commit` and `--plan-digest` are always listed when offered (a review found that implying them from the tree's level left the command document silent on whether a bare run acts or previews). The schemas answer also carries the derived fragment schema as `Input`, so a caller need not derive it, and the validators' `rejects`, which are test material rather than the call surface. Paging options stay listed: `--limit` has a per-command default and bound and `--all` is optional, so the list is the declaration. Members at their default are absent (`required`, `repeatable`, `variadic`, `flagOnly`, `async` false; `default` null, false or 0; `valueType` string; `valueName` the upper-cased name; an output's `kind` report and `schemaVersion` 1.0; empty lists), and `path` (the words of `command`) is gone. A shared option is named rather than left implicit so that a command document alone says which options it accepts. `--help` is text for people; `--help --json` refuses with `USAGE` and a hint to `schema` (after the path is resolved, so an unknown word still answers `UNKNOWN_COMMAND`), and `--version --json` refuses with a hint to `--version`, so that JSON mode always prints an envelope and no command has two machine descriptions. Compatibility: these MUSTs bind only 1.4 documents. Every member 1.4 leaves out reads, when absent, as the earlier minor's default or as a feature not offered, so a caller of 1.3 or earlier uses less of the tool, never more: one that validates against its release's schemas rejects the document, one that does not sees fewer options, codes and outputs and the same defaults. 15.1's MINOR row now allows exactly that, 15.6 tells callers to validate against the schemas of their release, and every other document keeps its shape. Measured on canon's `finding close` answer: 10,876 bytes pretty and 6,732 compact in its 1.0 form, 3,088 in the 1.4 form, its JSON Schemas and derived `Input` (1,831 bytes) moved to `--schemas`. | 4.4.1, 5.1, 7.3.1, 9, 15.1, 15.4, 15.6, 15.7, 15.8, Annex S2 |
+
+| # | Owner decision 2026-11-04, version 1.4.1, a patch (15.1) | Where |
+|---|---|---|
+| D39 | Three clarifications, no rule strength changed; `meta.contractVersion` stays `"1.4"`. (1) 5.1's compactness forbids whitespace (space, tab, CR, LF) outside strings and nothing else: any valid number spelling (`60.0`, `1e3`) and any escape form (`\u00e9`) is compact. The repository checker had compared the file with `JSON.stringify(JSON.parse(line))`, which also normalised numbers and escapes and so rejected compact documents a Rust serializer prints; an implementer found it. (2) The finer replacements of `USAGE` that a 1.4 command document implies are a closed list, `OPTION_INVALID`, `OPTION_REQUIRED`, `OPERAND_INVALID` and `OPERAND_REQUIRED`, when the tool registers them, so that whether a code may be left out of `errors` is decided by its name, not by reading its meaning; 7.3.2's 1.3 naming applies to documents that declare 1.3 or later. A tool's other finer codes are listed. (3) 15.1's MINOR row covers members a change replaces (an option object replaced by a name) as well as members it leaves out. | 5.1, 7.3.2, 9.5, 15.1, approaches/checker.md |
 
 ## Appendix B. Prior art
 
