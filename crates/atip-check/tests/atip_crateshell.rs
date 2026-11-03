@@ -1,4 +1,4 @@
-//! `atip::split_argv` reads what `atip::quote` writes (canon-0-35-crate-shell), seen from the checker: a tool whose next
+//! `atip::split_argv` reads what `atip::quote` writes, seen from the checker: a tool whose next
 //! step carries a word with a single quote is not reported for it by `L0.next`.
 
 use serde_json::{json, Value};

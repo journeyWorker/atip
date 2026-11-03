@@ -21,7 +21,7 @@ pub const ERROR_SCHEMA: &str = include_str!("../../../schema/error.schema.json")
 pub const REGISTRY_ENTRY_SCHEMA: &str = include_str!("../../../schema/registry-entry.schema.json");
 /// `schema/warning-entry.schema.json`: one row of a tool's warning registry (since 1.1).
 pub const WARNING_ENTRY_SCHEMA: &str = include_str!("../../../schema/warning-entry.schema.json");
-/// `schema/stream-line.schema.json`: one line of a stream (since 1.0; `canon` has no stream before 0.35).
+/// `schema/stream-line.schema.json`: one line of a stream (since 1.0).
 pub const STREAM_LINE_SCHEMA: &str = include_str!("../../../schema/stream-line.schema.json");
 
 /// `schema/schema-doc.schema.json`: a `schema --json` answer (since 1.0; spec 10).

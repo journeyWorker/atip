@@ -1,5 +1,5 @@
-//! canon-0-35-crate-1-2, seen from the checker: the `atip` crate moves to 1.2, the checker keeps declaring 1.1 and reads the
-//! reserved codes from the crate.
+//! The `atip` crate and the checker, seen from the checker: each states the contract minor it implements apart from the other
+//! (the crate by `CONTRACT_VERSION`, the checker by `output::DECLARED_MINOR`), and the checker reads the reserved codes from the crate.
 
 use std::path::{Path, PathBuf};
 
@@ -43,7 +43,7 @@ fn atip_crate12_02_the_checker_declares_its_own_contract_version_apart_from_the_
     assert_eq!(
         atip_check::output::DECLARED_MINOR,
         "1.2",
-        "the checker declares 1.2 since canon-0-35-check-1-2"
+        "the checker declares 1.2"
     );
     let line = atip_check::output::success_line(&json!({}), 0);
     let envelope: Value = serde_json::from_str(&line).expect("one JSON line");
