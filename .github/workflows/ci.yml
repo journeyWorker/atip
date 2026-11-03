@@ -1,0 +1,76 @@
+name: CI
+
+# One job per OS, the same steps `just ci` runs locally, in the same order:
+#   scripts/validate.sh                      the examples against the schemas, the spec's cross-references, the plan digest
+#                                            vectors and the Rust column of the pattern record (scripts/regex-parity)
+#   scripts/check_visibility.sh              no pub(super) / pub(in ..) in crate sources
+#   cargo fmt --check                        formatting
+#   cargo clippy --workspace -D warnings     lints (the lint set is [workspace.lints] in Cargo.toml)
+#   cargo test --workspace                   the `atip` crate and the checker, with its fake tool
+#
+# The Rust toolchain is the one `rust-toolchain.toml` pins, installed with rustup (never a floating `stable`); the job fails
+# when `rustc` is not that version. It runs on ubuntu and macOS: the checker needs a pseudo-terminal and process groups, and the
+# two systems differ in exactly those. Bun 1.4.4 is the runtime the ECMAScript half of scripts/regex-cases.json was recorded with.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: validate, lint, test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust
+        run: |
+          set -euo pipefail
+          rustup toolchain install
+          want=$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+          got=$(rustc --version | cut -d' ' -f2)
+          rustc --version
+          if [ -z "$want" ] || [ "$got" != "$want" ]; then
+            echo "::error::rustc is '$got', rust-toolchain.toml pins '$want'" >&2
+            exit 1
+          fi
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Cache cargo
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: atip-ci-${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+      - name: cargo fetch --locked
+        run: cargo fetch --locked
+
+      - name: scripts/validate.sh
+        run: scripts/validate.sh
+
+      - name: scripts/check_visibility.sh
+        run: scripts/check_visibility.sh
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: cargo test --workspace
+        run: cargo test --workspace --locked

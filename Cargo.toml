@@ -1,0 +1,100 @@
+# The atip/1 contract's Rust pieces: `atip` (the shared crate a tool links) and `atip-check` (the checker, `atip check`),
+# next to the spec and its schemas. `scripts/regex-parity` is the cross-engine pattern check of the spec.
+#
+# Releases are tagged per crate and independently of the spec: `atip-crate-v0.x.y` and `atip-check-v0.x.y`.
+# `atip::CONTRACT_VERSION` states the spec minor a crate supports.
+[workspace]
+resolver = "2"
+members = [
+    "crates/atip",
+    "crates/atip-check",
+    "scripts/regex-parity",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/journeyWorker/atip"
+publish = false
+
+[workspace.dependencies]
+# Internal crates (the checker builds against the shared crate of the same checkout)
+atip = { path = "crates/atip" }
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Content hashing (cursor binding, plan digest)
+sha2 = "0.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[workspace.lints.rust]
+ambiguous_negative_literals = "warn"
+missing_debug_implementations = "warn"
+redundant_imports = "warn"
+redundant_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "warn"
+unused_lifetimes = "warn"
+
+[workspace.lints.clippy]
+# restriction
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+as_pointer_underscore = "warn"
+assertions_on_result_states = "warn"
+clone_on_ref_ptr = "warn"
+deref_by_slicing = "warn"
+disallowed_script_idents = "warn"
+empty_drop = "warn"
+empty_enum_variants_with_brackets = "warn"
+empty_structs_with_brackets = "warn"
+fn_to_numeric_cast_any = "warn"
+if_then_some_else_none = "warn"
+map_err_ignore = "warn"
+redundant_type_annotations = "warn"
+renamed_function_params = "warn"
+self_named_module_files = "warn"
+semicolon_outside_block = "warn"
+undocumented_unsafe_blocks = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+unneeded_field_pattern = "warn"
+unused_result_ok = "warn"
+# pedantic, selected
+cast_lossless = "warn"
+cast_possible_truncation = "warn"
+cast_possible_wrap = "warn"
+cast_sign_loss = "warn"
+cloned_instead_of_copied = "warn"
+enum_glob_use = "warn"
+explicit_iter_loop = "warn"
+implicit_clone = "warn"
+manual_let_else = "warn"
+map_unwrap_or = "warn"
+needless_for_each = "warn"
+redundant_closure_for_method_calls = "warn"
+semicolon_if_nothing_returned = "warn"
+uninlined_format_args = "warn"
+unnested_or_patterns = "warn"
+wildcard_imports = "warn"
+
+# Debug info: line tables for our crates (backtraces keep file:line), none for
+# dependencies: a smaller `target/` and a faster from-scratch `cargo test --workspace --no-run`
+# than full debug info (measured in a larger Rust workspace: 22.6 GB / 174 s against 15.4 GB / 142 s).
+#
+# Optimisation: the checker's tests run `atip check` against the fake tool, which is hundreds of launches of the fake tool
+# and a JSON Schema validation per document, all in a debug build. Optimising the dependencies (jsonschema, regex, serde_json)
+# and the workspace crates a little takes the CPU of one `atip check --level L2` run against the fake tool from 9.8 s to 6.8 s
+# (user 5.3 s to 2.3 s; the rest is process launches, which no profile changes; measured with /usr/bin/time -l).
+[profile.dev]
+opt-level = 1
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
