@@ -28,14 +28,24 @@ pub struct CheckArgs {
     pub contract: Option<String>,
 }
 
+/// Where the level of a run comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LevelSource {
+    /// `--level` named it.
+    Claimed,
+    /// `--level` was left out: the level the tool's own `schema --json` declares, and `L0` when it has no schema.
+    Tree,
+}
+
 /// What the command line asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Version,
     RootHelp,
     CheckHelp,
-    /// A run of the checks: the arguments, and the mode (`--deep` makes it [`Mode::Deep`]).
-    Check(CheckArgs, Mode),
+    /// A run of the checks: the arguments (with `L0` as the level when [`LevelSource::Tree`] says it is the tool's to give), the mode (`--deep` makes it
+    /// [`Mode::Deep`]) and where the level comes from.
+    Check(CheckArgs, Mode, LevelSource),
 }
 
 const COMMANDS: [&str; 1] = ["check"];
@@ -53,7 +63,7 @@ const LEVELS: [&str; 3] = ["L0", "L1", "L2"];
 
 pub const ROOT_HELP: &str = "atip: run a built binary and check the atip/1 contract from outside
 
-Usage: atip check --bin <BINARY> --level <LEVEL> --fixture <FILE> [--contract <MAJOR.MINOR>] [--deep] [--json]
+Usage: atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--json]
 
 Commands:
   check    Run the checks of a level against a binary
@@ -66,11 +76,11 @@ Run atip check --help for the options of check.";
 
 pub const CHECK_HELP: &str = "atip check: run the checks of a level against a built binary
 
-Usage: atip check --bin <BINARY> --level <LEVEL> --fixture <FILE> [--contract <MAJOR.MINOR>] [--deep] [--json]
+Usage: atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--json]
 
 Options:
       --bin <BINARY>     The binary to check: a path, or a name found on PATH
-      --level <LEVEL>    The level the tool claims: L0, L1 or L2 (cumulative: L2 also runs the checks of L0 and L1)
+      --level <LEVEL>    The level the tool claims: L0, L1 or L2 (cumulative: L2 also runs the checks of L0 and L1). Defaults to the level of the tool's own `schema --json`, and to L0 when it has none
       --fixture <FILE>   The tool's fixture file: JSON with contractVersion, prepare, setup, env, timeoutSeconds, probe, globalOptions, registry, warnings, commands (and, in commands, ok, refused, paged, missingValue, fields, domainRejects, batchFailsAt, batchFailsFirst, preview, async and allowedEffects), search and notRun (the ids of commands that do not end on their own, such as a server: each runs once, up to its first JSON document, and is then signalled)
       --contract <MAJOR.MINOR>
                          The contract minor the tool claims: 1.0, 1.1 or 1.2. Defaults to the fixture's contractVersion, and to 1.0
@@ -217,14 +227,15 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
         value.ok_or_else(|| usage(format!("the option {name} is required")).field(name))
     };
     let bin = required(bin, "--bin")?;
-    let level = required(level, "--level")?;
     let fixture = required(fixture, "--fixture")?;
-    let level = match level.to_str() {
-        Some("L0") => Level::L0,
-        Some("L1") => Level::L1,
-        Some("L2") => Level::L2,
-        _ => {
-            let given = level.to_string_lossy();
+    let (level, source) = match level.as_ref().map(|level| level.to_str()) {
+        None => (Level::L0, LevelSource::Tree),
+        Some(Some("L0")) => (Level::L0, LevelSource::Claimed),
+        Some(Some("L1")) => (Level::L1, LevelSource::Claimed),
+        Some(Some("L2")) => (Level::L2, LevelSource::Claimed),
+        Some(_) => {
+            let given = level.unwrap_or_default();
+            let given = given.to_string_lossy();
             return Err(usage(format!("{given} is not a level"))
                 .field("--level")
                 .expected(LEVELS)
@@ -256,6 +267,7 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
             contract,
         },
         mode,
+        source,
     ))
 }
 
@@ -322,7 +334,7 @@ fn distance(a: &str, b: &str) -> usize {
 mod tests {
     use std::ffi::OsString;
 
-    use super::{distance, parse, CheckArgs, Command, Level};
+    use super::{distance, parse, CheckArgs, Command, Level, LevelSource};
     use crate::output::Code;
     use crate::report::Mode;
 
@@ -345,6 +357,7 @@ mod tests {
                 contract: None,
             },
             Mode::Interface,
+            LevelSource::Claimed,
         );
         assert_eq!(
             parse(&args(&[
@@ -387,9 +400,26 @@ mod tests {
                     level: Level::L2,
                     ..
                 },
-                Mode::Interface
+                Mode::Interface,
+                LevelSource::Claimed
             ))
         ));
+    }
+
+    #[test]
+    fn atip_check_deep_20_a_run_without_level_takes_the_level_of_the_tools_own_tree() {
+        let source = |words: &[&str]| match parse(&args(words)) {
+            Ok(Command::Check(_, _, source)) => source,
+            other => panic!("not a check: {other:?}"),
+        };
+        assert_eq!(
+            source(&["check", "--bin", "b", "--fixture", "f"]),
+            LevelSource::Tree
+        );
+        assert_eq!(
+            source(&["check", "--bin", "b", "--fixture", "f", "--level", "L1"]),
+            LevelSource::Claimed
+        );
     }
 
     #[test]
@@ -400,7 +430,7 @@ mod tests {
             words
         }
         let mode = |extra: &[&str]| match parse(&args(&line(extra))) {
-            Ok(Command::Check(_, mode)) => mode,
+            Ok(Command::Check(_, mode, _)) => mode,
             other => panic!("not a check: {other:?}"),
         };
         assert_eq!(mode(&[]), Mode::Interface);

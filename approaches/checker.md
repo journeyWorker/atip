@@ -15,16 +15,16 @@ The reference checker is a Rust binary named `atip`. It is built first inside ca
 published on its own, so that no tool needs canon to run it.
 
 ```
-atip check --bin <PATH> --level <L0|L1|L2> --fixture <FILE> [--contract <MAJOR.MINOR>] [--deep] [--json]
+atip check --bin <PATH> --fixture <FILE> [--level <L0|L1|L2>] [--contract <MAJOR.MINOR>] [--deep] [--json]
 atip check --bin target/release/canon --level L2 --fixture checker-fixture.json
 ```
 
-- `--level` is the claimed level. For L1/L2 the checker also reads `data.level` from `schema --json` and fails
+- `--level` is the claimed level; without it, the level of the tool's own `schema --json` (L0 when it prints none; §3.1). For L1/L2 the checker also reads `data.level` from `schema --json` and fails
   when it is below the claimed level (levels are cumulative, so a tree at L2 meets an L1 claim; L1.tree, whose
   report then says that the higher level went unchecked).
 - `--fixture` is the tool's fixture file (§5): the state and the invocations the stateful checks need.
 - `--deep` runs every check of the level (§3.1). Without it, `atip check` runs only the interface checks: a few launches of the binary on one
-  shared copy of the fixture state, for the CI run that needs the smoke test. `--level` stays the claimed level in both modes.
+  shared copy of the fixture state, for the CI run that needs the smoke test. `--level` is the claimed level in both modes.
 - `--contract` is the claimed minor (spec 15.5): `1.0`, `1.1`, `1.2`, `1.3` or `1.4`. It defaults to the fixture's
   `contractVersion`, and to `1.0` when the fixture has none; given with a fixture member that says otherwise it
   refuses with `USAGE`. The checker checks that every document declares that minor and carries nothing a later minor
@@ -121,19 +121,26 @@ the fixture state, and after every refusal a probe launch), which is minutes of 
 
 - **Default: interface mode.** The checks that judge a document the tool prints for an ordinary call: the envelope, the exit status, the names of
   the error codes and the registry the tool lists, `next`, the shape of the `schema` document, one document in JSON mode, no prompt. It makes
-  at most ten launches of the binary, all in **one shared copy** of the fixture state (the one-copy-per-sequence rule above does not apply to it). The report says
+  at most thirteen launches of the binary, all in **one shared copy** of the fixture state (the one-copy-per-sequence rule above does not apply to it). The report says
   `mode: interface` and lists the checks of the level it did not run in `deepChecks`; its verdict is "interface checks passed (--deep for the
   rest)", never that the level is met.
 - **`--deep`.** Every check of the level, as §3 and §6 describe: a fresh copy per sequence, the probes of every command, option and code, the
   runs on a terminal. The report says `mode: deep` and is the full report of the level.
 
 The calls of an interface run, in order: `--version`; `nosuch-xyz --json`; `nosuch-xyz`; `--json`; `schema --errors --json`; `schema --warnings --json`;
-`schema --json`; `<probe> --json` (when the fixture has a probe); from L1 `--help`; last, the control run (stdin at end-of-file) of the first
+`schema --json`; `<probe> --json`, `<probe> --bogus-xyz --json`, `<probe> --json --bogus-xyz` and `<probe> -- --json` (when the fixture has a probe); from L1 `--help`; last, the control run (stdin at end-of-file) of the first
 `missingValue` invocation of the fixture. One copy serves them all because none of them writes, by construction: `--version`, a refusal (the unknown
 command, the bare call, the `missingValue` call, which is refused) and `schema` change nothing by the contract (spec 8.2, 9.2), and the probe is a
 command that runs without state. The one call that might write if the tool broke the contract, the `missingValue` control, runs last, so that no other call
 is judged after it. An interface run does not measure what a call changed and runs no probe after a refusal: the checks that would see a write
 (L0.refusal-effects, L1.no-state, L2.effects) are deep.
+
+**One id per check.** A check that judges only part of its rule without `--deep` keeps its one id in both modes; its entry in the report says how far it
+ran in `ran`: `interface` (the part an interface run judges) or `all` (a deep run), and the text line of an interface run names what `--deep` adds. A check
+that is the same in both modes has no `ran`.
+
+**The level.** `--level` is optional: without it the level is the one the tool's own `schema --json` declares in `data.level`, and L0 when the tool prints no
+such document. That one more launch happens in either mode, before the run.
 
 An interface check judges the documents of those calls (and the same rules over every document the run printed). Some of them judge a part of their rule
 without `--deep`, as the last column says; the rest of the rule is `--deep`'s. Without `--deep`, L0.no-prompt passes when the control run of the
@@ -147,6 +154,9 @@ without `--deep`, as the last column says; the rest of the rule is `--deep`'s. W
 | L0.unknown-command-text | |
 | L0.text-error-form | |
 | L0.bare | |
+| L0.unknown-option | |
+| L0.json-mode-preparse | |
+| L0.after-dashdash | |
 | L0.ok-exit | |
 | L0.no-null | |
 | L0.envelope | |
@@ -172,7 +182,7 @@ without `--deep`, as the last column says; the rest of the rule is `--deep`'s. W
 | L2.help-guide | |
 
 Every other check is deep: it enumerates over the commands, options or codes of the tool, or probes with a generated invocation, a different environment or
-a terminal, or reads what a call changed. Those are, at L0, L0.unknown-option, L0.json-mode-preparse, L0.after-dashdash, L0.no-env-switch,
+a terminal, or reads what a call changed. Those are, at L0, L0.no-env-switch,
 L0.no-env-switch-text, L0.page, L0.refusal-effects, L0.global-on-group; at L1, L1.no-state, L1.walk, L1.quoted-path, L1.schema-errors,
 L1.reserved-applicable, L1.codes-known, L1.groups-not-runnable, L1.grammar, L1.one-meaning, L1.one-meaning-values, L1.examples, L1.example-runs,
 L1.constraints, L1.domains, L1.patterns, L1.numbers, L1.validators, L1.check-order, L1.output-data, L1.hint-command, L1.defaults, L1.deterministic, L1.paging,

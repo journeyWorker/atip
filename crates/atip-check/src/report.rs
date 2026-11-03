@@ -105,6 +105,9 @@ pub struct Check {
     /// Facts the check found that do not change its result: the rules an `entailed` check rests on, a verified Unicode-version difference between the two regular-expression engines.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+    /// How far a check that judges part of its rule without `--deep` ran: `interface` (the part an interface run judges) or `all` (a deep run). Absent for a check that is the same in both modes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ran: Option<&'static str>,
     /// The write and destructive commands of the tool's documents that no fixture entry covers, named by `L1.constraints`, `L1.domains` and `L1.validators`: the checker never runs them, so they are outside what those checks probe (contract 1.1.2). Information only: it never changes the result.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unlisted: Vec<String>,
@@ -299,6 +302,7 @@ mod tests {
             findings: Vec::new(),
             cut: false,
             notes: Vec::new(),
+            ran: None,
             unlisted: Vec::new(),
             not_run: Vec::new(),
             skipped: Vec::new(),

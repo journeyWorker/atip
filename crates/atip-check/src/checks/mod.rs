@@ -152,13 +152,16 @@ pub fn needs(id: &str) -> &'static [Need] {
 /// To classify a new check, add `(id, deep part)` here and the row to the Modes table of approaches/checker.md; `tests/interface_mode.rs` holds the
 /// two to each other and to the three check tables. The checks of contract 1.4 (`L1.schemas`: `schema --schemas --json`; `L1.help-json`: `--help --json`)
 /// judge the document of one call and belong here when they are added.
-const INTERFACE: [(&str, &str); 29] = [
+const INTERFACE: [(&str, &str); 32] = [
     ("L0.version", ""),
     ("L0.version-format", ""),
     ("L0.unknown-command", ""),
     ("L0.unknown-command-text", ""),
     ("L0.text-error-form", ""),
     ("L0.bare", ""),
+    ("L0.unknown-option", ""),
+    ("L0.json-mode-preparse", ""),
+    ("L0.after-dashdash", ""),
     ("L0.ok-exit", ""),
     ("L0.no-null", ""),
     ("L0.envelope", ""),
@@ -371,17 +374,24 @@ pub(crate) struct Skip {
 struct ProbeCalls {
     /// The plain `<probe> --json`.
     plain: usize,
+    /// The refusals of the grammar checks, which both modes make.
+    grammar: GrammarProbeCalls,
     /// The probes of the checks of `--deep`; `None` in interface mode.
     deep: Option<DeepProbeCalls>,
 }
 
-/// The probe invocations that only a deep run makes.
-struct DeepProbeCalls {
+/// The probe invocations of the argument-grammar checks: three refusals and a call after `--`, none of which writes.
+struct GrammarProbeCalls {
     /// `<probe> --bogus-xyz --json`.
     unknown_option: usize,
     /// `<probe> --json --bogus-xyz`.
     json_first: usize,
+    /// `<probe> -- --json`.
     after_dashdash: usize,
+}
+
+/// The probe invocations that only a deep run makes.
+struct DeepProbeCalls {
     /// The plain `<probe> --json` (`ProbeCalls::plain`), then one per variation of the environment and one on a terminal.
     json_variations: Vec<(String, usize)>,
     /// The same for `<probe>` in text mode.
@@ -525,8 +535,11 @@ impl Run<'_> {
             None => None,
             Some(mut words) => {
                 words.push("--json".to_string());
+                let plain = self.invoke(Call::new(words.clone()))?;
+                words.pop();
                 Some(ProbeCalls {
-                    plain: self.invoke(Call::new(words))?,
+                    plain,
+                    grammar: self.invoke_probe_grammar(&words)?,
                     deep: None,
                 })
             }
@@ -580,6 +593,23 @@ impl Run<'_> {
         Ok(all)
     }
 
+    /// The three refusals and the call after `--` of the probe: the same calls in both modes.
+    fn invoke_probe_grammar(&mut self, words: &[String]) -> Result<GrammarProbeCalls, RunError> {
+        let call = |extra: &[&str]| {
+            Call::new(
+                words
+                    .iter()
+                    .map(String::as_str)
+                    .chain(extra.iter().copied()),
+            )
+        };
+        Ok(GrammarProbeCalls {
+            unknown_option: self.invoke(call(&[NO_SUCH_OPTION, "--json"]))?,
+            json_first: self.invoke(call(&["--json", NO_SUCH_OPTION]))?,
+            after_dashdash: self.invoke(call(&["--", "--json"]))?,
+        })
+    }
+
     fn invoke_probe(&mut self, words: &[String]) -> Result<ProbeCalls, RunError> {
         let call = |extra: &[&str]| {
             Call::new(
@@ -589,9 +619,7 @@ impl Run<'_> {
                     .chain(extra.iter().copied()),
             )
         };
-        let unknown_option = self.invoke(call(&[NO_SUCH_OPTION, "--json"]))?;
-        let json_first = self.invoke(call(&["--json", NO_SUCH_OPTION]))?;
-        let after_dashdash = self.invoke(call(&["--", "--json"]))?;
+        let grammar = self.invoke_probe_grammar(words)?;
         let variations =
             |run: &mut Self, extra: &[&str]| -> Result<Vec<(String, usize)>, RunError> {
                 let base = call(extra);
@@ -612,10 +640,8 @@ impl Run<'_> {
         let text_variations = variations(self, &[])?;
         Ok(ProbeCalls {
             plain: json_variations[0].1,
+            grammar,
             deep: Some(DeepProbeCalls {
-                unknown_option,
-                json_first,
-                after_dashdash,
                 json_variations,
                 text_variations,
             }),
@@ -929,6 +955,10 @@ pub(crate) fn run_checks(
                 finding
             };
             let mut notes = finding.notes;
+            let ran = (!deep_part(entry.id).is_empty()).then_some(match mode {
+                Mode::Interface => "interface",
+                Mode::Deep => "all",
+            });
             if mode == Mode::Interface && !deep_part(entry.id).is_empty() {
                 notes.push(format!("--deep adds {}", deep_part(entry.id)));
             }
@@ -948,6 +978,7 @@ pub(crate) fn run_checks(
                 findings: finding.details,
                 cut: finding.cut,
                 notes,
+                ran,
                 unlisted: if matches!(entry.id, "L1.constraints" | "L1.domains" | "L1.validators") {
                     l1.as_ref()
                         .map(|l1| l1.unprobed_writes.clone())
@@ -1556,6 +1587,11 @@ impl<'a> Judge<'a> {
         }
     }
 
+    /// The probe invocations of the argument-grammar checks, when the fixture has a probe.
+    fn grammar_probe(&self) -> Option<&GrammarProbeCalls> {
+        self.calls.probe.as_ref().map(|probe| &probe.grammar)
+    }
+
     /// The probe invocations of a deep run, when the fixture has a probe.
     fn deep_probe(&self) -> Option<&DeepProbeCalls> {
         self.calls.probe.as_ref()?.deep.as_ref()
@@ -1834,7 +1870,7 @@ impl<'a> Judge<'a> {
     /// `<probe> --bogus-xyz --json`: a refusal code, the field and the command. Whether it is an envelope is `L0.json-mode-preparse`'s.
     fn unknown_option(&'a self) -> Finding {
         let mut c = self.check("L0.unknown-option");
-        let Some(probe) = self.deep_probe() else {
+        let Some(probe) = self.grammar_probe() else {
             return c.finish(false);
         };
         c.own(probe.unknown_option);
@@ -1885,7 +1921,7 @@ impl<'a> Judge<'a> {
 
     fn json_mode_preparse(&'a self) -> Finding {
         let mut c = self.check("L0.json-mode-preparse");
-        let Some(probe) = self.deep_probe() else {
+        let Some(probe) = self.grammar_probe() else {
             return c.finish(false);
         };
         for (condition, index) in [
@@ -1912,7 +1948,7 @@ impl<'a> Judge<'a> {
 
     fn after_dashdash(&'a self) -> Finding {
         let mut c = self.check("L0.after-dashdash");
-        let Some(probe) = self.deep_probe() else {
+        let Some(probe) = self.grammar_probe() else {
             return c.finish(false);
         };
         c.own(probe.after_dashdash);

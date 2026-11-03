@@ -13,8 +13,17 @@ use serde_json::{json, Value};
 use support::l1::{l1_bin, l1_cases, l1_config};
 use support::{atip_as_given, atip_in, cases, Case, Harness, Output, FAKE_TOOL};
 
-/// The most launches of the binary an interface run may make, the fixture's `setup` included ("about 15" in the author's words).
-const MOST_LAUNCHES: usize = 15;
+/// The most launches of the binary an interface run may make after the fixture's `setup` ("about 15" in the author's words, with the setup of a
+/// small fixture; the three calls of the probe's argument grammar are in it).
+const MOST_CALLS: usize = 13;
+
+/// The calls of an interface run: the launches from `--version` on, after the fixture's `setup`.
+fn calls_of(launches: &[String]) -> usize {
+    launches
+        .iter()
+        .skip_while(|line| line.as_str() != "--version")
+        .count()
+}
 
 fn lines(path: &std::path::Path) -> Vec<String> {
     std::fs::read_to_string(path)
@@ -104,7 +113,7 @@ fn atip_check_deep_10_a_conforming_tool_passes_the_interface_checks_of_l0_in_ten
         .collect();
     assert_eq!(deep, expected_deep);
     assert!(
-        deep.contains(&"L0.unknown-option".to_string()) && deep.contains(&"L2.effects".to_string())
+        deep.contains(&"L0.no-env-switch".to_string()) && deep.contains(&"L2.effects".to_string())
     );
     // The launches, in order: the fixture's `setup`, then the calls of the interface run, the `missingValue` control run last.
     let launches = lines(&log);
@@ -120,10 +129,13 @@ fn atip_check_deep_10_a_conforming_tool_passes_the_interface_checks_of_l0_in_ten
             "schema --warnings --json",
             "schema --json",
             "status --json",
+            "status --bogus-xyz --json",
+            "status --json --bogus-xyz",
+            "status -- --json",
             "touch --json",
         ]
     );
-    assert!(launches.len() <= MOST_LAUNCHES);
+    assert!(calls_of(&launches) <= MOST_CALLS);
     // The text report says which mode ran and what `--deep` adds, and never says the level is met.
     let text = harness.check_default(&harness.fixture(&json!({})), false);
     assert_eq!(text.code, Some(0), "{}", text.stderr);
@@ -135,7 +147,7 @@ fn atip_check_deep_10_a_conforming_tool_passes_the_interface_checks_of_l0_in_ten
     assert!(!text.stdout.contains(" met:"), "{}", text.stdout);
     assert!(
         text.stdout
-            .contains("not run without --deep: L0.unknown-option, "),
+            .contains("not run without --deep: L0.no-env-switch, "),
         "{}",
         text.stdout
     );
@@ -172,7 +184,7 @@ fn atip_check_deep_11_the_interface_run_of_l1_and_l2_adds_the_tree_and_help_in_t
         after_setup.iter().filter(|line| **line == "--help").count(),
         1
     );
-    assert!(launches.len() <= MOST_LAUNCHES, "{launches:?}");
+    assert!(calls_of(&launches) <= MOST_CALLS, "{launches:?}");
     // L2: the tree's `level` is L1 and the claim L2, which L1.tree reports, and `--help` says nothing of `skills show`: L2.help-guide fails.
     let harness = Harness::new();
     let log = harness.path("runs.log");
@@ -194,6 +206,70 @@ fn atip_check_deep_11_the_interface_run_of_l1_and_l2_adds_the_tree_and_help_in_t
             |message| message.starts_with("the interface checks of L2 failed: 2 MUST checks")
         ),
         "{error}"
+    );
+}
+
+#[test]
+fn atip_check_deep_20_a_partial_check_says_how_far_it_ran_and_a_run_without_level_takes_the_trees()
+{
+    // `ran` is on the checks that judge only part of their rule without `--deep`: `interface` in a default run, `all` in a deep one.
+    let harness = Harness::new();
+    let default = harness.check_default(&harness.fixture(&json!({})), true);
+    let ran = |output: &Output, id: &str| output.check(id).get("ran").cloned();
+    assert_eq!(ran(&default, "L0.no-prompt"), Some(json!("interface")));
+    assert_eq!(ran(&default, "L0.registry"), Some(json!("interface")));
+    assert_eq!(ran(&default, "L0.version"), None);
+    let harness = Harness::new();
+    let deep = harness.check(&harness.fixture(&json!({})), true);
+    assert_eq!(ran(&deep, "L0.no-prompt"), Some(json!("all")));
+    assert_eq!(ran(&deep, "L0.version"), None);
+    // Without `--level` the level is the one the tool's `schema --json` declares (the L1 fake says L1).
+    let harness = Harness::new();
+    let config = l1_config(&json!({}));
+    let fixture = harness.l1_fixture(&config);
+    let bin = l1_bin(&harness, &config);
+    let fixture_path = harness.write("fixture.json", &fixture);
+    let (work, tmp) = (harness.path("cwd"), harness.path("tmp"));
+    std::fs::create_dir_all(&work).expect("cwd");
+    std::fs::create_dir_all(&tmp).expect("tmp");
+    let output = atip_as_given(
+        &work,
+        &tmp,
+        &[
+            "check",
+            "--bin",
+            bin.to_str().expect("utf8"),
+            "--fixture",
+            fixture_path.to_str().expect("utf8"),
+            "--json",
+        ],
+    );
+    assert_eq!(output.code, Some(0), "{}", output.stdout);
+    assert_eq!(output.envelope()["data"]["level"], "L1");
+    assert_eq!(ids_of(&output), ids_in(Mode::Interface, "L1"));
+    // A tool that prints no `schema --json` claims nothing above L0.
+    let harness = Harness::new();
+    let fixture_path = harness.write("plain.json", &harness.fixture(&json!({"noSchema": true})));
+    let (work, tmp) = (harness.path("cwd"), harness.path("tmp"));
+    std::fs::create_dir_all(&work).expect("cwd");
+    std::fs::create_dir_all(&tmp).expect("tmp");
+    let output = atip_as_given(
+        &work,
+        &tmp,
+        &[
+            "check",
+            "--bin",
+            FAKE_TOOL,
+            "--fixture",
+            fixture_path.to_str().expect("utf8"),
+            "--json",
+        ],
+    );
+    assert_eq!(
+        output.envelope()["data"]["level"],
+        "L0",
+        "{}",
+        output.stdout
     );
 }
 
@@ -223,13 +299,16 @@ fn atip_check_deep_12_the_calls_of_an_interface_run_share_one_copy_of_the_state_
 }
 
 /// The seeded violations of the L0 interface checks a default run shows: one per owner, the conditions the calls of the interface run reach.
-const L0_SEEDS: [&str; 16] = [
+const L0_SEEDS: [&str; 19] = [
     "version/exit-0",
     "version-format/tool-version-line",
     "unknown-command/code",
     "unknown-command-text/exit-2",
     "text-error-form/prefix",
     "bare/code",
+    "unknown-option/code-is-a-refusal",
+    "json-mode-preparse/json-first",
+    "after-dashdash/not-an-envelope",
     "ok-exit/ok-iff-exit-0",
     "no-null/no-null",
     "envelope/valid-envelope",
@@ -441,7 +520,7 @@ fn atip_check_deep_18_every_check_is_interface_or_deep_exactly_once_and_the_chec
         every.len(),
         "every check has one mode"
     );
-    assert_eq!((interface.len(), deep.len()), (29, 61));
+    assert_eq!((interface.len(), deep.len()), (32, 58));
     // An id that is not a check is deep by default, and says nothing of `--deep`.
     assert_eq!(
         (mode_of("L9.nosuch"), deep_part("L9.nosuch")),

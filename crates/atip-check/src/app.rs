@@ -6,8 +6,8 @@ use std::process::ExitCode;
 
 use crate::checks::{run_checks, Judged, Mutation};
 use crate::claim::Claim;
-use crate::cli::{self, CheckArgs, Command, CHECK_HELP, ROOT_HELP};
-use crate::exec::{RunError, Runner};
+use crate::cli::{self, CheckArgs, Command, Level, LevelSource, CHECK_HELP, ROOT_HELP};
+use crate::exec::{Call, RunError, Runner};
 use crate::fixture;
 use crate::output::{failure_line, failure_text, success_line, Code, Failure};
 use crate::report::{Mode, Report};
@@ -69,8 +69,8 @@ fn execute(args: &[OsString]) -> Result<String, Failure> {
         Command::Version => Ok(format!("atip {}", env!("CARGO_PKG_VERSION"))),
         Command::RootHelp => Ok(ROOT_HELP.to_string()),
         Command::CheckHelp => Ok(CHECK_HELP.to_string()),
-        Command::Check(check, mode) => {
-            let report = check_binary(&check, mode)?;
+        Command::Check(check, mode, source) => {
+            let report = check_binary_at(&check, mode, source)?;
             if !report.passed {
                 return Err(level_not_met(&report).unwrap_or_else(|failure| failure));
             }
@@ -114,7 +114,16 @@ fn level_not_met(report: &Report) -> Result<Failure, Failure> {
 
 /// Runs the checks of the claimed level against the binary: the interface checks, or with [`Mode::Deep`] every check of the level.
 pub fn check_binary(args: &CheckArgs, mode: Mode) -> Result<Report, Failure> {
-    check_binary_with(args, mode, Mutation::none()).map(|judged| judged.report)
+    check_binary_at(args, mode, LevelSource::Claimed)
+}
+
+/// Like [`check_binary`], at the level `source` says: the claimed one in `args`, or the level of the tool's own `schema --json`.
+pub fn check_binary_at(
+    args: &CheckArgs,
+    mode: Mode,
+    source: LevelSource,
+) -> Result<Report, Failure> {
+    check_binary_with(args, mode, source, Mutation::none()).map(|judged| judged.report)
 }
 
 /// What a test may do to a run: report checks as passed whatever they found, or treat single conditions as holding,
@@ -130,6 +139,7 @@ pub fn check_binary_mutated(
     check_binary_with(
         args,
         Mode::Deep,
+        LevelSource::Claimed,
         Mutation {
             forced_pass,
             skipped_conditions,
@@ -141,6 +151,7 @@ pub fn check_binary_mutated(
 fn check_binary_with(
     args: &CheckArgs,
     mode: Mode,
+    source: LevelSource,
     mutation: Mutation<'_>,
 ) -> Result<Judged, Failure> {
     let refuse = |code: Code, message: String, field: &str| {
@@ -198,12 +209,35 @@ fn check_binary_with(
         }
         RunError::Scratch(reason) => scratch_failure(reason),
     };
-    let runner = Runner::new(&bin, &fixture).map_err(from_run)?;
+    let mut runner = Runner::new(&bin, &fixture).map_err(from_run)?;
+    let level = match source {
+        LevelSource::Claimed => args.level,
+        LevelSource::Tree => tree_level(&mut runner).map_err(from_run)?,
+    };
     let name = bin
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    run_checks(runner, &fixture, claim, &name, mutation, args.level, mode).map_err(from_run)
+    run_checks(runner, &fixture, claim, &name, mutation, level, mode).map_err(from_run)
+}
+
+/// The level the tool's own `schema --json` declares (`data.level`), and `L0` when it prints no such document: a tool that cannot describe itself claims
+/// nothing above the level that needs no self-description.
+fn tree_level(runner: &mut Runner) -> Result<Level, RunError> {
+    let outcome = runner.run(&Call::new(["schema", "--json"]))?;
+    let document: Option<serde_json::Value> = serde_json::from_slice(&outcome.stdout).ok();
+    Ok(
+        match document
+            .as_ref()
+            .filter(|document| document.get("ok") == Some(&serde_json::Value::Bool(true)))
+            .and_then(|document| document.pointer("/data/level"))
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("L2") => Level::L2,
+            Some("L1") => Level::L1,
+            _ => Level::L0,
+        },
+    )
 }
 
 /// The binary as an absolute path: a path as given, a bare name found on `PATH`; it must be an executable file.
