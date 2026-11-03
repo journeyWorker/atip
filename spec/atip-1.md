@@ -1,10 +1,12 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.4.1**, adopted 2026-11-04 after one round of independent review: a patch (15.1) that states the compactness
-rule as whitespace outside strings only, applies 7.3.2's naming to every minor from 1.3, and words the MINOR row for
-replaced members (Appendix A D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a minor
-(15.1) that makes the self-description small and compact for agents and separates `--help` from `schema` (D38); 1.3.1
-and 1.3.0 are described in D37 and D36.
+Status: **1.4.2**, adopted 2026-11-04 after one round of independent review: a patch (15.1) that says how a caller
+writes none for a repeatable option in `--input` and that `--version --json` resolves its path first (Appendix A D40).
+Version 1.4.1, adopted 2026-11-04 after one round of independent review, is a patch that states the compactness rule as
+whitespace outside strings only, applies 7.3.2's naming to every minor from 1.3, and words the MINOR row for replaced
+members (D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a minor (15.1) that makes
+the self-description small and compact for agents and separates `--help` from `schema` (D38); 1.3.1 and 1.3.0 are
+described in D37 and D36.
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
 (V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 
@@ -149,11 +151,11 @@ fails, so that every parse failure is a JSON failure envelope.
 ### 4.4. Help and version
 
 4.4.1. `--help`/`-h` and `--version`/`-V` print text for people and exit 0; that text is not part of the protocol, and
-`--version` SHOULD print `<tool> <version>`. The machine-readable self-description is `schema` (9), never `--help`: in
-a 1.4 document `--help` with `--json` refuses with `USAGE`, `field` `--help`, `hint` `<tool> schema <PATH> --json`
-for the path it named (`<tool> schema --json` at the root), after the path is resolved, so an unknown word still
-answers `UNKNOWN_COMMAND`; `--version` with `--json` refuses the same way with `field` `--version`, `hint`
-`<tool> --version` (every envelope's `meta.toolVersion` carries the version). (Earlier minors MAY answer `--help
+`--version` SHOULD print `<tool> <version>`. The machine-readable self-description is `schema` (9), never `--help`: in a
+1.4 document `--help` with `--json` refuses with `USAGE`, `field` `--help`, `hint` `<tool> schema <PATH> --json` for the
+path it named (`<tool> schema --json` at the root), after the path is resolved, so an unknown word still answers
+`UNKNOWN_COMMAND`; `--version` with `--json` refuses the same way, after the path is resolved, with `field` `--version`,
+`hint` `<tool> --version` (every envelope's `meta.toolVersion` carries the version). (Earlier minors MAY answer `--help
 --json` with the `schema` document.)
 
 4.4.2. (L1) The first line of the root `--help` MUST point agents at `<tool> schema --json` (every `--help` SHOULD),
@@ -598,9 +600,10 @@ twice or without a value is `USAGE`. [Appendix A D26]
 10.4. An object is one invocation, an array a batch (10.11); only a file or stdin that is not one JSON value is read
 as NDJSON (a batch). Anything else, and a batch the command does not accept, refuses with `INPUT_INVALID`.
 
-10.5. Keys are the options' camelCase names and `operands` (a non-empty array, in order); values follow 9.7.2. A
-numeric string for an `integer` or `number` is normalised to its number; nothing else is coerced; `null` is refused
-except inside a `json` value. [Appendix A D11.17]
+10.5. Keys are the options' camelCase names and `operands` (a non-empty array, in order); values follow 9.7.2. A caller
+writes none for a repeatable option by omitting the key, as for `operands`; a 1.4 tool may read `[]` as absent or refuse
+it with `INPUT_INVALID`, `field` the key's pointer. A numeric string for an `integer` or `number` is normalised to its
+number; nothing else is coerced; `null` is refused except inside a `json` value. [Appendix A D11.17]
 
 10.6. Flag-only options (4.5, and any the tool marks) are never keys, so a document cannot select output, page or
 commit a plan.
@@ -940,6 +943,10 @@ sections of this version.
 | # | Owner decision 2026-11-04, version 1.4.1, a patch (15.1) | Where |
 |---|---|---|
 | D39 | Three clarifications, no rule strength changed; `meta.contractVersion` stays `"1.4"`. (1) 5.1's compactness forbids whitespace (space, tab, CR, LF) outside strings and nothing else: any valid number spelling (`60.0`, `1e3`) and any escape form (`\u00e9`) is compact. The repository checker had compared the file with `JSON.stringify(JSON.parse(line))`, which also normalised numbers and escapes and so rejected compact documents a Rust serializer prints; an implementer found it. (2) 7.3.2's naming of finer parse codes applies to documents that declare 1.3 or later, not only 1.3. The set of finer replacements a 1.4 command document implies stays open, as in 1.4.0: a review found that closing it to named codes in a patch could fail a conforming 1.4.0 document either way (a replacement left out under another name, or an `OPERAND_*` domain refusal listed), so closing it is left to a minor. (3) 15.1's MINOR row covers members a change replaces (an option object replaced by a name) as well as members it leaves out. | 5.1, 7.3.2, 9.5, 15.1, approaches/checker.md |
+
+| # | Owner decision 2026-11-04, version 1.4.2, a patch (15.1) from implementer feedback | Where |
+|---|---|---|
+| D40 | Two gaps two implementers met on 1.4, closed without changing a rule's strength; `meta.contractVersion` stays `"1.4"`. (1) A caller writes none for a repeatable option by omitting the key, as for `operands`; a 1.4 tool may read `"tag": []` as absent or refuse it with `INPUT_INVALID` and the key's pointer. 1.4.1 admitted `[]` (9.7.2 says "arrays", and the derived fragment has no `minItems`) but gave it no meaning, so either reading is allowed and the derivation of 9.9.2 is unchanged. A review of the 1.4.2 candidate found that making `[]` invalid, with `"minItems": 1` in the derivation, would fail a conforming 1.4.1 tool; that rule, a MUST and `minItems: 1` binding documents that declare 1.5, is a 1.5 candidate. (2) `--version --json` with a path resolves the path first, as `--help --json` does, so an unknown word answers `UNKNOWN_COMMAND`. `approaches/checker.md` L2.input-refusals sends `[]` for a repeatable option at a 1.4 claim and accepts either answer. | 4.4.1, 10.5, approaches/checker.md |
 
 ## Appendix B. Prior art
 
