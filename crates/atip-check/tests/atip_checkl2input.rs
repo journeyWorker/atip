@@ -15,10 +15,10 @@ use atip_check::cli::{CheckArgs, Level};
 use serde_json::{json, Value};
 
 use support::l2::{
-    check_of, in_parallel, input_cases, l2_config, l2_standard_config, not_passing, owner_of,
-    proves, run_case, run_config,
+    check_of, in_parallel, input_cases, l2_config, l2_standard_config, mutations_hold, not_passing,
+    owner_of, planted_together, prove_case, proves, run_case, run_config, Planted,
 };
-use support::{all_seeds, representatives, Case, Harness, Output};
+use support::{all_seeds, kind_verdict, representatives, Case, Harness, Output};
 
 const INPUT_ROWS: [&str; 15] = [
     "L2.input-present",
@@ -46,10 +46,6 @@ const RECORD: [&str; 1] = ["record put"];
 const ENV_WRITES: [&str; 3] = ["member tag", "team add", "record put"];
 /// The write that takes a batch, and the command the batch probes read its page from.
 const BATCH: [&str; 2] = ["member tag", "member list"];
-
-/// The owners whose cases `covers_the_conditions` also runs with their condition switched off and their owner forced to pass (every
-/// owner under `ATIP_CHECK_ALL_SEEDS=1`), each with the commands of the fixture its case needs.
-const MUTATED: [(&str, &[&str]); 2] = [("input-refusals", &ENV_WRITES), ("batch-ok", &BATCH)];
 
 fn results(data: &Value, ids: &[&str]) -> Vec<(String, String)> {
     ids.iter()
@@ -105,9 +101,137 @@ fn check_name(condition: &str) -> &str {
     condition.split('/').next().unwrap_or_default()
 }
 
-/// A conforming L2 run judges every condition of the rows `checks` that no L1 run judges, each of them has a case, and the cases of `MUTATED` alone:
-/// with the condition switched off their owner stops failing, and with the owner forced to pass it stops failing too. (`support::l2::covers` does this
-/// for every owner, with about two full runs each.)
+/// The seeds of the rows planted together in one fake: the groups `planted_together` makes, and the groups that differ only in the `docPatch` of other
+/// commands made one (`planted_together` keeps two `docPatch` apart, though they change two documents).
+fn planted_in_few_runs(seeds: Vec<Case>) -> Vec<Planted> {
+    let mut merged: Vec<Planted> = Vec::new();
+    for group in planted_together(seeds, |case| owner_of(case.condition)) {
+        match merged.iter_mut().find(|held| joins(held, &group)) {
+            Some(held) => absorb(held, group),
+            None => merged.push(group),
+        }
+    }
+    merged
+}
+
+fn doc_patches(group: &Planted) -> Option<&serde_json::Map<String, Value>> {
+    group.config.get("docPatch").and_then(Value::as_object)
+}
+
+/// Whether `other` can be planted with `held`: other owners, and every member of the configuration the same or only in one, but for the `docPatch` of
+/// commands that only one of them changes.
+fn joins(held: &Planted, other: &Planted) -> bool {
+    let (Some(config), Some(extra)) = (held.config.as_object(), other.config.as_object()) else {
+        return false;
+    };
+    other
+        .owners
+        .iter()
+        .all(|owner| !held.owners.contains(owner))
+        && extra.iter().all(|(key, value)| match config.get(key) {
+            None => true,
+            Some(_) if key == "docPatch" => doc_patches(held)
+                .zip(value.as_object())
+                .is_some_and(|(a, b)| b.keys().all(|command| !a.contains_key(command))),
+            Some(held_value) => held_value == value,
+        })
+}
+
+fn absorb(held: &mut Planted, other: Planted) {
+    let held_patches = doc_patches(held).cloned().unwrap_or_default();
+    for (key, value) in other.config.as_object().into_iter().flatten() {
+        if key == "docPatch" {
+            let mut patches = held_patches.clone();
+            patches.extend(
+                value
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
+            held.config[key.as_str()] = Value::Object(patches);
+        } else {
+            held.config[key.as_str()] = value.clone();
+        }
+    }
+    held.tweaks.extend(other.tweaks);
+    held.owners.extend(other.owners);
+    held.conditions.extend(other.conditions);
+}
+
+/// The first seed of each owner.
+fn first_of_each_owner(cases: Vec<Case>) -> Vec<Case> {
+    let mut seen = BTreeSet::new();
+    cases
+        .into_iter()
+        .filter(|case| seen.insert(owner_of(case.condition)))
+        .collect()
+}
+
+/// Every owner fails with a reason and rule numbers, and every other check passes or does not apply.
+fn fails_only(data: &Value, owners: &[String]) -> Result<(), String> {
+    let checks = data["checks"].as_array().ok_or("data.checks is missing")?;
+    for check in checks {
+        let id = check["id"].as_str().unwrap_or_default();
+        let result = check["result"].as_str().unwrap_or_default();
+        if owners.iter().any(|owner| owner == id) {
+            if result != "fail" {
+                return Err(format!("{id} is {result}, expected fail"));
+            }
+            if check["reason"].as_str().is_none_or(str::is_empty)
+                || check["rules"].as_array().is_none_or(Vec::is_empty)
+            {
+                return Err(format!("{id} fails without a reason and rule numbers"));
+            }
+        } else if !matches!(result, "pass" | "unsupported") {
+            return Err(format!("{id} is {result}, but it was not seeded"));
+        }
+    }
+    Ok(())
+}
+
+/// The seeds of `group` planted in one fake: exactly their owners fail, each with the finding kind of its condition, and as they are all MUSTs the run is
+/// `LEVEL_NOT_MET`, exit 1, and the error names every owner.
+fn prove_group(group: &Planted) -> Result<(), String> {
+    let harness = Harness::new();
+    let mut fixture = harness.l2_fixture(&group.config);
+    for tweak in &group.tweaks {
+        tweak(&mut fixture);
+    }
+    let output = harness.check_l2(&group.config, &fixture);
+    let document = output.envelope();
+    let data = &document["data"];
+    fails_only(data, &group.owners).map_err(|why| format!("{why}\n{}", not_passing(data)))?;
+    for condition in &group.conditions {
+        let owner = owner_of(condition);
+        kind_verdict(
+            data,
+            &owner,
+            condition.split('/').nth(1).unwrap_or_default(),
+        )
+        .map_err(|why| format!("{condition}: {why}"))?;
+        if check_of(data, &owner)["strength"] != "MUST" {
+            return Err(format!("{condition}: {owner} is not a MUST"));
+        }
+    }
+    let got = (output.code, document["ok"].as_bool());
+    if got != (Some(1), Some(false)) || document["error"]["code"] != "LEVEL_NOT_MET" {
+        return Err(format!(
+            "exit {got:?}, expected LEVEL_NOT_MET\n{}",
+            output.stdout
+        ));
+    }
+    let message = document["error"]["message"].as_str().unwrap_or_default();
+    for owner in &group.owners {
+        if !message.contains(owner.as_str()) {
+            return Err(format!("the error does not name {owner}: {message}"));
+        }
+    }
+    Ok(())
+}
+
+/// A conforming L2 run judges every condition of the rows `checks` that no L1 run judges and each of them has a case; the representative seeds, planted
+/// together, stop failing when their owners are forced to pass and when their conditions are switched off (`mutations_hold`).
 fn covers_the_conditions(cases: Vec<Case>, checks: &[&str]) {
     let harness = Harness::new();
     let config = l2_standard_config();
@@ -148,86 +272,10 @@ fn covers_the_conditions(cases: Vec<Case>, checks: &[&str]) {
         unjudged.is_empty(),
         "planted, never judged by a conforming run: {unjudged:?}"
     );
-    let sampled: Vec<Case> = if all_seeds() {
-        planted
-    } else {
-        representatives(planted, |case| owner_of(case.condition))
-            .into_iter()
-            .filter(|case| {
-                MUTATED
-                    .iter()
-                    .any(|(name, _)| *name == check_name(case.condition))
-            })
-            .collect()
-    };
-    let mut seen = BTreeSet::new();
-    let sampled: Vec<(Case, bool)> = sampled
-        .into_iter()
-        .map(|case| {
-            let first = seen.insert(owner_of(case.condition));
-            (case, first)
-        })
-        .collect();
-    let jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> = sampled
-        .into_iter()
-        .map(
-            |(case, first)| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
-                Box::new(move || {
-                    let harness = Harness::new();
-                    let mut fixture = harness.l2_fixture(&case.config);
-                    if let Some(tweak) = case.tweak {
-                        tweak(&mut fixture);
-                    }
-                    if !all_seeds() {
-                        let keep = MUTATED
-                            .iter()
-                            .find(|(name, _)| *name == check_name(case.condition))
-                            .map_or(&[][..], |(_, keep)| *keep);
-                        fixture["commands"]
-                            .as_object_mut()
-                            .expect("commands")
-                            .retain(|id, _| keep.contains(&id.as_str()));
-                    }
-                    let args = CheckArgs {
-                        bin: support::l1::l1_bin(&harness, &case.config).into(),
-                        level: Level::L2,
-                        fixture: harness.write("fixture.json", &fixture).into(),
-                        contract: None,
-                    };
-                    let owner = owner_of(case.condition);
-                    let failed = |report: &atip_check::report::Report| {
-                        report.find(&owner).map(|check| check.result)
-                            == Some(atip_check::report::CheckResult::Fail)
-                    };
-                    if first {
-                        let (forced, _) = check_binary_mutated(&args, &[owner.as_str()], &[])
-                            .map_err(|failure| {
-                                format!("{}: {}", case.condition, failure.message)
-                            })?;
-                        if failed(&forced) {
-                            return Err(format!(
-                                "{}: forced to pass, {owner} still fails",
-                                case.condition
-                            ));
-                        }
-                    }
-                    let (skipped, _) = check_binary_mutated(&args, &[], &[case.condition])
-                        .map_err(|failure| format!("{}: {}", case.condition, failure.message))?;
-                    if failed(&skipped) {
-                        return Err(format!(
-                            "{}: with the condition switched off {owner} still fails",
-                            case.condition
-                        ));
-                    }
-                    Ok(())
-                })
-            },
-        )
-        .collect();
-    let failures: Vec<String> = in_parallel(jobs)
-        .into_iter()
-        .filter_map(Result::err)
-        .collect();
+    let groups = planted_in_few_runs(representatives(planted, |case| owner_of(case.condition)));
+    let failures = mutations_hold(groups, Level::L2, |harness, config| {
+        harness.l2_fixture(config)
+    });
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
@@ -309,16 +357,55 @@ fn atip_checkl2input_02_a_tree_whose_level_is_l1_fails_l1_tree_at_l2_and_a_write
     );
 }
 
+/// 03, 04 (the refusals), 06 to 14 and 16: a seed of each row, planted together in one fake, fails exactly its own rows, each with the finding kind of its
+/// condition, and the error names them (03 `input-present` and `input-example`, which judge the documents alone; 04 `input-refusals`; 06 `input-tty`;
+/// 07 `input-usage`; 09 `input-fragment` and `input-normalise`; 10 `input-conflict`; 11 `input-env`; 12 `input-pointer`; 13 `input-dash-values`; 14 `numbers`,
+/// which `L1.numbers` owns; 16 the three batch rows). 08: `input-reasons` is advisory, so its seed alone is a failure and the level is met. With
+/// `ATIP_CHECK_ALL_SEEDS=1` every seed of every row is run alone as well, each failing its owner and no other.
 #[test]
-fn atip_checkl2input_03_input_present_and_input_example_judge_the_documents_alone_and_each_condition_fails_only_its_owner(
+fn atip_checkl2input_03_a_seed_of_each_input_and_batch_row_planted_together_fails_its_own_row_with_its_own_finding_and_nothing_else(
 ) {
-    proves(input_cases(), &["input-present", "input-example"]);
-}
-
-#[test]
-fn atip_checkl2input_04_every_refusal_document_is_refused_with_exit_2_and_a_pointer_the_two_key_document_with_two_details(
-) {
-    proves(input_cases(), &["input-refusals"]);
+    let seeds = first_of_each_owner(input_cases());
+    let owners: BTreeSet<String> = seeds.iter().map(|case| owner_of(case.condition)).collect();
+    for row in INPUT_ROWS {
+        assert!(owners.contains(row), "{row} has a seeded violation");
+    }
+    assert!(
+        owners.contains("L1.numbers"),
+        "numbers has a seeded violation"
+    );
+    let (advisory, binding): (Vec<Case>, Vec<Case>) = seeds
+        .into_iter()
+        .partition(|case| check_name(case.condition) == "input-reasons");
+    let mut jobs: Vec<Box<dyn FnOnce() -> Result<(), String> + Send>> =
+        planted_in_few_runs(binding)
+            .into_iter()
+            .map(|group| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
+                Box::new(move || prove_group(&group))
+            })
+            .collect();
+    // The advisory row is planted alone: its failure is no failure of the level.
+    jobs.extend(advisory.into_iter().map(
+        |case| -> Box<dyn FnOnce() -> Result<(), String> + Send> {
+            Box::new(move || prove_case(&case).map(drop))
+        },
+    ));
+    let failures: Vec<String> = in_parallel(jobs)
+        .into_iter()
+        .filter_map(Result::err)
+        .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    if all_seeds() {
+        let names: Vec<&str> = owners
+            .iter()
+            .map(|owner| {
+                owner
+                    .split_once('.')
+                    .map_or(owner.as_str(), |(_, name)| name)
+            })
+            .collect();
+        proves(input_cases(), &names);
+    }
 }
 
 #[test]
@@ -341,67 +428,6 @@ fn atip_checkl2input_05_a_tool_that_accepts_a_flag_only_key_in_a_document_fails_
             |why| panic!("{key}: {why}\n{}", not_passing(&output.envelope()["data"])),
         );
     }
-}
-
-#[test]
-fn atip_checkl2input_06_stdin_on_a_terminal_is_refused_on_input_and_each_condition_of_input_tty_fails_only_it(
-) {
-    proves(input_cases(), &["input-tty"]);
-}
-
-#[test]
-fn atip_checkl2input_07_input_usage_is_a_must_for_a_1_1_claim_and_a_malformed_command_line_is_never_input_invalid(
-) {
-    proves(input_cases(), &["input-usage"]);
-}
-
-#[test]
-fn atip_checkl2input_08_input_reasons_is_advisory_and_the_level_is_met() {
-    // `proves` expects exit 0 and `ok` for a check that is not a MUST; scenario 01 asserts that `L2.input-reasons` is a SHOULD.
-    proves(input_cases(), &["input-reasons"]);
-}
-
-#[test]
-fn atip_checkl2input_09_a_document_and_argv_split_three_ways_and_numeric_strings_give_the_argv_result(
-) {
-    proves(input_cases(), &["input-fragment", "input-normalise"]);
-}
-
-#[test]
-fn atip_checkl2input_10_a_different_value_conflicts_with_the_pointer_and_the_same_value_written_another_way_succeeds(
-) {
-    proves(input_cases(), &["input-conflict"]);
-}
-
-#[test]
-fn atip_checkl2input_11_an_env_value_applies_after_the_merge_only() {
-    proves(input_cases(), &["input-env"]);
-}
-
-#[test]
-fn atip_checkl2input_12_a_broken_constraint_or_a_missing_key_is_refused_with_the_right_code_and_a_document_pointer(
-) {
-    proves(input_cases(), &["input-pointer"]);
-}
-
-#[test]
-fn atip_checkl2input_13_a_value_that_starts_with_a_dash_a_brace_or_a_bracket_is_a_value() {
-    proves(input_cases(), &["input-dash-values"]);
-}
-
-#[test]
-fn atip_checkl2input_14_a_number_beyond_the_safe_range_in_a_document_is_refused_and_l1_numbers_owns_it(
-) {
-    proves(input_cases(), &["numbers"]);
-}
-
-#[test]
-fn atip_checkl2input_16_a_first_item_failure_with_exit_2_and_a_preflight_refusal_as_batch_incomplete_each_fail_only_their_row(
-) {
-    proves(
-        input_cases(),
-        &["batch-preflight", "batch-incomplete", "batch-ok"],
-    );
 }
 
 #[test]
