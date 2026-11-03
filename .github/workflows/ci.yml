@@ -1,6 +1,6 @@
 name: CI
 
-# One job, the same steps `just ci` runs locally, in the same order:
+# One job per OS, the same steps `just ci` runs locally, in the same order:
 #   scripts/validate.sh                      the examples against the schemas, the spec's cross-references, the plan digest
 #                                            vectors and the Rust column of the pattern record (scripts/regex-parity)
 #   scripts/check_visibility.sh              no pub(super) / pub(in ..) in crate sources
@@ -9,7 +9,8 @@ name: CI
 #   cargo test --workspace                   the `atip` crate and the checker, with its fake tool
 #
 # The Rust toolchain is the one `rust-toolchain.toml` pins, installed with rustup (never a floating `stable`); the job fails
-# when `rustc` is not that version. Bun 1.4.4 is the runtime the ECMAScript half of scripts/regex-cases.json was recorded with.
+# when `rustc` is not that version. It runs on ubuntu and macOS: the checker needs a pseudo-terminal and process groups, and the
+# two systems differ in exactly those. Bun 1.4.4 is the runtime the ECMAScript half of scripts/regex-cases.json was recorded with.
 on:
   push:
     branches: [main]
@@ -20,8 +21,12 @@ permissions:
 
 jobs:
   ci:
-    name: validate, lint, test
-    runs-on: ubuntu-latest
+    name: validate, lint, test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -50,7 +55,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: atip-ci-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          key: atip-ci-${{ matrix.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
       - name: cargo fetch --locked
         run: cargo fetch --locked
