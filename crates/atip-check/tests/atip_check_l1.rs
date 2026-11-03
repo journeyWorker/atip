@@ -1261,3 +1261,51 @@ fn atip_checkl1_domains_a_refusal_of_an_in_domain_value_counts_only_with_the_dom
     assert_eq!(check["result"], "pass", "{check}");
     assert!(check["notes"].to_string().contains("undecided"), "{check}");
 }
+
+#[test]
+fn atip_checkl1_example_runs_a_usage_fault_fails_and_a_refusal_for_missing_state_is_undecided() {
+    // An example the tool refuses at exit 2 with an argument `field`. A usage fault fails `L1.example-runs`: `USAGE`, a 1.3-named argument code
+    // (`OPTION_INVALID`) and a stateless code the command declares (`TEAM_LIMIT_CONFLICT`, on a constraint of that command). Another registered code (`TEAM_NOT_FOUND`)
+    // is for state the checker did not set up: the example is undecided, a note and no failure.
+    let refused_with = |code: &str| {
+        let mut config = l1_config(&json!({
+            "ghostTeamUsage": true,
+            "ghostTeamCode": code,
+            "extraCodes": [
+                {"code": "OPTION_INVALID", "exit": 2},
+                {"code": "TEAM_NOT_FOUND", "exit": 2},
+                {"code": "TEAM_LIMIT_CONFLICT", "exit": 2},
+            ],
+        }));
+        config["docPatch"] = json!({"member list": [
+            {"op": "add", "path": "/examples/-", "value": "fake member list --team ghost --json"},
+            {"op": "add", "path": "/constraints/-", "value": {"rule": "atMostOne", "names": ["limit", "team"], "code": "TEAM_LIMIT_CONFLICT"}},
+            {"op": "add", "path": "/errors/-", "value": "TEAM_LIMIT_CONFLICT"},
+        ]});
+        run_config(&config)
+    };
+    for code in ["USAGE", "OPTION_INVALID", "TEAM_LIMIT_CONFLICT"] {
+        let output = refused_with(code);
+        let document = output.envelope();
+        let check = check_of(&document["data"], "L1.example-runs");
+        assert_eq!(check["result"], "fail", "{code}: {check}");
+        assert!(
+            check["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("usage problem"),
+            "{code}: {check}"
+        );
+    }
+    // `SORT_CONFLICT` is declared by `member search`, not by `member list`: for this command it is no stateless code.
+    for code in ["TEAM_NOT_FOUND", "SORT_CONFLICT"] {
+        let output = refused_with(code);
+        let document = output.envelope();
+        let check = check_of(&document["data"], "L1.example-runs");
+        assert_eq!(check["result"], "pass", "{code}: {check}");
+        assert!(
+            check["notes"].to_string().contains("undecided"),
+            "{code}: {check}"
+        );
+    }
+}

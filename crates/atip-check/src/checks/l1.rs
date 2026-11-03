@@ -212,6 +212,8 @@ impl<'a> Judge<'a> {
     /// A reserved code (`UNKNOWN_COMMAND`, `PLAN_STALE`, `CURSOR_INVALID`, an `INPUT_*` code) has a situation of its own and never replaces `USAGE`. A code a
     /// command document declares on a constraint or a validator (`OPTION_CONFLICT`, `OPTION_REQUIRED`, `OPTION_VALUE_INVALID`) is a replacement when its `field` names
     /// an argument: it is the code the tool gives in place of `USAGE`.
+    ///
+    /// This is the lenient form, for a row that expects a usage refusal. [`Self::is_usage_fault`] is the narrow one, for a row where a usage refusal fails the tool.
     pub(crate) fn is_usage(&self, code: Option<&str>, field: Option<&str>) -> bool {
         code.is_some_and(|code| {
             code == "USAGE"
@@ -219,6 +221,25 @@ impl<'a> Judge<'a> {
                     && atip::reserved_code(code, documents::minor_of(self.claim)).is_none()
                     && field.is_some_and(|field| field.starts_with("--") || field.starts_with('/'))
                     && self.row(code).is_some_and(|row| row.exit == 2))
+        })
+    }
+
+    /// Whether a refusal with `code` and `field` of `command` is a usage fault of the invocation, for a row where such a refusal fails the tool (`L1.example-runs`):
+    /// `USAGE`; a stateless code the command declares (a constraint, a validator, or the code the run saw refuse an argument's domain); or a 1.3-named argument
+    /// code (subject `OPTION` or `OPERAND`: `OPTION_INVALID`, `OPTION_REQUIRED`). Both need the lenient test of [`Self::is_usage`] (registered, exit 2, `field`
+    /// names an argument). Any other refusal (`<SUBJECT>_NOT_FOUND`, `KUBECONFIG_REQUIRED`, `*_UNAVAILABLE`) is for state the checker cannot see: undecided.
+    pub(crate) fn is_usage_fault(
+        &self,
+        command: &str,
+        code: Option<&str>,
+        field: Option<&str>,
+    ) -> bool {
+        code.is_some_and(|code| {
+            code == "USAGE"
+                || (self.is_usage(Some(code), field)
+                    && (code.starts_with("OPTION_")
+                        || code.starts_with("OPERAND_")
+                        || self.declared_before_state(command, code)))
         })
     }
 
@@ -1218,10 +1239,23 @@ impl<'a> Judge<'a> {
         for run in &l1.examples {
             c.own(run.call);
             let failure = self.failure(run.call);
+            if let Some((code, field)) = failure {
+                if self.refused(run.call)
+                    && !self.is_usage_fault(&run.command, code, field)
+                    && self.is_usage(code, field)
+                {
+                    c.notes.push(format!(
+                        "the example `{}` of {} was refused with {}, a code for state the checker did not set up: undecided",
+                        run.line,
+                        run.command,
+                        code.unwrap_or("no code")
+                    ));
+                }
+            }
             c.holds_at(
                 run.call,
                 "not-usage",
-                failure.is_none_or(|(code, field)| !self.is_usage(code, field)),
+                failure.is_none_or(|(code, field)| !self.is_usage_fault(&run.command, code, field)),
                 || {
                     format!(
                         "the example `{}` of {} was refused as a usage problem: {}",
