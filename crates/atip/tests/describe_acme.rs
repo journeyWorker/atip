@@ -7,9 +7,8 @@
 //! example, and validate against `schema/schema-doc.schema.json`. The model is built here from the documents, so a mistake in
 //! the reading would show as a difference, never as an agreement.
 //!
-//! One difference is by design and is normalised in the example before the comparison: `member list` writes `--cursor` and `--all` as
-//! objects that only add a `help`, where the serializer writes the reserved name (an option is the reserved one unchanged, whatever
-//! its `help`; `approaches/implementation.md` §8).
+//! `member list` gives `--cursor` and `--all` a help of its own, so its document lists them as objects: the fixed shape plus that
+//! help. The bare reserved name is for a reserved option with no help of its own.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -150,7 +149,7 @@ fn option_of(raw: &Value) -> OptionDoc {
     }
 }
 
-/// The reserved option `name` in its fixed shape (spec 4.5, Annex S2 rule 8), with a help of the model's own.
+/// The reserved option `name` in its fixed shape (spec 4.5, Annex S2 rule 8), with no help: the model of a bare name.
 fn reserved(name: &str) -> Option<OptionDoc> {
     let (value_type, flag_only) = match name {
         "json" | "commit" | "all" => (ValueType::Switch, true),
@@ -160,7 +159,7 @@ fn reserved(name: &str) -> Option<OptionDoc> {
         "operation" => (ValueType::String, false),
         _ => return None,
     };
-    let mut raw = json!({ "name": name, "valueType": value_type.as_str(), "help": "What the model says about it." });
+    let mut raw = json!({ "name": name, "valueType": value_type.as_str(), "help": "" });
     if flag_only {
         raw["flagOnly"] = json!(true);
     }
@@ -430,30 +429,6 @@ fn acme() -> (Described, Vec<TreeEntry>, Vec<(String, Value, Value)>) {
     (described, entries, examples)
 }
 
-/// An example's command document with `--cursor` and `--all` objects that only add a `help` reduced to their reserved names.
-fn reserved_by_name(mut document: Value) -> Value {
-    if let Some(options) = document.get_mut("options").and_then(Value::as_array_mut) {
-        for option in options.iter_mut() {
-            let Some(name) = option
-                .get("name")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-            else {
-                continue;
-            };
-            let only_help = option.as_object().is_some_and(|members| {
-                members
-                    .keys()
-                    .all(|key| ["name", "valueType", "flagOnly", "help"].contains(&key.as_str()))
-            });
-            if matches!(name.as_str(), "cursor" | "all") && only_help {
-                *option = json!(name);
-            }
-        }
-    }
-    document
-}
-
 fn schema_envelope(data: &Value) -> Value {
     json!({
         "ok": true,
@@ -514,7 +489,7 @@ fn atip_crate14_15_every_command_document_written_for_acme_is_the_example() {
     assert_eq!(examples.len(), 11);
     for (command, raw, _) in &examples {
         let written = described.command(command).expect("a command").to_value();
-        assert_eq!(written, reserved_by_name(raw.clone()), "{command}");
+        assert_eq!(written, *raw, "{command}");
         assert_eq!(
             schema_doc_problems(&schema_envelope(&written)),
             Vec::<String>::new(),
