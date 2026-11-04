@@ -1263,6 +1263,40 @@ fn atip_checkl1_domains_a_refusal_of_an_in_domain_value_counts_only_with_the_dom
 }
 
 #[test]
+fn atip_checkl1_domains_an_in_domain_value_refused_by_a_state_code_naming_the_option_is_undecided()
+{
+    // The in-range side uses the narrow usage-fault test. `--min-score 0` is inside the domain and the seeded tool refuses it on the bound
+    // (`strictBounds`) with `strictBoundsCode`, whose `field` names the option, while the out-of-range values keep `USAGE`. A registered state code
+    // (`CATALOG_STALE`) is undecided: a note and no failure. A 1.3-named argument code (`OPTION_INVALID`) is a usage fault: `L1.domains` fails.
+    let bound = |code: &str| {
+        run_config(&l1_config(&json!({
+            "strictBounds": {"member search": ["min-score"]},
+            "strictBoundsCode": code,
+            "extraCodes": [
+                {"code": "CATALOG_STALE", "exit": 2},
+                {"code": "OPTION_INVALID", "exit": 2},
+            ],
+        })))
+    };
+    let output = bound("CATALOG_STALE");
+    let document = output.envelope();
+    let check = check_of(&document["data"], "L1.domains");
+    assert_eq!(check["result"], "pass", "{check}");
+    assert!(check["notes"].to_string().contains("undecided"), "{check}");
+    let output = bound("OPTION_INVALID");
+    let document = output.envelope();
+    let check = check_of(&document["data"], "L1.domains");
+    assert_eq!(check["result"], "fail", "{check}");
+    assert!(
+        check["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("inside the domain"),
+        "{check}"
+    );
+}
+
+#[test]
 fn atip_checkl1_example_runs_a_usage_fault_fails_and_a_refusal_for_missing_state_is_undecided() {
     // An example the tool refuses at exit 2 with an argument `field`. A usage fault fails `L1.example-runs`: `USAGE`, a 1.3-named argument code
     // (`OPTION_INVALID`) and a stateless code the command declares (`TEAM_LIMIT_CONFLICT`, on a constraint of that command). Another registered code (`TEAM_NOT_FOUND`)

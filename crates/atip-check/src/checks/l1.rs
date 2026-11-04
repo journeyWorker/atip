@@ -1480,13 +1480,15 @@ impl<'a> Judge<'a> {
             match run.probe.expect {
                 Expect::Accepted => {
                     // The domain is judged alone: a refusal counts against it only when it names the option and carries the domain's
-                    // refusal code (`USAGE` or a replacement). A precondition code (a state the fixture did not set up) or the code of a
-                    // declared validator says the value passed the domain and was refused for another reason: undecided, not a failure.
+                    // refusal code: `USAGE`, a code a constraint, a validator or an out-of-domain run of the command gives, or a 1.3-named argument
+                    // code (`OPTION_*`, `OPERAND_*`): the narrow `is_usage_fault`. A registered state code that names the option (`CATALOG_STALE` with
+                    // field `--base-version`) or the code of a declared validator says the value passed the domain and was refused for another
+                    // reason: undecided, not a failure.
                     let exit_2 = self.at(run.call).exit == Exit::Code(2);
                     let refused_for_it = exit_2
                         && names
                         && failure.is_some_and(|(code, field)| {
-                            self.is_usage(code, field)
+                            self.is_usage_fault(&run.command, code, field)
                                 && !code.is_some_and(|code| self.declared_by_a_validator(code))
                         });
                     if exit_2 && names && !refused_for_it {
