@@ -8,7 +8,7 @@
 //! the reading would show as a difference, never as an agreement.
 //!
 //! `member list` gives `--cursor` and `--all` a help of its own, so its document lists them as objects: the fixed shape plus that
-//! help. The bare reserved name is for a reserved option with no help of its own.
+//! help. The bare reserved name is for a reserved option whose help is the standard text (`describe::standard_help`).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -149,7 +149,7 @@ fn option_of(raw: &Value) -> OptionDoc {
     }
 }
 
-/// The reserved option `name` in its fixed shape (spec 4.5, Annex S2 rule 8), with no help: the model of a bare name.
+/// The reserved option `name` in its fixed shape (spec 4.5, Annex S2 rule 8), with its standard help: the model of a bare name.
 fn reserved(name: &str) -> Option<OptionDoc> {
     let (value_type, flag_only) = match name {
         "json" | "commit" | "all" => (ValueType::Switch, true),
@@ -159,7 +159,7 @@ fn reserved(name: &str) -> Option<OptionDoc> {
         "operation" => (ValueType::String, false),
         _ => return None,
     };
-    let mut raw = json!({ "name": name, "valueType": value_type.as_str(), "help": "" });
+    let mut raw = json!({ "name": name, "valueType": value_type.as_str(), "help": atip::describe::standard_help(name) });
     if flag_only {
         raw["flagOnly"] = json!(true);
     }
