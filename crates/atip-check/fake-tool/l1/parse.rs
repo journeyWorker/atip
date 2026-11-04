@@ -436,7 +436,13 @@ pub fn check_domains(
                     .iter()
                     .any(|keyword| domain.get(keyword) == Some(value));
             if !validator.is_valid(value) || on_bound {
-                let code = tool.text("domainCode", "USAGE");
+                // A refusal on the bound (an in-domain value refused by `strictBounds`) may carry a code other than the domain's own.
+                let default = tool.text("domainCode", "USAGE");
+                let code = if on_bound {
+                    tool.text("strictBoundsCode", &default)
+                } else {
+                    default
+                };
                 return Err(usage_coded(
                     &code,
                     "domain",
