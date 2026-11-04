@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "atip"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "atip",
  "clap",
@@ -97,7 +97,7 @@ dependencies = [
 
 [[package]]
 name = "atip-check"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "atip",
  "atip-check",

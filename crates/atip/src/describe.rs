@@ -172,7 +172,7 @@ pub fn standard_help(name: &str) -> Option<&'static str> {
         "input" => "The arguments as a JSON document: a file, or - for stdin.",
         "commit" => "Make the change; without it the command only previews.",
         "plan-digest" => "The digest of the preview this commit carries out.",
-        "dry-run" => "Preview the change without making it.",
+        "dry-run" => "Run every check and report what would change, changing nothing.",
         "limit" => "Return at most this many items.",
         "cursor" => "Resume after the last item of the previous page (meta.page.nextCursor).",
         "all" => "Return every item from the cursor on.",
