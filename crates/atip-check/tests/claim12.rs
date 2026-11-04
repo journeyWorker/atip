@@ -72,27 +72,21 @@ fn atip_check_99_contract_1_2_from_the_option_or_the_fixture_is_a_claim_of_1_2_a
 }
 
 #[test]
-fn atip_check_100_two_claims_that_differ_or_a_minor_the_checker_does_not_know_are_refused_before_a_binary_runs(
+fn atip_check_100_a_minor_the_checker_does_not_know_is_refused_before_a_binary_runs_and_a_differing_one_is_a_preview(
 ) {
     let harness = Harness::new();
     let marker = harness.path("init.log");
     let fixture = harness.fixture(&json!({"claims": "1.2", "initLog": marker}));
     for given in ["1.1", "1.0"] {
         let output = harness.check_with(&fixture, true, &["--contract", given]);
-        let document = output.envelope();
-        assert_eq!(
-            (
-                output.code,
-                document["error"]["code"].as_str(),
-                document["error"]["field"].as_str()
-            ),
-            (Some(2), Some("USAGE"), Some("--contract")),
-            "{given}: {}",
-            output.stdout
-        );
-        assert_eq!(document["error"]["expected"], json!(["1.2"]));
-        assert!(!marker.exists(), "the setup ran although the claims differ");
+        assert_eq!(output.code, Some(0), "{given}: {}", output.stdout);
+        let data = output.envelope()["data"].clone();
+        assert_eq!(data["verdict"], "preview", "{given}");
+        assert_eq!(data["declaredContractVersion"], "1.2", "{given}");
+        assert_eq!(data["contractVersion"], given);
+        assert!(marker.exists(), "the setup did not run for the preview");
     }
+    std::fs::remove_file(&marker).expect("marker");
     let mut without = fixture.clone();
     without
         .as_object_mut()
@@ -196,19 +190,15 @@ fn atip_check_102_the_checker_declares_1_4_and_passes_its_own_l0_checks_as_a_1_4
     assert_eq!(document["meta"]["contractVersion"], "1.4");
     assert_eq!(document["data"]["contractVersion"], "1.4");
     assert_eq!(document["data"]["passed"], true);
-    // The fixture is the one that declares it, and the checker run as a 1.1 claim is refused for the difference.
+    // The fixture is the one that declares it, and the checker run as a 1.1 claim is a preview, not a refusal.
     let committed: Value =
         serde_json::from_str(&std::fs::read_to_string(fixture).expect("fixture")).expect("json");
     assert_eq!(committed["contractVersion"], "1.4");
     let mut other = args.to_vec();
     other[8] = "1.1";
-    let refused = atip_in(&cwd, &tmp, &other);
-    assert_eq!(
-        (refused.code, refused.envelope()["error"]["code"].as_str()),
-        (Some(2), Some("USAGE")),
-        "{}",
-        refused.stdout
-    );
+    let preview = atip_in(&cwd, &tmp, &other);
+    assert_eq!(preview.code, Some(0), "{}", preview.stdout);
+    assert_eq!(preview.envelope()["data"]["verdict"], "preview");
     // The help and the messages say the three minors and name no list of two.
     let help = atip_in(&cwd, &tmp, &["check", "--help"]);
     let text = format!("{}{}", help.stdout, help.stderr);
@@ -959,5 +949,48 @@ fn atip_check_103_a_repeatable_option_with_an_array_default_is_written_out_one_o
                     .as_str()
                     .is_some_and(|text| text.contains("--kind written out at its default")))),
         "{paging}"
+    );
+}
+
+#[test]
+fn atip_check_preview_a_contract_that_differs_from_the_fixtures_is_a_preview_that_lists_the_failures_and_equal_minors_are_a_claim(
+) {
+    let harness = Harness::new();
+    let fixture = harness.fixture(&json!({"claims": "1.2"}));
+    // Equal minors: today's run, a verdict on the level and none of the preview members.
+    let equal = harness.check_with(&fixture, true, &["--contract", "1.2"]);
+    assert_eq!(equal.code, Some(0), "{}", equal.stdout);
+    let data = equal.envelope()["data"].clone();
+    assert_eq!(data["passed"], true);
+    for member in ["verdict", "declaredContractVersion", "statement"] {
+        assert!(data.get(member).is_none(), "{member} in {data}");
+    }
+    // A 1.2 tool checked as 1.4: not refused, no level verdict, exit 0, and the checks that would fail are listed.
+    let output = harness.check_with(&fixture, true, &["--contract", "1.4"]);
+    assert_eq!(output.code, Some(0), "{}", output.stdout);
+    let document = output.envelope();
+    let data = &document["data"];
+    assert_eq!(data["contractVersion"], "1.4");
+    assert_eq!(data["declaredContractVersion"], "1.2");
+    assert_eq!(data["verdict"], "preview");
+    assert_eq!(
+        data["statement"],
+        "declared 1.2, checked as 1.4, not a level claim"
+    );
+    assert_eq!(data["passed"], false, "{data}");
+    assert!(
+        failing_in(data).contains(&"L0.contract-version"),
+        "{:?}",
+        failing_in(data)
+    );
+    assert!(document["meta"].get("warnings").is_none(), "{document}");
+    // The text says preview, not met or not met.
+    let text = harness.check_with(&fixture, false, &["--contract", "1.4"]);
+    assert_eq!(text.code, Some(0), "{}", text.stdout);
+    let summary = text.stdout.lines().last().unwrap_or_default();
+    assert!(
+        summary.contains("preview (declared 1.2, checked as 1.4, not a level claim)")
+            && !summary.contains("not met"),
+        "{summary}"
     );
 }
