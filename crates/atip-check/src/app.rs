@@ -92,13 +92,18 @@ fn execute(args: &[OsString]) -> Result<String, Failure> {
         Command::CheckHelp => Ok(CHECK_HELP.to_string()),
         Command::Check(check, mode, source) => {
             let report = check_binary_at(&check, mode, source)?;
-            if !report.passed {
+            // A preview has no level verdict: it exits 0 and lists the checks it failed; the warning that the level is still met is not its to give.
+            if !report.passed && !report.is_preview() {
                 return Err(level_not_met(&report).unwrap_or_else(|failure| failure));
             }
             Ok(if json {
                 success_line(
                     &serde_json::to_value(&report).map_err(internal_error)?,
-                    report.advisories(),
+                    if report.is_preview() {
+                        0
+                    } else {
+                        report.advisories()
+                    },
                 )
             } else {
                 report.text()
@@ -182,26 +187,15 @@ fn check_binary_with(
     let fixture = fixture::load(fixture_path).map_err(|error| {
         refuse(Code::FixtureInvalid, error.message, "--fixture").reason(error.reason)
     })?;
-    let claim = match (
+    // `--contract` names the minor the checks judge by. When the fixture declares another minor the run is a preview: it is checked by the minor
+    // asked for and is no claim of a level (the report says so).
+    let (claim, declared) = match (
         args.contract.as_deref().and_then(Claim::parse),
         fixture.contract_version,
     ) {
-        (Some(given), Some(declared)) if given != declared => {
-            return Err(refuse(
-                Code::Usage,
-                format!(
-                    "--contract {} differs from the fixture's contractVersion {}",
-                    given.as_str(),
-                    declared.as_str()
-                ),
-                "--contract",
-            )
-            .expected([declared.as_str()])
-            .received(given.as_str())
-            .hint("Claim one minor: pass the same value in both, or drop one of them."))
-        }
-        (Some(claim), _) | (None, Some(claim)) => claim,
-        (None, None) => Claim::V1_0,
+        (Some(given), Some(declared)) if given != declared => (given, Some(declared)),
+        (Some(claim), _) | (None, Some(claim)) => (claim, None),
+        (None, None) => (Claim::V1_0, None),
     };
     let bin =
         resolve_binary(&args.bin).map_err(|reason| refuse(Code::BinaryInvalid, reason, "--bin"))?;
@@ -239,7 +233,12 @@ fn check_binary_with(
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    run_checks(runner, &fixture, claim, &name, mutation, level, mode).map_err(from_run)
+    let mut judged =
+        run_checks(runner, &fixture, claim, &name, mutation, level, mode).map_err(from_run)?;
+    if let Some(declared) = declared {
+        judged.report = judged.report.previewing(declared);
+    }
+    Ok(judged)
 }
 
 /// The level the tool's own `schema --json` declares (`data.level`), and `L0` when it prints no such document: a tool that cannot describe itself claims

@@ -139,6 +139,18 @@ pub struct Report {
     /// The checks of the level that this run did not run, because only `--deep` does (interface mode only), by id.
     #[serde(rename = "deepChecks", skip_serializing_if = "Vec::is_empty")]
     pub deep_checks: Vec<&'static str>,
+    /// The minor the fixture declares, when `--contract` asked for another one (a preview, never a level claim).
+    #[serde(
+        rename = "declaredContractVersion",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub declared_contract_version: Option<&'static str>,
+    /// `preview` when `--contract` differs from the declared minor: the verdict that replaces met and failed. `passed` then only counts the MUST checks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verdict: Option<&'static str>,
+    /// `declared X, checked as Y, not a level claim` for a preview.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statement: Option<String>,
     pub checks: Vec<Check>,
 }
 
@@ -156,6 +168,9 @@ impl Report {
             passed,
             prepare: Vec::new(),
             deep_checks: Vec::new(),
+            declared_contract_version: None,
+            verdict: None,
+            statement: None,
             checks,
         }
     }
@@ -173,6 +188,24 @@ impl Report {
     pub fn with_prepare(mut self, prepare: Vec<Vec<String>>) -> Self {
         self.prepare = prepare;
         self
+    }
+
+    /// The same report as a preview: the minor the fixture `declared` was not the one the checks judged, so the result is no verdict on a level.
+    #[must_use]
+    pub fn previewing(mut self, declared: Claim) -> Self {
+        self.declared_contract_version = Some(declared.as_str());
+        self.verdict = Some("preview");
+        self.statement = Some(format!(
+            "declared {}, checked as {}, not a level claim",
+            declared.as_str(),
+            self.contract_version
+        ));
+        self
+    }
+
+    /// Whether this is a preview (`--contract` differs from the declared minor): it has no level verdict.
+    pub fn is_preview(&self) -> bool {
+        self.verdict.is_some()
     }
 
     /// How many SHOULD checks failed.
@@ -220,11 +253,16 @@ impl Report {
             .iter()
             .filter(|check| check.result == CheckResult::Unsupported)
             .count();
-        let verdict = match (self.mode, self.passed) {
-            (Mode::Deep, true) => "met",
-            (Mode::Deep, false) => "not met",
-            (Mode::Interface, true) => "interface checks passed (--deep for the rest)",
-            (Mode::Interface, false) => "interface checks failed",
+        let preview = self
+            .statement
+            .as_ref()
+            .map(|statement| format!("preview ({statement})"));
+        let verdict = match (&preview, self.mode, self.passed) {
+            (Some(preview), _, _) => preview.as_str(),
+            (None, Mode::Deep, true) => "met",
+            (None, Mode::Deep, false) => "not met",
+            (None, Mode::Interface, true) => "interface checks passed (--deep for the rest)",
+            (None, Mode::Interface, false) => "interface checks failed",
         };
         format!(
             "{} {verdict}: {} MUST passed, {} MUST failed, {} MUST unprovided, {not_applicable} not applicable, {advisories} SHOULD advisories",

@@ -25,11 +25,15 @@ atip check --bin target/release/canon --level L2 --fixture checker-fixture.json
 - `--fixture` is the tool's fixture file (§5): the state and the invocations the stateful checks need.
 - `--deep` runs every check of the level (§3.1). Without it, `atip check` runs only the interface checks: a few launches of the binary on one
   shared copy of the fixture state, for the CI run that needs the smoke test. `--level` is the claimed level in both modes.
-- `--contract` is the claimed minor (spec 15.5): `1.0`, `1.1`, `1.2`, `1.3` or `1.4`. It defaults to the fixture's
-  `contractVersion`, and to `1.0` when the fixture has none; given with a fixture member that says otherwise it
-  refuses with `USAGE`. The checker checks that every document declares that minor and carries nothing a later minor
-  added (L0.contract-version), and runs the checks that the minor makes MUST (the Strength column of §6 names the
-  minor where it matters).
+- `--contract` is the minor the checks judge by (spec 15.5): `1.0`, `1.1`, `1.2`, `1.3` or `1.4`. It defaults to the fixture's
+  `contractVersion`, and to `1.0` when the fixture has none. The checker checks that every document declares that minor and carries nothing a later
+  minor added (L0.contract-version), and runs the checks that the minor makes MUST (the Strength column of §6 names the minor where it matters).
+  When `--contract` differs from the `contractVersion` the fixture declares, it is not refused: the run is a **preview**, checked by the rules of
+  the minor asked for (for example a 1.2 tool checked as 1.4, to see what moving to 1.4 would still need). The report states
+  `declared 1.2, checked as 1.4, not a level claim` (`data.statement`, with `data.declaredContractVersion`); `data.verdict` is `preview` instead
+  of met or failed (the text summary reads `preview`, not `met` or `not met`); the exit is 0, no `LEVEL_FAILED`, and the checks that would fail are
+  listed in `data.checks` as in any run (`data.passed` only counts the MUST checks that failed). A minor the checker does not know is still refused with
+  `USAGE`.
 - Its own output follows the contract: text by default, `--json` for an envelope whose `data` lists every check.
 
 The JSON Schemas in `schema/` are embedded in the binary, and so are the semantic rules of Annex S2. The

@@ -1501,7 +1501,7 @@ fn atip_check_51_a_probe_whose_data_keys_change_with_the_environment_or_that_is_
 }
 
 #[test]
-fn atip_check_57_the_contract_option_and_the_fixtures_contract_version_pick_the_claim_and_two_that_differ_are_refused_before_a_binary_runs(
+fn atip_check_57_the_contract_option_and_the_fixtures_contract_version_pick_the_claim_and_two_that_differ_make_a_preview(
 ) {
     let harness = Harness::new();
     let mut fixture = harness.fixture(&json!({}));
@@ -1538,20 +1538,28 @@ fn atip_check_57_the_contract_option_and_the_fixtures_contract_version_pick_the_
             .code,
         Some(0)
     );
-    // Two that differ are USAGE naming the option, and no binary runs: not even the fixture's setup.
+    // Two that differ are not refused: the run is a preview, checked by the minor the option names (the fixture's setup runs).
     let marker = harness.path("init.log");
     let mut watched = harness.fixture(&json!({"initLog": marker}));
     let different = harness.check_with(&watched, true, &["--contract", "1.0"]);
-    assert_eq!(different.code, Some(2), "{}", different.stdout);
-    let document = different.envelope();
+    assert_eq!(different.code, Some(0), "{}", different.stdout);
+    let data = different.envelope()["data"].clone();
     assert_eq!(
         (
-            document["error"]["code"].as_str(),
-            document["error"]["field"].as_str()
+            data["contractVersion"].as_str(),
+            data["declaredContractVersion"].as_str(),
+            data["verdict"].as_str(),
+            data["statement"].as_str()
         ),
-        (Some("USAGE"), Some("--contract"))
+        (
+            Some("1.0"),
+            Some("1.1"),
+            Some("preview"),
+            Some("declared 1.1, checked as 1.0, not a level claim")
+        )
     );
-    assert!(!marker.exists(), "the setup ran although the claims differ");
+    assert!(marker.exists(), "the setup did not run for the preview");
+    std::fs::remove_file(&marker).expect("marker");
     // A minor the checker does not know is refused as well, naming the minors it knows.
     watched
         .as_object_mut()
