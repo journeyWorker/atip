@@ -1309,3 +1309,29 @@ fn atip_checkl1_example_runs_a_usage_fault_fails_and_a_refusal_for_missing_state
         );
     }
 }
+
+#[test]
+fn atip_checkl1_domains_an_out_of_domain_value_is_refused_with_any_code_that_names_the_option() {
+    // Any refusal of an out-of-domain value is accepted, whatever its code, when its `field` names the option. A refusal that names nothing (a state
+    // refusal: `KUBECONFIG_REQUIRED`) fails `L1.domains`, because the stateless checks precede the state checks (spec 11.7 step 6).
+    let run = |extra: Value| {
+        let mut config = l1_config(&extra);
+        config["extraCodes"] = json!([{"code": "KUBECONFIG_REQUIRED", "exit": 2}]);
+        run_config(&config)
+    };
+    let output = run(json!({"domainCode": "KUBECONFIG_REQUIRED"}));
+    let document = output.envelope();
+    let check = check_of(&document["data"], "L1.domains");
+    assert_eq!(check["result"], "pass", "{check}");
+    let output = run(json!({"domainCode": "KUBECONFIG_REQUIRED", "domainOmitsField": true}));
+    let document = output.envelope();
+    let check = check_of(&document["data"], "L1.domains");
+    assert_eq!(check["result"], "fail", "{check}");
+    assert!(
+        check["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("expected it to name"),
+        "{check}"
+    );
+}
