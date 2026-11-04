@@ -1229,3 +1229,83 @@ fn atip_checkl1_03_a_tree_above_the_claim_meets_it_and_says_the_higher_claim_was
         "{tree}"
     );
 }
+
+#[test]
+fn atip_checkl1_domains_a_refusal_of_an_in_domain_value_counts_only_with_the_domains_refusal_code()
+{
+    // `--min-score 0` is inside the domain; the seeded tool refuses it on the bound (`strictBounds`) with the code `domainCode`.
+    // `USAGE` and a registered replacement that names the option are the domain's refusal: `L1.domains` fails. The code of a declared validator
+    // (`DATE_INVALID`) with that field says the value passed the domain and was refused for another reason: undecided, a note and no failure.
+    let strict = |code: &str| {
+        run_config(&l1_config(&json!({
+            "strictBounds": {"member search": ["min-score"]},
+            "domainCode": code,
+        })))
+    };
+    for code in ["USAGE", "SORT_CONFLICT"] {
+        let output = strict(code);
+        let document = output.envelope();
+        let check = check_of(&document["data"], "L1.domains");
+        assert_eq!(check["result"], "fail", "{code}: {check}");
+        assert!(
+            check["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("inside the domain"),
+            "{code}: {check}"
+        );
+    }
+    let output = strict("DATE_INVALID");
+    let document = output.envelope();
+    let check = check_of(&document["data"], "L1.domains");
+    assert_eq!(check["result"], "pass", "{check}");
+    assert!(check["notes"].to_string().contains("undecided"), "{check}");
+}
+
+#[test]
+fn atip_checkl1_example_runs_a_usage_fault_fails_and_a_refusal_for_missing_state_is_undecided() {
+    // An example the tool refuses at exit 2 with an argument `field`. A usage fault fails `L1.example-runs`: `USAGE`, a 1.3-named argument code
+    // (`OPTION_INVALID`) and a stateless code the command declares (`TEAM_LIMIT_CONFLICT`, on a constraint of that command). Another registered code (`TEAM_NOT_FOUND`)
+    // is for state the checker did not set up: the example is undecided, a note and no failure.
+    let refused_with = |code: &str| {
+        let mut config = l1_config(&json!({
+            "ghostTeamUsage": true,
+            "ghostTeamCode": code,
+            "extraCodes": [
+                {"code": "OPTION_INVALID", "exit": 2},
+                {"code": "TEAM_NOT_FOUND", "exit": 2},
+                {"code": "TEAM_LIMIT_CONFLICT", "exit": 2},
+            ],
+        }));
+        config["docPatch"] = json!({"member list": [
+            {"op": "add", "path": "/examples/-", "value": "fake member list --team ghost --json"},
+            {"op": "add", "path": "/constraints/-", "value": {"rule": "atMostOne", "names": ["limit", "team"], "code": "TEAM_LIMIT_CONFLICT"}},
+            {"op": "add", "path": "/errors/-", "value": "TEAM_LIMIT_CONFLICT"},
+        ]});
+        run_config(&config)
+    };
+    for code in ["USAGE", "OPTION_INVALID", "TEAM_LIMIT_CONFLICT"] {
+        let output = refused_with(code);
+        let document = output.envelope();
+        let check = check_of(&document["data"], "L1.example-runs");
+        assert_eq!(check["result"], "fail", "{code}: {check}");
+        assert!(
+            check["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("usage problem"),
+            "{code}: {check}"
+        );
+    }
+    // `SORT_CONFLICT` is declared by `member search`, not by `member list`: for this command it is no stateless code.
+    for code in ["TEAM_NOT_FOUND", "SORT_CONFLICT"] {
+        let output = refused_with(code);
+        let document = output.envelope();
+        let check = check_of(&document["data"], "L1.example-runs");
+        assert_eq!(check["result"], "pass", "{code}: {check}");
+        assert!(
+            check["notes"].to_string().contains("undecided"),
+            "{code}: {check}"
+        );
+    }
+}

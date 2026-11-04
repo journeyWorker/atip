@@ -209,30 +209,47 @@ impl<'a> Judge<'a> {
 
     /// Whether a refusal with `code` and `field` is `USAGE` or its registered finer replacement (checker.md 1.3.1 section 2, spec 7.3.2): a registered exit-2
     /// code whose `field` names an argument (`--name`, or a pointer into a document), whatever its name (`UNKNOWN_OPTION`, `OPTION_REQUIRED`, `OPTION_INVALID`).
-    /// A reserved code (`UNKNOWN_COMMAND`, `PLAN_STALE`, `CURSOR_INVALID`, an `INPUT_*` code) and a code a command document declares on a constraint or a
-    /// validator have a situation of their own and never replace `USAGE`.
+    /// A reserved code (`UNKNOWN_COMMAND`, `PLAN_STALE`, `CURSOR_INVALID`, an `INPUT_*` code) has a situation of its own and never replaces `USAGE`. A code a
+    /// command document declares on a constraint or a validator (`OPTION_CONFLICT`, `OPTION_REQUIRED`, `OPTION_VALUE_INVALID`) is a replacement when its `field` names
+    /// an argument: it is the code the tool gives in place of `USAGE`.
+    ///
+    /// This is the lenient form, for a row that expects a usage refusal. [`Self::is_usage_fault`] is the narrow one, for a row where a usage refusal fails the tool.
     pub(crate) fn is_usage(&self, code: Option<&str>, field: Option<&str>) -> bool {
         code.is_some_and(|code| {
             code == "USAGE"
                 || (!code.starts_with("INPUT_")
                     && atip::reserved_code(code, documents::minor_of(self.claim)).is_none()
                     && field.is_some_and(|field| field.starts_with("--") || field.starts_with('/'))
-                    && self.row(code).is_some_and(|row| row.exit == 2)
-                    && !self.declared_by_a_document(code))
+                    && self.row(code).is_some_and(|row| row.exit == 2))
         })
     }
 
-    /// Whether some command document declares `code` on a constraint or a validator.
-    fn declared_by_a_document(&self, code: &str) -> bool {
+    /// Whether a refusal with `code` and `field` of `command` is a usage fault of the invocation, for a row where such a refusal fails the tool (`L1.example-runs`):
+    /// `USAGE`; a stateless code the command declares (a constraint, a validator, or the code the run saw refuse an argument's domain); or a 1.3-named argument
+    /// code (subject `OPTION` or `OPERAND`: `OPTION_INVALID`, `OPTION_REQUIRED`). Both need the lenient test of [`Self::is_usage`] (registered, exit 2, `field`
+    /// names an argument). Any other refusal (`<SUBJECT>_NOT_FOUND`, `KUBECONFIG_REQUIRED`, `*_UNAVAILABLE`) is for state the checker cannot see: undecided.
+    pub(crate) fn is_usage_fault(
+        &self,
+        command: &str,
+        code: Option<&str>,
+        field: Option<&str>,
+    ) -> bool {
+        code.is_some_and(|code| {
+            code == "USAGE"
+                || (self.is_usage(Some(code), field)
+                    && (code.starts_with("OPTION_")
+                        || code.starts_with("OPERAND_")
+                        || self.declared_before_state(command, code)))
+        })
+    }
+
+    /// Whether some command document declares `code` on a validator: a refusal that carries it is the validator's, not the domain's.
+    fn declared_by_a_validator(&self, code: &str) -> bool {
         self.l1.is_some_and(|l1| {
             l1.docs.commands.values().any(|doc| {
-                doc.constraints
+                doc.validators
                     .iter()
-                    .any(|constraint| constraint.code.as_deref() == Some(code))
-                    || doc
-                        .validators
-                        .iter()
-                        .any(|validator| validator.code == code)
+                    .any(|validator| validator.code == code)
             })
         })
     }
@@ -1222,10 +1239,23 @@ impl<'a> Judge<'a> {
         for run in &l1.examples {
             c.own(run.call);
             let failure = self.failure(run.call);
+            if let Some((code, field)) = failure {
+                if self.refused(run.call)
+                    && !self.is_usage_fault(&run.command, code, field)
+                    && self.is_usage(code, field)
+                {
+                    c.notes.push(format!(
+                        "the example `{}` of {} was refused with {}, a code for state the checker did not set up: undecided",
+                        run.line,
+                        run.command,
+                        code.unwrap_or("no code")
+                    ));
+                }
+            }
             c.holds_at(
                 run.call,
                 "not-usage",
-                failure.is_none_or(|(code, field)| !self.is_usage(code, field)),
+                failure.is_none_or(|(code, field)| !self.is_usage_fault(&run.command, code, field)),
                 || {
                     format!(
                         "the example `{}` of {} was refused as a usage problem: {}",
@@ -1449,7 +1479,22 @@ impl<'a> Judge<'a> {
             );
             match run.probe.expect {
                 Expect::Accepted => {
-                    let refused_for_it = self.at(run.call).exit == Exit::Code(2) && names;
+                    // The domain is judged alone: a refusal counts against it only when it names the option and carries the domain's
+                    // refusal code (`USAGE` or a replacement). A precondition code (a state the fixture did not set up) or the code of a
+                    // declared validator says the value passed the domain and was refused for another reason: undecided, not a failure.
+                    let exit_2 = self.at(run.call).exit == Exit::Code(2);
+                    let refused_for_it = exit_2
+                        && names
+                        && failure.is_some_and(|(code, field)| {
+                            self.is_usage(code, field)
+                                && !code.is_some_and(|code| self.declared_by_a_validator(code))
+                        });
+                    if exit_2 && names && !refused_for_it {
+                        c.notes.push(format!(
+                            "{label}: refused for a reason other than the domain ({}): undecided",
+                            refusal_text(self.envelope(run.call), self.at(run.call).exit)
+                        ));
+                    }
                     c.holds_at(run.call, "inside-accepted", !refused_for_it, || {
                         format!(
                             "{label} is inside the domain and was refused: {}",

@@ -572,6 +572,25 @@ fn atip_checkl2safety_05_a_code_registered_for_usage_stands_for_usage_in_the_reg
 }
 
 #[test]
+fn atip_checkl2safety_05b_a_code_a_constraint_or_a_validator_declares_stands_for_usage_in_the_halves_when_its_field_names_an_argument(
+) {
+    for code in ["SORT_CONFLICT", "DATE_INVALID"] {
+        let output = run_listing(
+            &l2_config(&json!({"usageRenamed": true, "usageReplacement": code})),
+            &["purge"],
+            |_| (),
+        );
+        let data = &output.envelope()["data"];
+        assert_eq!(
+            check_of(data, "L2.destructive-half")["result"],
+            "pass",
+            "{code}: {}",
+            not_passing(data)
+        );
+    }
+}
+
+#[test]
 fn atip_checkl2safety_06_an_allowance_hides_a_repeats_effect_only_when_the_note_names_the_file_and_never_a_duplicating_write(
 ) {
     // `stamp` appends an audit line on every run. Allowed by the fixture and named by the note it is no new effect (04 plants

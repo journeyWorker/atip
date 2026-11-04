@@ -802,7 +802,7 @@ fn list(tool: &Tool, args: &[String], parsed: &Parsed) -> ExitCode {
     if tool.flag("ghostTeamUsage") && parsed.text("team") == Some("ghost") {
         // The seeded violation: a refusal the model does not declare, for a value its documents accept.
         return tool.refuse(
-            "USAGE",
+            &tool.text("ghostTeamCode", "USAGE"),
             "there is no such team",
             "member list",
             &[("field", json!("--team"))],
