@@ -1,4 +1,4 @@
-# Annex S: command design and self-description rules (`atip/1`, 1.4.0)
+# Annex S: command design and self-description rules (`atip/1`, 1.5.0)
 
 Normative at L1, where `spec/atip-1.md` 4.6 and 9 refer to it. S1 constrains the command surface a tool exposes;
 S2 lists the rules every `schema` answer satisfies beyond `schema/schema-doc.schema.json`.
@@ -54,7 +54,7 @@ Every `schema` answer satisfies the rules below. A command's arguments are its o
    `cursor`, `fields`, `operation` strings; `limit` an integer), and a flag-only one `flagOnly: true`.
 9. Option names, operand names and short letters are unique within a command, and no operand has an option's name.
 10. Before 1.4, the declared fragment schema has no root `required`, has `additionalProperties: false`, and its
-    properties are `operands` and the camelCase names of the options that are not flag-only; in 1.4 it is derived
+    properties are `operands` and the camelCase names of the options that are not flag-only; from 1.4 it is derived
     (spec 9.9.2).
 11. An output's `fields` is consistent: its cut nodes are projectable (Annex F5); `records` is `""` or leads through
     declared object members; `default` ⊆ `paths`; `keep` and `paths` are disjoint; every path names a declared member

@@ -15,21 +15,27 @@ changes shape.
   line with no leading or trailing white space", `^\P{White_Space}([\P{White_Space}\p{Zs}\t]*\P{White_Space})?$`,
   which shuts out the seven line terminators (LF, VT, FF, CR, U+0085, U+2028, U+2029) as the white space that is
   neither Zs nor a tab. No named "trimmed single line" domain is added.
-- **Versioning (15.1, 15.7, 15.9).** 15.7 gains the row 1.0-1.4 (no `\p{White_Space}` in a pattern); 15.9 says what
-  1.5 means for callers: a 1.4 caller that checks patterns against its release's profile may refuse the escape, one
-  that compiles them as JSON Schema validators do reads it as 1.5 means it.
+- **Versioning (5.1, 15.1, 15.4, 15.7, 15.9).** 15.1 now says that a rule stated for the documents or tools of a minor
+  ("a 1.4 document") binds those of every later minor unless a later minor changes it (15.7 lists each change), so a
+  1.5 tool keeps every 1.4 rule; 5.1 reads "1.4 or later". 15.4's row for an unknown domain keyword also covers a
+  pattern outside the caller's profile: the caller skips that check, the tool still enforces it. 15.7 gains the row
+  1.0-1.4 (no `\p{White_Space}` in a pattern); 15.9 says what 1.5 means for callers: a 1.4 caller that checks patterns
+  against its release's profile may refuse the escape or skip that check, one that compiles them as JSON Schema
+  validators do reads it as 1.5 means it.
 - **`scripts/check.ts` and `scripts/regex-cases.json`.** The pattern profile is checked per declared minor, with the
   escape allowed from 1.5. A case may carry `formSince`: it has the form only from that minor on, and `check.ts`
   verifies the form at every minor. New cases: `\p{White_Space}` and `\P{White_Space}`, outside and inside a class,
   on U+0085, U+FEFF, U+00A0, U+2028, U+3000, tab and space; the V2 pattern on values inside and outside it; `\s` and
   `\S` on the two code points where the engines differ; aliases (`space`, `white_space`) outside the form.
   `scripts/regex-parity` confirms the Rust column (114 cases).
-- **Examples.** `acme member find` declares 1.5 and uses the V2 pattern; the same document declaring 1.4, and one
-  with `\S` at 1.5, are rejected. `caller-*` examples now model a later minor as 1.6.
-- **Crates (versions unchanged).** `atip`: `Minor::V1_5`, `CONTRACT_VERSION` `"1.5"`, `domain::WHITE_SPACE_SINCE`;
+- **Examples.** `acme member find` declares 1.5 and uses the V2 pattern, a standalone document beside acme's 1.4 tree;
+  the same document declaring 1.4, and one with `\S` at 1.5, are rejected. `caller-*` examples now model a later minor
+  as 1.6.
+- **Crates.** `atip` 0.2.0: `Minor::V1_5`, `CONTRACT_VERSION` `"1.5"`, `domain::WHITE_SPACE_SINCE`;
   `domain::profile_problems`, `domain::pattern_problem` and `constraint::document_problems` take the declared minor.
-  `atip check` knows the claim 1.5 and judges `L1.patterns` and Annex S2 rule 3 at the claimed minor; the values of a
-  domain are judged with any pattern both engines read alike.
+  `atip-check` 0.2.0: `atip check` knows the claim 1.5 and judges `L1.patterns` and Annex S2 rule 3 at the claimed
+  minor; the values of a domain are judged with any pattern both engines read alike, and a Unicode-version difference
+  in `White_Space` is told apart like one in a general category.
 
 ## 1.4.2 (2026-11-04)
 

@@ -107,6 +107,8 @@ pub fn rust_category(code_point: char) -> Option<&'static str> {
 pub struct UnicodeDifference {
     /// `U+XXXX`.
     pub code_point: String,
+    /// The general category each engine gives the code point, or, for a difference in the property, `White_Space` or
+    /// `not White_Space`.
     pub ecmascript_category: &'static str,
     pub rust_category: &'static str,
 }
@@ -153,9 +155,39 @@ fn uses_category(pattern: &str) -> bool {
     pattern.contains("\\p{") || pattern.contains("\\P{")
 }
 
+/// The difference in general category between the two engines' tables for `code_point`, if any.
+fn category_difference(code_point: char) -> Option<UnicodeDifference> {
+    let (in_es, in_rust) = (ecmascript_category(code_point)?, rust_category(code_point)?);
+    (in_es != in_rust).then(|| UnicodeDifference {
+        code_point: format!("U+{:04X}", u32::from(code_point)),
+        ecmascript_category: in_es,
+        rust_category: in_rust,
+    })
+}
+
+/// The difference in the `White_Space` property between the two engines' tables for `code_point`, if any (Annex V2).
+pub fn white_space_difference(code_point: char) -> Option<UnicodeDifference> {
+    let text = code_point.to_string();
+    let property = "^\\p{White_Space}$";
+    let in_es = ecmascript(property).ok()?.find(&text).is_some();
+    let in_rust = rust(property).ok()?.is_match(&text);
+    let name = |inside: bool| {
+        if inside {
+            "White_Space"
+        } else {
+            "not White_Space"
+        }
+    };
+    (in_es != in_rust).then(|| UnicodeDifference {
+        code_point: format!("U+{:04X}", u32::from(code_point)),
+        ecmascript_category: name(in_es),
+        rust_category: name(in_rust),
+    })
+}
+
 /// Runs `value` through both engines. A different answer is a verified Unicode-version difference only when the value
 /// is one code point, the pattern uses a category, and each engine's own tables give the code point a different general
-/// category (spec 10.7.4).
+/// category or, for a pattern that uses `White_Space`, a different `White_Space` value (spec 10.7.4, Annex V2).
 pub fn compare(pattern: &str, value: &str) -> Comparison {
     let (ecmascript, rust) = (
         ecmascript_answer(pattern, value),
@@ -167,12 +199,11 @@ pub fn compare(pattern: &str, value: &str) -> Comparison {
             let difference = single_code_point(value)
                 .filter(|_| uses_category(pattern))
                 .and_then(|code_point| {
-                    let (in_es, in_rust) =
-                        (ecmascript_category(code_point)?, rust_category(code_point)?);
-                    (in_es != in_rust).then(|| UnicodeDifference {
-                        code_point: format!("U+{:04X}", u32::from(code_point)),
-                        ecmascript_category: in_es,
-                        rust_category: in_rust,
+                    category_difference(code_point).or_else(|| {
+                        pattern
+                            .contains("{White_Space}")
+                            .then(|| white_space_difference(code_point))
+                            .flatten()
                     })
                 });
             match difference {
@@ -472,7 +503,7 @@ mod tests {
 
     use super::{
         body_problem, compare, ecmascript_category, form_problem, is_category_name, rust_category,
-        rust_problem, Comparison,
+        rust_problem, white_space_difference, Comparison,
     };
 
     #[test]
@@ -549,6 +580,10 @@ mod tests {
                 Comparison::Agree(inside),
                 "{value:?}"
             );
+        }
+        // The two engines' tables agree on White_Space (unchanged since Unicode 6.3): no version difference to excuse.
+        for code_point in ('\u{0}'..='\u{3000}').chain(['\u{feff}', '\u{1F600}']) {
+            assert_eq!(white_space_difference(code_point), None, "{code_point:?}");
         }
     }
 

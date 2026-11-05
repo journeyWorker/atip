@@ -32,7 +32,8 @@ three kinds:
 - **not verified**: shown for completeness; nothing here establishes it.
 
 **A synthetic reference tool, `acme`** (`*-acme-*`), which declares contract 1.4 (`meta.contractVersion`, spec 15.5),
-except `acme member find` (`schema-command-acme-member-find.json` and its schemas answer), which is acme built for 1.5,
+except `acme member find` (`schema-command-acme-member-find.json` and its schemas answer), which is acme built for 1.5:
+a standalone document, not part of acme's 1.4 tree (it names that tree's shared option `team`),
 while canon's translations declare 1.0: an invented tool that exercises what neither translation does,
 so that every rule has a positive witness: a declared short option (`-t`), a required repeatable option and an
 `x-acme` extension member (`acme page label`), an `async` command with an operation key and the command that

@@ -37,7 +37,8 @@ Rust `regex` and ECMAScript with the `u` flag both read the name `White_Space`, 
 engine unchanged. Only this spelling is in the profile, not an alias (`WSpace`, `space`) or a loosely matched name.
 `\s`, `\S` and the other multi-character escapes stay outside it: a JSON Schema validator would read them with its own
 engine's meaning, without any sign that the meaning differs. A document that declares 1.0 to 1.4 keeps the profile
-without `White_Space`; a caller of 1.4 that checks the profile may refuse the escape (spec 15.9).
+without `White_Space`; a caller of 1.4 that checks the profile may refuse the escape or skip that check (spec 15.4,
+15.9), and a caller of any minor skips the check of a pattern outside its own profile while the tool still enforces it.
 
 The common intent "one non-empty line with no leading or trailing white space" is, in JSON,
 `"pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$"`. The first and the last character
