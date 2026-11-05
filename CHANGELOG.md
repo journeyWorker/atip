@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.5.0 (unreleased)
+## 1.5.0 (2026-11-05)
 
 A minor (15.1) from implementer feedback (D41, issue #12). Its one addition binds only documents that declare
 `meta.contractVersion` `"1.5"`; a tool that declares 1.0 to 1.4 stays conforming as that minor, held to that minor's

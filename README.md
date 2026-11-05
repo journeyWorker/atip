@@ -9,7 +9,7 @@ for a release when it follows the rules of that minor at that level (spec 3). Th
 (`approaches/checker.md`), is a tool that tests a built binary against the spec; what it finds is evidence for or
 against a claim, not the definition of one (spec 3.7).
 
-**Status: 1.5.0, release candidate.** 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0 (2026-11-01),
+**Status: 1.5.0** (2026-11-05). 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0 (2026-11-01),
 after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1 and 1.1.2 (2026-11-01) are
 patches that clarify wording and checks. 1.2.0 (2026-11-02) is a minor whose new rules bind only a tool that declares
 1.2: which arguments bind a paging cursor, `--fields` without `--json`, flag-only paging and selection options, the
@@ -28,7 +28,8 @@ and `--help` stays text while `--help --json` refuses and points at `schema`; th
 derived input schema and the validators' counterexamples; its rules bind only documents that declare 1.4. 1.4.1
 (2026-11-04), after one round of review, is a patch: compactness forbids only whitespace outside strings. 1.4.2
 (2026-11-04), after one round of review, is a patch: a caller omits a repeatable option's `--input` key for none, and
-`--version --json` resolves its path first. 1.5.0 lets a domain pattern of a document that declares 1.5 use
+`--version --json` resolves its path first. 1.5.0 (2026-11-05), after one round of review, lets a domain pattern of a
+document that declares 1.5 use
 `\p{White_Space}` and `\P{White_Space}`, the Unicode `White_Space` property, which Rust `regex` and ECMAScript read
 alike, so that "one line without leading or trailing white space" no longer needs a hand-listed class; `\s` stays out.
 The decisions behind all of the versions are in Appendix A of the spec; no question is open. `CHANGELOG.md` lists the

@@ -1,9 +1,10 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.5.0, release candidate**: a minor (15.1) that lets a domain pattern of a document that declares 1.5 use
-`\p{White_Space}` and `\P{White_Space}`, the Unicode `White_Space` property, which Rust `regex` and ECMAScript read
-alike (Annex V2, Appendix A D41). Version 1.4.2, adopted 2026-11-04 after one round of independent review, is a patch
-that says how a caller writes none for a repeatable option in `--input` and that `--version --json` resolves its path
+Status: **1.5.0**, adopted 2026-11-05 after one round of independent review: a minor (15.1) that lets a domain pattern
+of a document that declares 1.5 use `\p{White_Space}` and `\P{White_Space}`, the Unicode `White_Space` property, which
+Rust `regex` and ECMAScript read alike (Annex V2, Appendix A D41). Version 1.4.2, adopted 2026-11-04 after one round of
+independent review, is a patch that says how a caller writes none for a repeatable option in `--input` and that
+`--version --json` resolves its path
 first (D40). Version 1.4.1, adopted 2026-11-04 after one round of independent review, is a patch that states the
 compactness rule as whitespace outside strings only, applies 7.3.2's naming to every minor from 1.3, and words the
 MINOR row for replaced members (D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a
