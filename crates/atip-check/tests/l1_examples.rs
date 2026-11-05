@@ -140,7 +140,7 @@ fn rejected_by(document: &Value) -> Vec<String> {
                 );
                 add("L1.grammar", grammar_findings(&[], Some(&doc), minor));
                 add("L1.examples", examples_findings(&doc, tool));
-                add("L1.patterns", pattern_findings(&doc));
+                add("L1.patterns", pattern_findings(&doc, claim));
                 add("L1.reserved-applicable", reserved_applicable_findings(&doc));
             }
         }

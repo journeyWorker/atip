@@ -96,7 +96,7 @@ pub fn contract_version_findings(document: &Value, claim: Claim) -> Vec<Finding>
     let meta = |member: &str| document.pointer(&format!("/meta/{member}"));
     let mut findings: Vec<Finding> = Vec::new();
     match claim {
-        Claim::V1_1 | Claim::V1_2 | Claim::V1_3 | Claim::V1_4 => {
+        Claim::V1_1 | Claim::V1_2 | Claim::V1_3 | Claim::V1_4 | Claim::V1_5 => {
             let missing: Vec<&str> = ["contract", "contractVersion"]
                 .into_iter()
                 .filter(|member| meta(member).is_none())

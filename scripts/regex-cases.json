@@ -1,5 +1,5 @@
 {
-  "description": "Cross-engine record for the pattern form of spec 10.7.4. Each case: a pattern, a value, whether the pattern has the restricted I-Regexp form (`form`, checked by scripts/check.ts), and whether the value matches in ECMAScript with the u flag and in the Rust regex crate (true, false, or \"error\" when the engine refuses the pattern). scripts/check.ts verifies `form` and `ecmascript`, scripts/regex-parity verifies `rust`. For every case of the form that both engines compile the two must agree, unless the case carries `difference` of kind `unicode-version`: one code point whose general category differs between the two engines' Unicode tables, which each engine verifies on its own side. Every pattern a valid example uses is listed here.",
+  "description": "Cross-engine record for the pattern form of spec 10.7.4. Each case: a pattern, a value, whether the pattern has the restricted I-Regexp form (`form`, checked by scripts/check.ts; with `formSince`, a minor, the pattern has that form only in a document that declares that minor or a later one, and is not of the form before it: Annex V2 admits `\\p{White_Space}` and `\\P{White_Space}` from 1.5), and whether the value matches in ECMAScript with the u flag and in the Rust regex crate (true, false, or \"error\" when the engine refuses the pattern). scripts/check.ts verifies `form` and `ecmascript`, scripts/regex-parity verifies `rust`. For every case of the form that both engines compile the two must agree, unless the case carries `difference` of kind `unicode-version`: one code point whose general category differs between the two engines' Unicode tables, which each engine verifies on its own side. Every pattern a valid example uses is listed here.",
   "engines": {
     "ecmascript": {
       "engine": "Bun 1.4.4, RegExp(pattern, \"u\")",
@@ -387,6 +387,388 @@
       "ecmascript": false,
       "rust": "error",
       "note": "surrogates: not I-Regexp (RFC 9485 IsCategory), and Rust does not know the value"
+    },
+    {
+      "pattern": "^\\p{White_Space}$",
+      "value": "\u0085",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "U+0085 NEXT LINE: White_Space, and Cc"
+    },
+    {
+      "pattern": "^\\p{White_Space}$",
+      "value": "\ufeff",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "U+FEFF ZERO WIDTH NO-BREAK SPACE: not White_Space (Cf)"
+    },
+    {
+      "pattern": "^\\p{White_Space}$",
+      "value": "\u00a0",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "U+00A0 NO-BREAK SPACE: White_Space (Zs)"
+    },
+    {
+      "pattern": "^\\p{White_Space}$",
+      "value": "\u2028",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "U+2028 LINE SEPARATOR: White_Space (Zl)"
+    },
+    {
+      "pattern": "^\\p{White_Space}$",
+      "value": "\u3000",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "U+3000 IDEOGRAPHIC SPACE: White_Space (Zs)"
+    },
+    {
+      "pattern": "^\\p{White_Space}$",
+      "value": "\t",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "tab: White_Space (Cc)"
+    },
+    {
+      "pattern": "^\\p{White_Space}$",
+      "value": " ",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "space: White_Space (Zs)"
+    },
+    {
+      "pattern": "^\\P{White_Space}$",
+      "value": "\u0085",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "U+0085 NEXT LINE: White_Space, and Cc"
+    },
+    {
+      "pattern": "^\\P{White_Space}$",
+      "value": "\ufeff",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "U+FEFF ZERO WIDTH NO-BREAK SPACE: not White_Space (Cf)"
+    },
+    {
+      "pattern": "^\\P{White_Space}$",
+      "value": "\u00a0",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "U+00A0 NO-BREAK SPACE: White_Space (Zs)"
+    },
+    {
+      "pattern": "^\\P{White_Space}$",
+      "value": "\u2028",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "U+2028 LINE SEPARATOR: White_Space (Zl)"
+    },
+    {
+      "pattern": "^\\P{White_Space}$",
+      "value": "\u3000",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "U+3000 IDEOGRAPHIC SPACE: White_Space (Zs)"
+    },
+    {
+      "pattern": "^\\P{White_Space}$",
+      "value": "\t",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "tab: White_Space (Cc)"
+    },
+    {
+      "pattern": "^\\P{White_Space}$",
+      "value": " ",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "space: White_Space (Zs)"
+    },
+    {
+      "pattern": "^[\\p{White_Space}]$",
+      "value": "\u0085",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "inside a class"
+    },
+    {
+      "pattern": "^[\\p{White_Space}]$",
+      "value": "\ufeff",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "inside a class"
+    },
+    {
+      "pattern": "^[^\\P{White_Space}]$",
+      "value": "\u0085",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "the complement, negated, inside a class"
+    },
+    {
+      "pattern": "^[^\\P{White_Space}]$",
+      "value": "\ufeff",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "the complement, negated, inside a class"
+    },
+    {
+      "pattern": "^[\\P{White_Space}]$",
+      "value": "\u3000",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "the complement inside a class"
+    },
+    {
+      "pattern": "^[\\P{White_Space}]$",
+      "value": "a",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "the complement inside a class"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "Ada Lovelace",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "Annex V2's example (non-empty, one line, no leading or trailing white space): a space inside"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "one character"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\tb",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "a tab inside"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\u00a0b",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "a Zs inside"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\u3000b",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "a Zs inside"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "\ufeffa",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": true,
+      "rust": true,
+      "note": "U+FEFF is not White_Space, so it may lead"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "empty"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": " a",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "leading space"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a ",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "trailing space"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "\u3000a",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "leading Zs"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\nb",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "LF inside: a line terminator"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\rb",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "CR inside"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\u000bb",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "VT inside: White_Space, not Zs or tab"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\u000cb",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "FF inside"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\u0085b",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "U+0085 inside"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\u2028b",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "U+2028 inside"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\u2029b",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "U+2029 inside"
+    },
+    {
+      "pattern": "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
+      "value": "a\u0085",
+      "form": true,
+      "formSince": "1.5",
+      "ecmascript": false,
+      "rust": false,
+      "note": "trailing U+0085"
+    },
+    {
+      "pattern": "^\\s$",
+      "value": "\u0085",
+      "form": false,
+      "ecmascript": false,
+      "rust": true,
+      "note": "\\s is not I-Regexp: Rust's \\s is White_Space and has U+0085, ECMAScript's \\s lacks it"
+    },
+    {
+      "pattern": "^\\s$",
+      "value": "\ufeff",
+      "form": false,
+      "ecmascript": true,
+      "rust": false,
+      "note": "ECMAScript's \\s has U+FEFF, which is not White_Space"
+    },
+    {
+      "pattern": "^\\S$",
+      "value": "\u0085",
+      "form": false,
+      "ecmascript": true,
+      "rust": false,
+      "note": "\\S: the complement, so the same two code points differ"
+    },
+    {
+      "pattern": "^\\p{space}$",
+      "value": " ",
+      "form": false,
+      "ecmascript": true,
+      "rust": true,
+      "note": "ECMAScript's alias of White_Space: not of the form"
+    },
+    {
+      "pattern": "^\\p{white_space}$",
+      "value": " ",
+      "form": false,
+      "ecmascript": "error",
+      "rust": true,
+      "note": "Rust matches property names loosely, ECMAScript does not: not of the form"
     },
     {
       "pattern": "^[a]{0}$",

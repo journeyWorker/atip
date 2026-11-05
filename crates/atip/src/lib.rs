@@ -17,7 +17,7 @@
 //!   option, operand, output, input), typed in the full form that 1.0 to 1.3 write,
 //!   and deriving `JsonSchema`.
 //! - [`describe`]: the one serializer of the `schema` answers by the minor a tool declares: [`Described`] takes the typed
-//!   model and writes the tree, groups and commands of 1.0 to 1.3 as they are, and for 1.4 the compact form of spec 9 (defaults,
+//!   model and writes the tree, groups and commands of 1.0 to 1.3 as they are, and from 1.4 the compact form of spec 9 (defaults,
 //!   implied options and codes left out, shared options in the tree, reserved options by name) and the schemas answer
 //!   (`schema <COMMAND> --schemas --json`).
 //! - [`fragment`]: the fragment schema of one `--input` document, derived from the operands and options (spec 9.9.2, 1.4),
@@ -35,7 +35,7 @@
 //!   without a table entry fails.
 //! - [`argv`]: the JSON-mode flag and the argv test that decides it.
 //! - [`envelope`]: a document as one compact line, and printing it.
-//! - [`minor`]: [`Minor`], the minors of atip/1 the crate knows (1.0 to 1.4), and
+//! - [`minor`]: [`Minor`], the minors of atip/1 the crate knows (1.0 to 1.5), and
 //!   [`CONTRACT_VERSION`], the newest one the crate implements. A tool's own
 //!   declaration of its minor is its own constant, not this one.
 //! - [`reserved`]: the table of the reserved error codes (name, exit,
@@ -49,7 +49,7 @@
 //!   text of the plan, [`jcs`]), the preview report and its JSON Schema, the commit gate (`PLAN_STALE`, the two options that
 //!   require each other), the commit call a preview's `meta.next` leads with, and the stop of a command part-way through
 //!   (`STOPPED_MIDWAY` in a 1.2 document, the tool's own `<SUBJECT>_INCOMPLETE` from 1.3).
-//! - [`cursor`]: paging cursors bound to the call that issued them, by the minor a tool declares (1.2, 1.3 and 1.4 bind alike),
+//! - [`cursor`]: paging cursors bound to the call that issued them, by the minor a tool declares (1.2 and every later minor bind alike),
 //!   and the call that continues a page.
 //! - [`shell`]: quoting a word for a `command` string, splitting that string
 //!   back into an argv, and telling a runnable one from one that still has a

@@ -7,7 +7,7 @@
 //! ([`CursorInvalid::expired`]).
 //!
 //! Which arguments bind is the contract's, by the minor a tool declares ([`Cursors`]): a tool that declares 1.1 binds to
-//! every explicit argument except `--limit`, `--cursor` and `--fields`; one that declares 1.2, 1.3 or 1.4 binds to every explicit
+//! every explicit argument except `--limit`, `--cursor` and `--fields`; one that declares 1.2 or a later minor binds to every explicit
 //! argument except `--json`, `--limit`, `--all`, `--cursor` and `--fields`, counts an argument given with its default value
 //! as given, and binds the values an option's `env` variable supplied too, marked as environment (from 1.3 whether a default
 //! given explicitly rebinds, and what the next-page entry carries, are recommendations, which the crate keeps following).
@@ -40,7 +40,7 @@ const LEFT_OUT_12: [&str; 6] = ["json", "limit", "all", "cursor", "fields", "inp
 /// The cursors of a tool that declares one minor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cursors {
-    /// The minor whose binding rules apply: 1.1 for a tool that declares 1.0 or 1.1, else 1.2 (which 1.3 and 1.4 keep).
+    /// The minor whose binding rules apply: 1.1 for a tool that declares 1.0 or 1.1, else 1.2 (which every later minor keeps).
     rules: Minor,
 }
 
@@ -61,8 +61,8 @@ impl fmt::Display for Binding {
 }
 
 impl Cursors {
-    /// The cursors of a tool that declares `declared`. 1.0 has no rule of its own for cursors and follows 1.1's; 1.3 and 1.4
-    /// follow 1.2's.
+    /// The cursors of a tool that declares `declared`. 1.0 has no rule of its own for cursors and follows 1.1's; 1.3 and
+    /// every later minor follow 1.2's.
     pub const fn new(declared: Minor) -> Self {
         Cursors {
             rules: if declared.at_least(Minor::V1_2) {
@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn atip_cratecursor_04_an_unknown_minor_and_an_integer_a_digest_cannot_hold_are_refused() {
-        for text in ["1.5", "2.0", "1", "", "1.2.0"] {
+        for text in ["1.6", "2.0", "1", "", "1.2.0"] {
             assert_eq!(
                 Cursors::for_declared(text),
                 Err(UnknownMinor(text.to_string())),

@@ -51,16 +51,23 @@ fn atip_checkl1_25_regex_the_rust_engine_answers_every_recorded_case_as_the_reco
 
 #[test]
 fn atip_checkl1_25_regex_the_form_of_every_recorded_pattern_is_the_one_the_record_says() {
+    // `form` is the form at every minor, except that a case with `formSince` has it only from that minor on (Annex V2).
     for case in &cases() {
         let pattern = case["pattern"].as_str().expect("pattern");
-        let of_form = form_problem(pattern).is_none();
-        assert_eq!(
-            Value::Bool(of_form),
-            case["form"],
-            "form of {}: {:?}",
-            name(case),
-            form_problem(pattern)
-        );
+        let since = case["formSince"]
+            .as_str()
+            .map(|text| atip::Minor::parse(text).expect("formSince names a minor"));
+        for minor in atip::Minor::ALL {
+            let expected = case["form"] == Value::Bool(true)
+                && since.is_none_or(|since| minor.at_least(since));
+            assert_eq!(
+                form_problem(pattern, minor).is_none(),
+                expected,
+                "form of {} at {minor}: {:?}",
+                name(case),
+                form_problem(pattern, minor)
+            );
+        }
     }
 }
 
@@ -128,7 +135,7 @@ fn atip_checkl1_25_regex_a_pattern_of_the_form_that_both_engines_compile_agrees_
 fn atip_checkl1_25_regex_a_pattern_outside_the_form_that_the_engines_read_differently_is_not_a_version_difference(
 ) {
     // `^[a&&b]+$` is not of the form; on "a" ECMAScript accepts and Rust rejects, and no code point or category explains it.
-    assert!(form_problem("^[a&&b]+$").is_some());
+    assert!(form_problem("^[a&&b]+$", atip::Minor::LATEST).is_some());
     assert!(matches!(
         compare("^[a&&b]+$", "a"),
         Comparison::Differs {

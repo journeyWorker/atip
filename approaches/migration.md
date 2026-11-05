@@ -3,7 +3,7 @@
 Not normative. How an existing command-line tool moves to ATIP, level by level, with canon 0.31.0 and lute 0.52.0
 (both Rust, clap) as worked examples. Their status below is from their source and their read-only `schema`
 output; anything not established that way is marked *unmeasured*. Section numbers ("spec 10.7") refer to
-`spec/atip-1.md`, version 1.4.0.
+`spec/atip-1.md`, version 1.5.0.
 
 The contract is not softened to ease adoption; where a rule costs a tool real work, the cost is recorded here (§4).
 
@@ -413,3 +413,20 @@ compact. A caller moving to 1.4 reads both forms: a 1.3 document as it always di
 **Size.** The point of the change is the reader: one agent reads the tree once and a command document each time it
 calls. The canon command `finding close` is 10,876 bytes pretty-printed in the 1.3 form, 6,732 bytes compact, and
 3,088 bytes in the 1.4 form; the CHANGELOG has the table.
+
+## 10. From 1.4 to 1.5
+
+For the author of a tool that conforms to 1.4, and for the author of a caller. 1.5.0 adds one thing (spec 15.9; the
+reasons are Appendix A D41): a domain pattern of a document that declares 1.5 may use `\p{White_Space}` and
+`\P{White_Space}` (Annex V2). Nothing changes shape and no section was renumbered.
+
+**Nothing is forced.** A 1.4 tool stays conforming as a 1.4 tool, held to the 1.4.2 text (spec 15.7). A tool that wants
+the escape declares 1.5: it sets its contract constant and the fixture's `contractVersion` to `"1.5"`, and may then
+replace a hand-listed white-space class with the property. "One non-empty line with no leading or trailing white
+space" is `^\P{White_Space}([\P{White_Space}\p{Zs}\t]*\P{White_Space})?$` (Annex V2); a tool keeps `\s` out of every
+pattern, at 1.5 too. Rust `regex` reads the pattern as published, so the parser and the document share one string.
+
+**A caller.** A caller of 1.5 that checks patterns admits `\p{White_Space}` and `\P{White_Space}` in a 1.5 document
+only, spelled exactly so, and compiles patterns with ECMAScript's `u` flag or Rust `regex` as before: both read the
+property natively. A caller written for 1.4 that checks patterns against its release's profile may refuse such a
+pattern; one that only compiles them reads it correctly.

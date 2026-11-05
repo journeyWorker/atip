@@ -729,14 +729,18 @@ pub fn domain_patterns(doc: &CommandDoc) -> Vec<(String, Result<String, String>)
     all
 }
 
-/// `L1.patterns`, for the patterns of one command document: `form` (the restricted I-Regexp form and an ECMAScript `u` compile) and
-/// `rust-compiles` (the Rust `regex` crate at its default limits), one pair of each per pattern. The comparison of the two engines on a value
-/// (`engines-agree`) needs values and is a run's.
-pub fn pattern_findings(doc: &CommandDoc) -> Vec<Finding> {
+/// `L1.patterns`, for the patterns of one command document of a tool that claims `claim`: `form` (the restricted I-Regexp form of
+/// that minor and an ECMAScript `u` compile) and `rust-compiles` (the Rust `regex` crate at its default limits), one pair of each per
+/// pattern. The comparison of the two engines on a value (`engines-agree`) needs values and is a run's.
+pub fn pattern_findings(doc: &CommandDoc, claim: Claim) -> Vec<Finding> {
+    let minor = minor_of(claim);
     let mut findings: Vec<Finding> = Vec::new();
     for (spelling, pattern) in domain_patterns(doc) {
         let (form, rust) = match &pattern {
-            Ok(pattern) => (regex::form_problem(pattern), regex::rust_problem(pattern)),
+            Ok(pattern) => (
+                regex::form_problem(pattern, minor),
+                regex::rust_problem(pattern),
+            ),
             Err(why) => (Some(why.clone()), None),
         };
         let shown = pattern.clone().unwrap_or_default();

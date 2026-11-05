@@ -1,12 +1,14 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.4.2**, adopted 2026-11-04 after one round of independent review: a patch (15.1) that says how a caller
-writes none for a repeatable option in `--input` and that `--version --json` resolves its path first (Appendix A D40).
-Version 1.4.1, adopted 2026-11-04 after one round of independent review, is a patch that states the compactness rule as
-whitespace outside strings only, applies 7.3.2's naming to every minor from 1.3, and words the MINOR row for replaced
-members (D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a minor (15.1) that makes
-the self-description small and compact for agents and separates `--help` from `schema` (D38); 1.3.1 and 1.3.0 are
-described in D37 and D36.
+Status: **1.5.0, release candidate**: a minor (15.1) that lets a domain pattern of a document that declares 1.5 use
+`\p{White_Space}` and `\P{White_Space}`, the Unicode `White_Space` property, which Rust `regex` and ECMAScript read
+alike (Annex V2, Appendix A D41). Version 1.4.2, adopted 2026-11-04 after one round of independent review, is a patch
+that says how a caller writes none for a repeatable option in `--input` and that `--version --json` resolves its path
+first (D40). Version 1.4.1, adopted 2026-11-04 after one round of independent review, is a patch that states the
+compactness rule as whitespace outside strings only, applies 7.3.2's naming to every minor from 1.3, and words the
+MINOR row for replaced members (D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a
+minor (15.1) that makes the self-description small and compact for agents and separates `--help` from `schema` (D38);
+1.3.1 and 1.3.0 are described in D37 and D36.
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
 (V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 
@@ -739,7 +741,7 @@ placeholders are substituted (shell pipelines are exempt). Guides SHOULD tell ag
 
 ## 15. Versioning and compatibility
 
-15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.4.0`). A PATCH changes no
+15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.5.0`). A PATCH changes no
 rule. A MINOR adds OPTIONAL members, options, kinds and values, SHOULD and MAY rules, and MUST rules that bind only
 documents that declare it. For those documents it may withdraw a core code whose use the previous minor only
 recommended, and change the shape of the self-description (9) when every member the change leaves out or replaces reads,
@@ -788,11 +790,11 @@ dropped) and rejects only a view that fails. A caller validates against the sche
 (15.7 names the tags): the current files cover every minor and are looser. `$id`s stay under `https://atip.dev/1/`.
 [Appendix A D20, D28, D38]
 
-15.7. **Earlier minors.** A tool that declares 1.0, 1.1, 1.2 or 1.3 is held to that minor's last release text (tags
-`v1.0.0`, `v1.1.2`, `v1.2.1`, `v1.3.1`). A caller reads every minor; for it, a document of an earlier minor differs
-thus:
+15.7. **Earlier minors.** A tool that declares 1.0, 1.1, 1.2, 1.3 or 1.4 is held to that minor's last release text
+(tags `v1.0.0`, `v1.1.2`, `v1.2.1`, `v1.3.1`, `v1.4.2`). A caller reads every minor; for it, a document of an earlier
+minor differs thus:
 
-| Declared | Differs from 1.4 |
+| Declared | Differs from 1.5 |
 |---|---|
 | 1.0 | `contract` may be absent outside `schema`; no reasons, warning registry, bracketed paths or map-key selection; warning codes in the error registry; a hint may be prose starting with the tool name |
 | 1.0, 1.1 | a cursor also binds `--json` and `--all`, and need not bind `env` values (a variable changed between pages may change the listing silently); `--fields` may need `--json`; `limit`, `cursor`, `all`, `fields` may be document keys |
@@ -800,8 +802,9 @@ thus:
 | 1.2 | `STOPPED_MIDWAY` is a core code (exit 1, not retryable, `reason` the refused code) |
 | 1.0-1.2 | code names need not follow 7.2 |
 | 1.0-1.3 | the self-description carries every member, defaults included, and `path` beside `command`; a command lists every option it accepts and every code it can emit; it embeds its JSON Schemas in `schemas` (refs resolve in the command document) and declares the fragment schema as `input.schemaRef`; the tree has no `options` and there is no `--schemas`; documents may contain insignificant whitespace; `--help --json` may answer with the `schema` document |
+| 1.0-1.4 | a domain pattern does not use `\p{White_Space}` or `\P{White_Space}` (Annex V2) |
 
-[Appendix A D20, D27, D32, D33, D38]
+[Appendix A D20, D27, D32, D33, D38, D41]
 
 15.8. **1.4 and callers.** 1.4 changes the shape of the self-description for documents that declare it: tree, group
 and command documents leave out `path` and default-valued members, and a command document its JSON Schemas, the
@@ -809,6 +812,12 @@ options and codes it implies and the shared options' definitions. A caller of 1.
 its release's schemas rejects such a document; one that does not validate reads every member left out as that
 minor's default or as a feature not offered (fewer options, codes and outputs, no schemas), and so uses less of the
 tool, never more. Every other 1.4 document keeps its shape and is only compact. [Appendix A D38]
+
+15.9. **1.5 and callers.** 1.5 adds one thing, for documents that declare it: a domain pattern may use
+`\p{White_Space}` and `\P{White_Space}` (Annex V2). Every document keeps its shape. A caller of 1.4 or earlier that
+checks patterns against its release's profile may refuse such a pattern; one that compiles the pattern with ECMAScript
+and the `u` flag, as JSON Schema validators do, or with Rust `regex` reads it with the meaning 1.5 gives it, because
+both engines know the property by that name. [Appendix A D41]
 
 ## 16. Security
 
@@ -947,6 +956,10 @@ sections of this version.
 | # | Owner decision 2026-11-04, version 1.4.2, a patch (15.1) from implementer feedback | Where |
 |---|---|---|
 | D40 | Two gaps two implementers met on 1.4, closed without changing a rule's strength; `meta.contractVersion` stays `"1.4"`. (1) A caller writes none for a repeatable option by omitting the key, as for `operands`; a 1.4 tool may read `"tag": []` as absent or refuse it with `INPUT_INVALID` and the key's pointer. 1.4.1 admitted `[]` (9.7.2 says "arrays", and the derived fragment has no `minItems`) but gave it no meaning, so either reading is allowed and the derivation of 9.9.2 is unchanged. A review of the 1.4.2 candidate found that making `[]` invalid, with `"minItems": 1` in the derivation, would fail a conforming 1.4.1 tool; that rule, a MUST and `minItems: 1` binding documents that declare 1.5, is a 1.5 candidate. (2) `--version --json` with a path resolves the path first, as `--help --json` does, so an unknown word answers `UNKNOWN_COMMAND`. `approaches/checker.md` L2.input-refusals sends `[]` for a repeatable option at a 1.4 claim and accepts either answer. | 4.4.1, 10.5, approaches/checker.md |
+
+| # | Owner decision 2026-11-05, version 1.5.0, a minor (15.1) from implementer feedback | Where |
+|---|---|---|
+| D41 | A domain pattern needs a way to say "white space": a tool that wants "one non-empty line with no leading or trailing white space" had to list every white-space code point by hand in each pattern, about sixty characters a reader could not check. In a document that declares 1.5, a pattern may use `\p{White_Space}` and `\P{White_Space}`, in and outside a class, with one meaning in every engine: the Unicode binary property, which Rust `regex` and ECMAScript with the `u` flag both read by that name, so a caller translates nothing. It is the one addition to the profile beyond I-Regexp, whose `\p{…}` has only general categories; only the spelling `White_Space` is admitted. `\s` and `\S` stay out: their meaning differs between the engines (U+0085, U+FEFF), and redefining them in the contract would leave a generic JSON Schema validator reading its own meaning without any sign. A named "trimmed single line" domain was not added: the pattern says it, and Annex V2 gives it as the example, with line terminators excluded as the white space that is neither Zs nor a tab. A 1.4 caller that checks patterns against its release's profile may refuse the escape, so only a document that declares 1.5 may use it (15.1); a document of 1.0 to 1.4 keeps the old profile. D40's candidate (`minItems: 1` for a repeatable option) is not part of 1.5.0. | Annex V2, 15.1, 15.7, 15.9 |
 
 ## Appendix B. Prior art
 

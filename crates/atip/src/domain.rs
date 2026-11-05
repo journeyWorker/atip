@@ -7,7 +7,8 @@
 //! - [`Domain`], a typed form a tool writes in its table so that only the profile can be written;
 //! - [`profile_problems`] and [`pattern_problem`], the structural check of 10.7.4 and 10.13 rule 3: the keywords
 //!   allowed for a `valueType`, safe-integer bounds, and a `pattern` that is `^`, a restricted I-Regexp (RFC 9485)
-//!   body and `$` and that the Rust `regex` crate compiles with its default limits;
+//!   body and `$` and that the Rust `regex` crate compiles with its default limits; the document's declared minor
+//!   decides whether the body may use `\p{White_Space}` and `\P{White_Space}` (Annex V2, since 1.5);
 //! - [`admits`], whether a value is inside a domain, so a document's defaults, examples and boundary values can be held
 //!   to it;
 //! - [`implicit`] and [`merge`], the restriction a Rust integer type carries (`u32` refuses negatives and 2^32) and
@@ -22,6 +23,10 @@ use serde_json::{json, Map, Value};
 
 use crate::doc::ValueType;
 use crate::judge::{Node, Refused};
+use crate::Minor;
+
+/// The first minor whose domain patterns may use `\p{White_Space}` and `\P{White_Space}` (Annex V2).
+pub const WHITE_SPACE_SINCE: Minor = Minor::V1_5;
 
 /// Largest integer a JSON parser, JavaScript and a Rust `i64` all read the same (spec 10.7.5).
 pub const SAFE_INTEGER: i64 = 9_007_199_254_740_991;
@@ -137,16 +142,23 @@ fn keywords(value_type: ValueType) -> Option<Vec<&'static str>> {
     }
 }
 
-/// Every way `domain` leaves the profile of `value_type` (spec 10.7.4, 10.13 rule 3): a keyword outside it, a
-/// bound that is not a finite number (or, for an integer or a count, not a safe integer), a `multipleOf` that is not positive, a
-/// `pattern` that is not of the restricted form or that the Rust `regex` crate refuses, a non-scalar `enum` or `const`.
-pub fn profile_problems(value_type: ValueType, domain: &Value) -> Vec<String> {
+/// Every way `domain` leaves the profile of `value_type` in a document that declares `minor` (spec 10.7.4, 10.13 rule
+/// 3): a keyword outside it, a bound that is not a finite number (or, for an integer or a count, not a safe integer), a
+/// `multipleOf` that is not positive, a `pattern` that is not of the restricted form or that the Rust `regex` crate
+/// refuses, a non-scalar `enum` or `const`.
+pub fn profile_problems(value_type: ValueType, domain: &Value, minor: Minor) -> Vec<String> {
     let mut problems = Vec::new();
-    check_node(value_type, domain, "the domain", &mut problems);
+    check_node(value_type, domain, "the domain", minor, &mut problems);
     problems
 }
 
-fn check_node(value_type: ValueType, node: &Value, at: &str, problems: &mut Vec<String>) {
+fn check_node(
+    value_type: ValueType,
+    node: &Value,
+    at: &str,
+    minor: Minor,
+    problems: &mut Vec<String>,
+) {
     let Some(allowed) = keywords(value_type) else {
         problems.push(format!(
             "{at}: a {} argument has no domain (spec 10.7.4)",
@@ -193,7 +205,7 @@ fn check_node(value_type: ValueType, node: &Value, at: &str, problems: &mut Vec<
         if keyword == "pattern" {
             match value.as_str() {
                 Some(pattern) => {
-                    if let Some(problem) = pattern_problem(pattern) {
+                    if let Some(problem) = pattern_problem(pattern, minor) {
                         problems.push(format!("{at}: pattern {value}: {problem} (spec 10.7.4)"));
                     }
                 }
@@ -222,13 +234,20 @@ fn check_node(value_type: ValueType, node: &Value, at: &str, problems: &mut Vec<
                         value_type,
                         child,
                         &format!("{at}/properties/{name}"),
+                        minor,
                         problems,
                     );
                 }
             }
         }
         if keyword == "items" || (keyword == "additionalProperties" && !value.is_boolean()) {
-            check_node(value_type, value, &format!("{at}/{keyword}"), problems);
+            check_node(
+                value_type,
+                value,
+                &format!("{at}/{keyword}"),
+                minor,
+                problems,
+            );
         }
     }
 }
@@ -242,10 +261,11 @@ fn is_safe_integer(value: &Value) -> bool {
             .is_some_and(|number| number.fract() == 0.0 && number.abs() <= SAFE_INTEGER as f64)
 }
 
-/// What is wrong with `pattern` as a domain `pattern` (spec 10.7.4): `None` when it is `^`, an I-Regexp body with the
-/// contract's restrictions, and `$`, and the Rust `regex` crate compiles it with its default limits (a compiled size of
-/// 10 MiB, a nesting depth of 250).
-pub fn pattern_problem(pattern: &str) -> Option<String> {
+/// What is wrong with `pattern` as a domain `pattern` of a document that declares `minor` (spec 10.7.4): `None` when it
+/// is `^`, an I-Regexp body with the contract's restrictions, and `$`, and the Rust `regex` crate compiles it with its
+/// default limits (a compiled size of 10 MiB, a nesting depth of 250). From 1.5 the body may use `\p{White_Space}` and
+/// `\P{White_Space}`, spelled exactly so.
+pub fn pattern_problem(pattern: &str, minor: Minor) -> Option<String> {
     let body = match pattern
         .strip_prefix('^')
         .and_then(|rest| rest.strip_suffix('$'))
@@ -259,7 +279,7 @@ pub fn pattern_problem(pattern: &str) -> Option<String> {
     {
         return Some(format!("carries a raw line terminator at offset {at}: the contract's schema requires `^\\^.*\\$$`, and `.` does not match one (write `\\n`, `\\r`, `\\p{{Zl}}`, `\\p{{Zp}}`)"));
     }
-    if let Some(problem) = iregexp_problem(body) {
+    if let Some(problem) = iregexp_problem(body, minor) {
         return Some(problem);
     }
     regex::Regex::new(pattern)
@@ -267,12 +287,13 @@ pub fn pattern_problem(pattern: &str) -> Option<String> {
         .map(|error| format!("the Rust regex crate refuses it with its default limits: {error}"))
 }
 
-/// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of spec 10.7.4.
-/// A port of `iregexpProblem` of the contract's `scripts/check.ts`.
-fn iregexp_problem(body: &str) -> Option<String> {
+/// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of spec 10.7.4, in a document
+/// that declares `minor`. A port of `iregexpProblem` of the contract's `scripts/check.ts`.
+fn iregexp_problem(body: &str, minor: Minor) -> Option<String> {
     let mut scan = Scan {
         cps: body.chars().collect(),
         i: 0,
+        minor,
     };
     scan.alternatives(0)
         .and_then(|()| {
@@ -288,6 +309,7 @@ fn iregexp_problem(body: &str) -> Option<String> {
 struct Scan {
     cps: Vec<char>,
     i: usize,
+    minor: Minor,
 }
 
 type Scanned = Result<(), String>;
@@ -345,7 +367,15 @@ impl Scan {
                 return self.fail("unclosed \\p{");
             };
             let name: String = self.cps[self.i + 3..end].iter().collect();
-            if !is_category_name(&name) {
+            if name == "White_Space" {
+                if !self.minor.at_least(WHITE_SPACE_SINCE) {
+                    return self.fail(&format!(
+                        "\\{}{{White_Space}} is since {WHITE_SPACE_SINCE}, but the document declares contract {}",
+                        self.cps[self.i + 1],
+                        self.minor
+                    ));
+                }
+            } else if !is_category_name(&name) {
                 return self.fail(&format!("unknown category {name}"));
             }
             self.i = end + 1;
@@ -615,74 +645,127 @@ pub fn merge(a: Option<Value>, b: Option<Value>) -> Result<Option<Value>, String
 mod tests {
     use super::*;
 
+    /// Annex V2's example: a non-empty single line without leading or trailing white space.
+    const ONE_TRIMMED_LINE: &str =
+        "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$";
+
     #[test]
     fn a_pattern_of_the_restricted_form_passes_and_each_removed_spelling_is_named() {
-        for good in [
-            "^[a-z][a-z0-9-]*$",
-            "^(core|lead)$",
-            "^\\p{L}{1,10}$",
-            "^[^\\n\\r]+$",
-            "^[a-z]+(-[a-z0-9]+)*$",
-            "^[ \\t]*x$",
-            "^a\\.b$",
-            "^[^\\n\\r\\p{Zl}\\p{Zp}]+$",
-        ] {
-            assert_eq!(pattern_problem(good), None, "{good}");
-        }
-        let bad = [
-            ("a+", "is not ^…$"),
-            ("^a|b$", "| outside parentheses"),
-            ("^a.b$", ". outside a character class"),
-            ("^\\d+$", "escape \\d is not I-Regexp"),
-            ("^a\\-b$", "\\- outside a character class"),
-            ("^[a&&b]+$", "&& in a character class"),
-            ("^[a~~b]+$", "~~ in a character class"),
-            ("^[[:alpha:]]$", "in a character class"),
-            ("^[a--b]$", "bad range"),
-            ("^\\p{Xx}$", "unknown category"),
-            ("^*a$", "* without an atom"),
-            ("^(a$", "unclosed ("),
-            ("^[]$", "empty character class"),
-            ("^[^\n]+$", "raw line terminator"),
-            ("^[^\u{2028}]+$", "raw line terminator"),
-            ("^a^b$", "^ outside a character class"),
-        ];
-        for (pattern, expected) in bad {
-            let problem =
-                pattern_problem(pattern).unwrap_or_else(|| panic!("{pattern} should be refused"));
-            assert!(problem.contains(expected), "{pattern}: {problem}");
+        for minor in Minor::ALL {
+            for good in [
+                "^[a-z][a-z0-9-]*$",
+                "^(core|lead)$",
+                "^\\p{L}{1,10}$",
+                "^[^\\n\\r]+$",
+                "^[a-z]+(-[a-z0-9]+)*$",
+                "^[ \\t]*x$",
+                "^a\\.b$",
+                "^[^\\n\\r\\p{Zl}\\p{Zp}]+$",
+            ] {
+                assert_eq!(pattern_problem(good, minor), None, "{good} at {minor}");
+            }
+            let bad = [
+                ("a+", "is not ^…$"),
+                ("^a|b$", "| outside parentheses"),
+                ("^a.b$", ". outside a character class"),
+                ("^\\d+$", "escape \\d is not I-Regexp"),
+                ("^\\s+$", "escape \\s is not I-Regexp"),
+                ("^\\S+$", "escape \\S is not I-Regexp"),
+                ("^a\\-b$", "\\- outside a character class"),
+                ("^[a&&b]+$", "&& in a character class"),
+                ("^[a~~b]+$", "~~ in a character class"),
+                ("^[[:alpha:]]$", "in a character class"),
+                ("^[a--b]$", "bad range"),
+                ("^\\p{Xx}$", "unknown category"),
+                ("^\\p{WSpace}$", "unknown category WSpace"),
+                ("^\\p{space}$", "unknown category space"),
+                ("^\\p{white_space}$", "unknown category white_space"),
+                ("^*a$", "* without an atom"),
+                ("^(a$", "unclosed ("),
+                ("^[]$", "empty character class"),
+                ("^[^\n]+$", "raw line terminator"),
+                ("^[^\u{2028}]+$", "raw line terminator"),
+                ("^a^b$", "^ outside a character class"),
+            ];
+            for (pattern, expected) in bad {
+                let problem = pattern_problem(pattern, minor)
+                    .unwrap_or_else(|| panic!("{pattern} should be refused at {minor}"));
+                assert!(problem.contains(expected), "{pattern}: {problem}");
+            }
         }
     }
 
     #[test]
+    fn atip_crate15_02_white_space_is_in_the_profile_from_1_5_only() {
+        let patterns = [
+            "^\\p{White_Space}$",
+            "^\\P{White_Space}+$",
+            "^[\\p{White_Space}a]$",
+            "^[^\\P{White_Space}]$",
+            ONE_TRIMMED_LINE,
+        ];
+        for pattern in patterns {
+            for minor in Minor::ALL {
+                let problem = pattern_problem(pattern, minor);
+                if minor.at_least(Minor::V1_5) {
+                    assert_eq!(problem, None, "{pattern} at {minor}");
+                } else {
+                    let problem = problem.unwrap_or_else(|| panic!("{pattern} at {minor}"));
+                    assert!(
+                        problem.contains(&format!(
+                            "{{White_Space}} is since 1.5, but the document declares contract {minor}"
+                        )),
+                        "{pattern} at {minor}: {problem}"
+                    );
+                }
+            }
+        }
+        let domain = json!({ "maxLength": 100, "pattern": ONE_TRIMMED_LINE });
+        assert!(profile_problems(ValueType::String, &domain, Minor::V1_5).is_empty());
+        assert_eq!(
+            profile_problems(ValueType::String, &domain, Minor::V1_4).len(),
+            1
+        );
+    }
+
+    #[test]
     fn a_pattern_the_regex_crate_refuses_with_its_default_limits_is_refused() {
-        let problem = pattern_problem("^\\p{L}{1,500}$").expect("too large for the default limits");
+        let problem = pattern_problem("^\\p{L}{1,500}$", Minor::LATEST)
+            .expect("too large for the default limits");
         assert!(problem.contains("regex crate"), "{problem}");
     }
 
     #[test]
     fn the_profile_is_by_value_type_and_bounds_are_safe_integers() {
+        let latest = Minor::LATEST;
         assert!(profile_problems(
             ValueType::Integer,
-            &json!({ "minimum": 1, "maximum": 4_294_967_295_u64 })
+            &json!({ "minimum": 1, "maximum": 4_294_967_295_u64 }),
+            latest
         )
         .is_empty());
-        assert!(!profile_problems(ValueType::Integer, &json!({ "minLength": 1 })).is_empty());
+        assert!(
+            !profile_problems(ValueType::Integer, &json!({ "minLength": 1 }), latest).is_empty()
+        );
         assert!(!profile_problems(
             ValueType::Integer,
-            &json!({ "minimum": 9_007_199_254_740_992_i64 })
+            &json!({ "minimum": 9_007_199_254_740_992_i64 }),
+            latest
         )
         .is_empty());
-        assert!(profile_problems(ValueType::Number, &json!({ "maximum": 1e20 })).is_empty());
+        assert!(
+            profile_problems(ValueType::Number, &json!({ "maximum": 1e20 }), latest).is_empty()
+        );
         assert!(profile_problems(
             ValueType::String,
-            &json!({ "minLength": 1, "pattern": "^[a-z]+$", "format": "uri" })
+            &json!({ "minLength": 1, "pattern": "^[a-z]+$", "format": "uri" }),
+            latest
         )
         .is_empty());
-        assert!(!profile_problems(ValueType::String, &json!({ "anyOf": [] })).is_empty());
-        assert!(!profile_problems(ValueType::Switch, &json!({ "minimum": 1 })).is_empty());
-        assert!(!profile_problems(ValueType::Enum, &json!({ "minimum": 1 })).is_empty());
-        assert!(!profile_problems(ValueType::Integer, &json!({})).is_empty());
+        assert!(!profile_problems(ValueType::String, &json!({ "anyOf": [] }), latest).is_empty());
+        assert!(!profile_problems(ValueType::Switch, &json!({ "minimum": 1 }), latest).is_empty());
+        assert!(!profile_problems(ValueType::Enum, &json!({ "minimum": 1 }), latest).is_empty());
+        assert!(!profile_problems(ValueType::Integer, &json!({}), latest).is_empty());
     }
 
     #[test]
@@ -696,6 +779,37 @@ mod tests {
         assert_eq!(admits(&text, &json!("a b")), Ok(true));
         assert_eq!(admits(&text, &json!("")), Ok(false));
         assert_eq!(admits(&text, &json!("a\nb")), Ok(false));
+    }
+
+    #[test]
+    fn atip_crate15_03_the_trimmed_line_example_admits_one_line_without_white_space_at_its_ends() {
+        let domain = json!({ "pattern": ONE_TRIMMED_LINE });
+        for inside in [
+            "Ada Lovelace",
+            "a",
+            "a\tb",
+            "a\u{a0}b",
+            "a\u{3000}b",
+            "\u{feff}a",
+        ] {
+            assert_eq!(admits(&domain, &json!(inside)), Ok(true), "{inside:?}");
+        }
+        for outside in [
+            "",
+            " a",
+            "a ",
+            "\u{3000}a",
+            "a\u{85}",
+            "a\nb",
+            "a\rb",
+            "a\u{b}b",
+            "a\u{c}b",
+            "a\u{85}b",
+            "a\u{2028}b",
+            "a\u{2029}b",
+        ] {
+            assert_eq!(admits(&domain, &json!(outside)), Ok(false), "{outside:?}");
+        }
     }
 
     #[test]

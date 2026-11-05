@@ -440,7 +440,7 @@ fn schema_envelope(data: &Value) -> Value {
 // ------------------------------------------------------------------------- the tests
 
 #[test]
-fn atip_crate14_13_the_acme_examples_of_1_4_validate_and_are_compact() {
+fn atip_crate14_13_the_acme_examples_of_1_4_and_later_validate_and_are_compact() {
     let mut checked = 0;
     for entry in std::fs::read_dir(examples()).expect("the examples") {
         let name = entry
@@ -455,7 +455,10 @@ fn atip_crate14_13_the_acme_examples_of_1_4_validate_and_are_compact() {
             continue;
         }
         let document = envelope(&name);
-        if document["meta"]["contractVersion"] != "1.4" {
+        let declared = document["meta"]["contractVersion"]
+            .as_str()
+            .and_then(|text| Minor::parse(text).ok());
+        if !declared.is_some_and(|minor| minor.at_least(Minor::V1_4)) {
             continue;
         }
         assert_eq!(

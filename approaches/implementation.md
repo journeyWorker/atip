@@ -82,6 +82,12 @@ read differently:
   literal characters: `a` matches `^[a&&b]+$` in ECMAScript and not in Rust.
 - `--` and a nested `[` (Rust's difference and nested sets, `[[:alpha:]]`) are already not I-Regexp; nor are `\d`,
   `\w`, back-references, lookaround and lazy quantifiers.
+- `\s` and `\S` are not I-Regexp either, and they are where the engines disagree on white space: Rust's `\s` is the
+  Unicode `White_Space` property, so it has U+0085 and not U+FEFF; ECMAScript's `\s` has U+FEFF and not U+0085. From
+  1.5 a pattern says white space as `\p{White_Space}` (or `\P{White_Space}`), a name both engines read as the
+  property: the one addition to I-Regexp, and only in that spelling (ECMAScript also knows `space`, Rust also matches
+  `white_space` loosely; neither is admitted). Because `White_Space` is Zs, the tab and the seven line terminators,
+  `[\P{White_Space}\p{Zs}\t]` is "any character but a line terminator" without naming one.
 - A counted repetition of a large class can exceed Rust's compiled-size limit: `^\p{L}{1,500}$` does, and so do three
   `\p{L}{1,100}` in a row. A length limit is better written as `maxLength`.
 
@@ -93,8 +99,9 @@ a record of patterns and values run through both engines with the Unicode versio
 checks the ECMAScript side and, with `scripts/regex-parity`, the Rust side. A disagreement is accepted only for a case
 marked as a Unicode-version difference whose recorded category each engine verifies in its own tables. The record
 covers every construct the form admits (literals, escapes, classes with ranges, leading and trailing `-`, single `&`
-and `~`, negation, categories, groups, alternation, every quantifier, non-BMP characters), each spelling removed
-above, the size and nesting limits, and every pattern an example in this repository uses.
+and `~`, negation, categories, `White_Space` in and outside a class, groups, alternation, every quantifier, non-BMP
+characters), each spelling removed above, the size and nesting limits, and every pattern an example in this repository
+uses. A case that is of the form only from a minor on (the `White_Space` escapes, from 1.5) carries `formSince`.
 
 ## 6. Errors in text mode
 

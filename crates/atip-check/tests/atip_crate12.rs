@@ -39,7 +39,7 @@ fn checker_sources() -> Vec<(PathBuf, String)> {
 
 #[test]
 fn atip_crate12_02_the_checker_declares_its_own_contract_version_apart_from_the_crates() {
-    assert_eq!(atip::CONTRACT_VERSION, "1.4", "the crate implements 1.4");
+    assert_eq!(atip::CONTRACT_VERSION, "1.5", "the crate implements 1.5");
     assert_eq!(
         atip_check::output::DECLARED_MINOR,
         "1.4",

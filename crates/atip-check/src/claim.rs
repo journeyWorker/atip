@@ -8,7 +8,7 @@
 use serde_json::Value;
 
 /// The minors this checker knows.
-pub const MINORS: [&str; 5] = ["1.0", "1.1", "1.2", "1.3", "1.4"];
+pub const MINORS: [&str; 6] = ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"];
 
 /// The minor a tool claims.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +18,7 @@ pub enum Claim {
     V1_2,
     V1_3,
     V1_4,
+    V1_5,
 }
 
 impl Claim {
@@ -29,6 +30,7 @@ impl Claim {
             "1.2" => Some(Self::V1_2),
             "1.3" => Some(Self::V1_3),
             "1.4" => Some(Self::V1_4),
+            "1.5" => Some(Self::V1_5),
             _ => None,
         }
     }
@@ -40,6 +42,7 @@ impl Claim {
             Self::V1_2 => "1.2",
             Self::V1_3 => "1.3",
             Self::V1_4 => "1.4",
+            Self::V1_5 => "1.5",
         }
     }
 
@@ -73,6 +76,7 @@ impl Claim {
             Self::V1_2 => 2,
             Self::V1_3 => 3,
             Self::V1_4 => 4,
+            Self::V1_5 => 5,
         }
     }
 }
@@ -163,7 +167,7 @@ pub fn without_later_members(document: &Value) -> Value {
 pub fn for_envelope_schema(document: &Value, claim: Claim) -> Value {
     let mut copy = match claim {
         Claim::V1_0 => without_later_members(document),
-        Claim::V1_1 | Claim::V1_2 | Claim::V1_3 | Claim::V1_4 => document.clone(),
+        Claim::V1_1 | Claim::V1_2 | Claim::V1_3 | Claim::V1_4 | Claim::V1_5 => document.clone(),
     };
     for member in ["meta", "error"] {
         if let Some(value) = copy.get_mut(member) {
@@ -381,20 +385,22 @@ mod tests {
     }
 
     #[test]
-    fn atip_check14_13_the_claim_knows_five_minors_and_what_each_adds() {
+    fn atip_check15_13_the_claim_knows_six_minors_and_what_each_adds() {
         let claims = [
             Claim::V1_0,
             Claim::V1_1,
             Claim::V1_2,
             Claim::V1_3,
             Claim::V1_4,
+            Claim::V1_5,
         ];
-        assert_eq!(MINORS, ["1.0", "1.1", "1.2", "1.3", "1.4"]);
+        assert_eq!(MINORS, ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"]);
         for (claim, minor) in claims.into_iter().zip(MINORS) {
             assert_eq!(claim.as_str(), minor);
             assert_eq!(Claim::parse(minor), Some(claim));
         }
-        assert_eq!(Claim::parse("1.5"), None);
+        assert_eq!(Claim::parse("1.6"), None);
+        assert!(Claim::V1_5.at_least(Claim::V1_4) && !Claim::V1_4.at_least(Claim::V1_5));
         assert!(Claim::V1_4.at_least(Claim::V1_3) && !Claim::V1_3.at_least(Claim::V1_4));
         assert!(
             Claim::V1_3.at_least(Claim::V1_2),
@@ -406,12 +412,12 @@ mod tests {
             .into_iter()
             .filter(|claim| claim.declares_1_3())
             .collect();
-        assert_eq!(from_1_3, [Claim::V1_3, Claim::V1_4]);
+        assert_eq!(from_1_3, [Claim::V1_3, Claim::V1_4, Claim::V1_5]);
         let from_1_4: Vec<Claim> = claims
             .into_iter()
             .filter(|claim| claim.declares_1_4())
             .collect();
-        assert_eq!(from_1_4, [Claim::V1_4]);
+        assert_eq!(from_1_4, [Claim::V1_4, Claim::V1_5]);
         // A 1.3 or 1.4 document is read like a 1.2 one by the envelope schema.
         let document = json!({"ok": true, "data": {}, "meta": {"contractVersion": "1.4"}});
         assert_eq!(

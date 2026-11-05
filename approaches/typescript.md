@@ -270,7 +270,7 @@ the argument schema, which applies them after the merge:
 | `Schema.isLessThanOrEqualTo(n)`, `Schema.isLessThan(n)` | `maximum`, `exclusiveMaximum` |
 | `Schema.isMultipleOf(n)` | `multipleOf` |
 | `Schema.isMinLength(n)`, `Schema.isMaxLength(n)` | `minLength`, `maxLength` |
-| `Schema.isPattern(re)` | `pattern`, which must be `^…$` around the restricted I-Regexp of Annex V2 (no `&&` or `~~` inside a class); the generator refuses any other regular expression at build time. It cannot see the Rust `regex` crate's size limit, which the checker's L1.patterns tests; keep counted repetitions of large classes short and put lengths in `maxLength` |
+| `Schema.isPattern(re)` | `pattern`, which must be `^…$` around the restricted I-Regexp of Annex V2 (no `&&` or `~~` inside a class; `\p{White_Space}` and `\P{White_Space}` only when the tool declares 1.5, never `\s`); the generator refuses any other regular expression at build time. It cannot see the Rust `regex` crate's size limit, which the checker's L1.patterns tests; keep counted repetitions of large classes short and put lengths in `maxLength` |
 | a `json()` field's Struct, Array, Literals or a union of JSON types | `type`, `properties`, `required`, `additionalProperties`, `items`, `enum`, `const` |
 
 Any other check, such as `Schema.makeFilter` with a custom predicate, a union of two object shapes, or a check of

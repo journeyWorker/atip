@@ -23,8 +23,9 @@
 // the rules a minor adds for its own documents apply from that minor: 1.2 makes more options flag-only and reserves
 // `STOPPED_MIDWAY` (for a document that declares exactly 1.2); 1.3 requires every error code of a registry to be a core
 // code or to follow the `<SUBJECT>_<CONDITION>` grammar with its condition's exit and retryability (7.2.3), and every
-// warning code of an envelope to be in the warning registry (7.5.2). Documents of an earlier minor are held to the
-// rules of that minor as before.
+// warning code of an envelope to be in the warning registry (7.5.2); 1.5 lets a domain pattern use `\p{White_Space}` and
+// `\P{White_Space}` (Annex V2), so a pattern is checked against the profile of the minor its document declares.
+// Documents of an earlier minor are held to the rules of that minor as before.
 //
 // 1.4 changes the form of the self-description (spec 9, 15.7), so the schema no longer requires what a 1.4 document
 // leaves out. A document of 1.0-1.3 is held to what it carried before (`legacyProblems`: `path`, the members at their
@@ -210,7 +211,10 @@ const openSchema = (name: string): ValidateFunction => {
 }
 
 /** The contract minors this repository describes; a tool declares one of them (spec 15.5). */
-const MINORS = ["1.0", "1.1", "1.2", "1.3", "1.4"]
+const MINORS = ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"]
+/** The minor from which a domain pattern may use `\p{White_Space}` and `\P{White_Space}` (spec Annex V2). */
+const WHITE_SPACE_SINCE = "1.5"
+const atLeast = (minor: string, since: string) => MINORS.indexOf(minor) >= MINORS.indexOf(since)
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 // The core codes (spec 7.3.1), and the ones every tool registers.
@@ -355,10 +359,12 @@ function validValue(arg: Arg, v: JsonValue): boolean {
  * The I-Regexp (RFC 9485) syntax of the body of a domain pattern, with the restrictions of spec Annex V2 that make the
  * ECMAScript (`u` flag) and Rust `regex` readings of `^body$` agree: no `|` outside parentheses, no `.`, `^` or `$`
  * outside a character class, no `\-` outside a character class, and no `&&` or `~~` inside one (Rust's class
- * intersection and symmetric difference; `--` and a nested `[` are already not I-Regexp). Returns the first problem,
- * or undefined.
+ * intersection and symmetric difference; `--` and a nested `[` are already not I-Regexp). Besides the general
+ * categories, a document that declares 1.5 or later may use the one binary property `White_Space`, spelled exactly so,
+ * as `\p{White_Space}` or `\P{White_Space}`, in or outside a class. `minor` is the minor the document declares.
+ * Returns the first problem, or undefined.
  */
-function iregexpProblem(body: string): string | undefined {
+function iregexpProblem(body: string, minor: string): string | undefined {
   const cps = [...body]
   let i = 0
   const SINGLE_ESCAPES = new Set(["(", ")", "*", "+", "-", ".", "?", "[", "\\", "]", "^", "n", "r", "t", "{", "|", "}"])
@@ -374,7 +380,9 @@ function iregexpProblem(body: string): string | undefined {
       const end = cps.indexOf("}", i + 3)
       if (end < 0) fail("unclosed \\p{")
       const name = cps.slice(i + 3, end).join("")
-      if (!CATEGORY.test(name)) fail(`unknown category ${name}`)
+      if (name === "White_Space" && !atLeast(minor, WHITE_SPACE_SINCE))
+        fail(`\\${cps[i + 1]}{White_Space} is since ${WHITE_SPACE_SINCE}, but the document declares contract ${minor}`)
+      if (name !== "White_Space" && !CATEGORY.test(name)) fail(`unknown category ${name}`)
       i = end + 1
       return
     }
@@ -481,6 +489,8 @@ type RegexCase = {
   pattern: string
   value: string
   form: boolean
+  /** The minor from which the pattern has the form; absent: every minor. */
+  formSince?: string
   ecmascript: boolean | "error"
   rust: boolean | "error"
   difference?: UnicodeDifference
@@ -489,11 +499,14 @@ type RegexRecord = { engines: { ecmascript: { unicode: string }; rust: { unicode
 const regexRecord = JSON.parse(readFileSync(join(repo, "scripts", "regex-cases.json"), "utf8")) as RegexRecord
 const regexCases = regexRecord.cases
 
-/** The form of spec Annex V2: `^`, an I-Regexp body with its restrictions, `$`; ECMAScript `u` compiles it. */
-function patternFormProblem(pattern: string): string | undefined {
+/**
+ * The form of spec Annex V2 in a document that declares `minor`: `^`, an I-Regexp body with its restrictions, `$`;
+ * ECMAScript `u` compiles it.
+ */
+function patternFormProblem(pattern: string, minor: string): string | undefined {
   const body = pattern.startsWith("^") && pattern.endsWith("$") && pattern.length >= 2 ? pattern.slice(1, -1) : undefined
   if (body === undefined) return "is not ^…$"
-  const problem = iregexpProblem(body)
+  const problem = iregexpProblem(body, minor)
   if (problem) return problem
   try {
     new RegExp(pattern, "u")
@@ -503,9 +516,9 @@ function patternFormProblem(pattern: string): string | undefined {
   return undefined
 }
 
-/** A domain pattern: the form, and compiling with the Rust regex crate's default limits, as recorded. */
-function patternProblem(pattern: string): string | undefined {
-  const form = patternFormProblem(pattern)
+/** A domain pattern of a document that declares `minor`: the form, and compiling with the Rust regex crate's default limits, as recorded. */
+function patternProblem(pattern: string, minor: string): string | undefined {
+  const form = patternFormProblem(pattern, minor)
   if (form) return form
   const recorded = regexCases.find((c) => c.pattern === pattern)
   if (!recorded) return "is not recorded in scripts/regex-cases.json, so its Rust reading is unknown"
@@ -535,10 +548,10 @@ function differenceProblem(c: RegexCase, d: UnicodeDifference): string | undefin
 }
 
 /**
- * Every recorded case: `form` and `ecmascript` hold, and a pattern of the form that Rust compiles agrees in both
- * engines, unless the case is a verified `unicode-version` difference. Any other disagreement is a failure, and a
- * case marked as a difference on which the engines agree is stale. The record names the Unicode version of each
- * engine; this engine must have the recorded one, or the record must be made again.
+ * Every recorded case: `form` (at every minor, `formSince` included) and `ecmascript` hold, and a pattern of the form that
+ * Rust compiles agrees in both engines, unless the case is a verified `unicode-version` difference. Any other
+ * disagreement is a failure, and a case marked as a difference on which the engines agree is stale. The record names the
+ * Unicode version of each engine; this engine must have the recorded one, or the record must be made again.
  */
 function checkRegexCases(): string[] {
   const problems: string[] = []
@@ -547,7 +560,13 @@ function checkRegexCases(): string[] {
     problems.push(`the record was made with ECMAScript Unicode ${regexRecord.engines.ecmascript.unicode}, this engine has ${running}: record the cases again`)
   for (const c of regexCases) {
     const where = `${c.pattern} ${JSON.stringify(c.value)}`
-    if ((patternFormProblem(c.pattern) === undefined) !== c.form) problems.push(`${where}: form is recorded as ${c.form}`)
+    if (c.formSince !== undefined && (!c.form || !MINORS.includes(c.formSince) || c.formSince === MINORS[0]))
+      problems.push(`${where}: formSince ${c.formSince} needs form true and a minor after ${MINORS[0]}`)
+    for (const minor of MINORS) {
+      const expected = c.form && (c.formSince === undefined || atLeast(minor, c.formSince))
+      if ((patternFormProblem(c.pattern, minor) === undefined) !== expected)
+        problems.push(`${where}: form in a ${minor} document is recorded as ${expected}`)
+    }
     let observed: boolean | "error"
     try {
       observed = new RegExp(c.pattern, "u").test(c.value)
@@ -565,8 +584,8 @@ function checkRegexCases(): string[] {
   return problems
 }
 
-/** A domain uses only the profile of its argument's valueType (spec Annex V1), checked structurally. */
-function domainProblems(arg: Arg, node: JsonValue, at: string, problems: string[]) {
+/** A domain uses only the profile of its argument's valueType (spec Annex V1) in a document that declares `minor`, checked structurally. */
+function domainProblems(arg: Arg, node: JsonValue, at: string, minor: string, problems: string[]) {
   const keywords = DOMAIN_KEYWORDS[arg.valueType]
   if (!keywords) return void problems.push(`${at}: a ${arg.valueType} argument has no domain (spec Annex V1)`)
   if (!isObject(node)) return void problems.push(`${at}: a domain schema is an object`)
@@ -584,13 +603,13 @@ function domainProblems(arg: Arg, node: JsonValue, at: string, problems: string[
       else if (k === "multipleOf" && v <= 0) problems.push(`${at}: multipleOf is not positive`)
     }
     if (k === "pattern") {
-      const problem = typeof v === "string" ? patternProblem(v) : "is not a string"
+      const problem = typeof v === "string" ? patternProblem(v, minor) : "is not a string"
       if (problem) problems.push(`${at}: pattern ${JSON.stringify(v)}: ${problem} (spec Annex V2)`)
     }
     if ((k === "enum" || k === "const") && [v].flat().some((x) => x !== null && typeof x === "object"))
       problems.push(`${at}: ${k} admits only scalar values in a domain (spec Annex V1)`)
-    if (k === "properties" && isObject(v)) for (const [name, child] of Object.entries(v)) domainProblems(arg, child, `${at}/properties/${name}`, problems)
-    if (k === "items" || (k === "additionalProperties" && typeof v !== "boolean")) domainProblems(arg, v, `${at}/${k}`, problems)
+    if (k === "properties" && isObject(v)) for (const [name, child] of Object.entries(v)) domainProblems(arg, child, `${at}/properties/${name}`, minor, problems)
+    if (k === "items" || (k === "additionalProperties" && typeof v !== "boolean")) domainProblems(arg, v, `${at}/${k}`, minor, problems)
   }
 }
 
@@ -1460,7 +1479,7 @@ function legacyProblems(data: SchemaData, minor: string, problems: string[]) {
 }
 
 // ---- self-description (Annex S2) ----
-function checkCommandDoc(raw: RawCommandDoc, tool: string, problems: string[], v11: boolean, v12: boolean, v14: boolean) {
+function checkCommandDoc(raw: RawCommandDoc, tool: string, problems: string[], v11: boolean, v12: boolean, v14: boolean, minor: string) {
   const doc = resolveCommand(raw, tool, v14, problems)
   if (v14) checkV14Command(raw, doc, tool, problems)
   const all = [...doc.operands, ...doc.options]
@@ -1492,7 +1511,7 @@ function checkCommandDoc(raw: RawCommandDoc, tool: string, problems: string[], v
       for (const d of [a.default].flat()) if (!a.possibleValues?.includes(String(d))) problems.push(`default ${d} of ${a.name} not in possibleValues`)
     if (a.domain) {
       const before = problems.length
-      domainProblems(a, a.domain, `the domain of ${a.name}`, problems)
+      domainProblems(a, a.domain, `the domain of ${a.name}`, minor, problems)
       if (problems.length > before) continue
       try {
         domainOf(a)
@@ -1701,7 +1720,7 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
     for (const o of data.outputs)
       for (const p of [...(o.fields?.paths ?? []), ...(o.fields?.keep ?? []), ...(o.fields?.default ?? [])])
         if (parseFieldPath(p)?.some((s) => s.bracket)) since11(v11, `the bracketed field path ${p}`, problems)
-    checkCommandDoc(data, meta.tool, problems, v11, declares12(meta), v14)
+    checkCommandDoc(data, meta.tool, problems, v11, declares12(meta), v14, declaredMinor(meta))
   }
   if (data.kind === "group" && data.command !== pathOf(data).join(" ")) problems.push(`group ${data.command} is not its path ${pathOf(data).join(" ")}`)
   if (data.kind === "group" && v14) v14MemberProblems("group", data, `group ${data.command}`, problems)
@@ -2317,9 +2336,10 @@ function checkSpecReferences(): string[] {
     // Section 1 has no third level, so `1.x.y` is a contract version (`1.1.2`), never a reference.
     .replace(/(?<![\w.])1\.\d+\.\d+(?![\w]|\.\d)/g, "")
   const missing = new Set<string>()
-  // No section is numbered `N.0`, so `1.0` is the contract's version, not a reference.
+  // No section is numbered `N.0`, so `1.0` is the contract's version, not a reference; section 1 stops at 1.4, so a
+  // later minor this repository describes (`1.5`) is a version too.
   for (const m of prose.matchAll(/(?<![\w.])([1-9]\d?\.\d{1,2}(?:\.\d{1,2})?)(?![\w]|\.\d)/g))
-    if (!m[1].endsWith(".0") && !labels.has(m[1])) missing.add(m[1])
+    if (!m[1].endsWith(".0") && !labels.has(m[1]) && !MINORS.includes(m[1])) missing.add(m[1])
   return [...missing].map((r) => `spec refers to section ${r}, which does not exist`)
 }
 

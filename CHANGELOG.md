@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.5.0 (unreleased)
+
+A minor (15.1) from implementer feedback (D41, issue #12). Its one addition binds only documents that declare
+`meta.contractVersion` `"1.5"`; a tool that declares 1.0 to 1.4 stays conforming as that minor, held to that minor's
+release text (15.7, which now names `v1.4.2`). No member, option, code or document kind is added, and no document
+changes shape.
+
+- **White space in domain patterns (Annex V2).** In a 1.5 document a `pattern` may use `\p{White_Space}` and
+  `\P{White_Space}`, outside and inside a class: the Unicode binary property, which Rust `regex` and ECMAScript with the
+  `u` flag both read by that name, so a caller passes the pattern on unchanged. It is the one addition to the profile
+  beyond I-Regexp, and only that spelling is admitted. `\s`, `\S` and the other multi-character escapes stay
+  forbidden: Rust's `\s` has U+0085 and not U+FEFF, ECMAScript's the reverse. V2 gives the pattern for "one non-empty
+  line with no leading or trailing white space", `^\P{White_Space}([\P{White_Space}\p{Zs}\t]*\P{White_Space})?$`,
+  which shuts out the seven line terminators (LF, VT, FF, CR, U+0085, U+2028, U+2029) as the white space that is
+  neither Zs nor a tab. No named "trimmed single line" domain is added.
+- **Versioning (15.1, 15.7, 15.9).** 15.7 gains the row 1.0-1.4 (no `\p{White_Space}` in a pattern); 15.9 says what
+  1.5 means for callers: a 1.4 caller that checks patterns against its release's profile may refuse the escape, one
+  that compiles them as JSON Schema validators do reads it as 1.5 means it.
+- **`scripts/check.ts` and `scripts/regex-cases.json`.** The pattern profile is checked per declared minor, with the
+  escape allowed from 1.5. A case may carry `formSince`: it has the form only from that minor on, and `check.ts`
+  verifies the form at every minor. New cases: `\p{White_Space}` and `\P{White_Space}`, outside and inside a class,
+  on U+0085, U+FEFF, U+00A0, U+2028, U+3000, tab and space; the V2 pattern on values inside and outside it; `\s` and
+  `\S` on the two code points where the engines differ; aliases (`space`, `white_space`) outside the form.
+  `scripts/regex-parity` confirms the Rust column (114 cases).
+- **Examples.** `acme member find` declares 1.5 and uses the V2 pattern; the same document declaring 1.4, and one
+  with `\S` at 1.5, are rejected. `caller-*` examples now model a later minor as 1.6.
+- **Crates (versions unchanged).** `atip`: `Minor::V1_5`, `CONTRACT_VERSION` `"1.5"`, `domain::WHITE_SPACE_SINCE`;
+  `domain::profile_problems`, `domain::pattern_problem` and `constraint::document_problems` take the declared minor.
+  `atip check` knows the claim 1.5 and judges `L1.patterns` and Annex S2 rule 3 at the claimed minor; the values of a
+  domain are judged with any pattern both engines read alike.
+
 ## 1.4.2 (2026-11-04)
 
 A patch (15.1) from implementer feedback on 1.4 (D40). No rule changes strength; `meta.contractVersion` stays

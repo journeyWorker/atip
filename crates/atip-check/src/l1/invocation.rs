@@ -442,13 +442,15 @@ type DomainCache = Mutex<HashMap<String, Result<Arc<Validator>, String>>>;
 
 /// The validators of the arguments' domains, compiled once per domain.
 /// `value` without its `pattern` keywords, at any depth; with `only_bad`, only those that are not of the form of spec 10.7.4 or that Rust refuses.
+/// The form is the newest minor's: a pattern both engines read alike judges values whatever minor the tool claims, and
+/// `L1.patterns` reports one the claimed minor does not admit (`\p{White_Space}` before 1.5).
 fn strip_patterns(value: &mut Value, only_bad: bool) {
     match value {
         Value::Object(members) => {
             let bad = match members.get("pattern") {
                 Some(Value::String(pattern)) => {
                     !only_bad
-                        || super::regex::form_problem(pattern).is_some()
+                        || super::regex::form_problem(pattern, atip::Minor::LATEST).is_some()
                         || super::regex::rust_problem(pattern).is_some()
                 }
                 Some(_) => true,

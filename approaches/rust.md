@@ -295,7 +295,7 @@ check that the table's domain and the real parser agree on a value just inside a
 
 
 A `pattern` is checked twice when the crate builds the document: through the restricted I-Regexp check of Annex
-V2 (the reasons for each restriction: approaches/implementation.md §5), which the crate implements (no `&&` or `~~` inside a class, among the rest), and by compiling it with the
+V2 (the reasons for each restriction: approaches/implementation.md §5), which the crate implements for the minor the tool declares (no `&&` or `~~` inside a class, among the rest; `\p{White_Space}` and `\P{White_Space}` from 1.5: `domain::pattern_problem(pattern, minor)`), and by compiling it with the
 `regex` crate's default limits, which is also what the tool's parser uses. The crate refuses to build a document
 whose pattern fails either. The restricted form matters for Rust even though the tool's own parser is Rust: the
 published pattern is also read by every ECMAScript validator of the self-description, and for `^[a&&b]+$` the two

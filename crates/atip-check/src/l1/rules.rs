@@ -269,7 +269,8 @@ pub fn command_findings(
     }
     findings.push(("rule-2-outputs", rule_2_outputs(doc)));
 
-    let domains = DomainStates::new(doc);
+    let minor = atip::Minor::parse(claim.as_str()).expect("a claim names a minor the crate knows");
+    let domains = DomainStates::new(doc, minor);
     findings.push(("rule-3-defaults", rule_3_defaults(doc, &domains)));
     if domains.any {
         findings.push((
@@ -427,12 +428,18 @@ fn domain_keywords(value_type: &str) -> Option<Vec<&'static str>> {
 }
 
 /// What is wrong with the domain of `arg` against the profile of its valueType (spec 10.7.4), as rule 3 reports it; a value is not judged against such a domain.
+/// The patterns are not part of it (a pattern outside the form is left out of judging a value, `invocation::strip_patterns`).
 pub fn domain_profile_problems(arg: &Arg) -> Vec<String> {
     let Some(domain) = arg.domain.as_ref().filter(|domain| !domain.is_null()) else {
         return Vec::new();
     };
     let mut state = DomainState::default();
-    state.walk(arg, domain, &format!("the domain of {}", arg.name));
+    state.walk(
+        arg,
+        domain,
+        &format!("the domain of {}", arg.name),
+        atip::Minor::LATEST,
+    );
     state.profile
 }
 
@@ -450,7 +457,7 @@ pub fn domain_unusable(arg: &Arg) -> bool {
 struct DomainState {
     /// Keywords outside the profile of the argument's valueType, numbers that are not finite or not safe, non-scalar `enum`.
     profile: Vec<String>,
-    /// A `pattern` that is not of the form of 10.7.4, or that Rust refuses.
+    /// A `pattern` that is not of the form of 10.7.4 for the claimed minor, or that Rust refuses.
     patterns: Vec<String>,
     has_pattern: bool,
     /// Why the domain does not compile as a JSON Schema; judged only when the two lists above are empty.
@@ -463,8 +470,9 @@ impl DomainState {
         !self.profile.is_empty() || !self.patterns.is_empty() || self.compile.is_some()
     }
 
-    /// Reads `node` as a domain of `arg` (the check of spec 10.7.4: structural, then the patterns, then the compile).
-    fn walk(&mut self, arg: &Arg, node: &Value, at: &str) {
+    /// Reads `node` as a domain of `arg` in a document of `minor` (the check of spec 10.7.4: structural, then the patterns,
+    /// then the compile).
+    fn walk(&mut self, arg: &Arg, node: &Value, at: &str, minor: atip::Minor) {
         let Some(keywords) = domain_keywords(&arg.value_type) else {
             self.profile.push(format!(
                 "{at}: a {} argument has no domain (spec 10.7.4)",
@@ -513,7 +521,7 @@ impl DomainState {
                 self.has_pattern = true;
                 let problem = match value {
                     Value::String(pattern) => {
-                        regex::form_problem(pattern).or_else(|| regex::rust_problem(pattern))
+                        regex::form_problem(pattern, minor).or_else(|| regex::rust_problem(pattern))
                     }
                     _ => Some("is not a string".to_string()),
                 };
@@ -539,12 +547,12 @@ impl DomainState {
             if keyword == "properties" {
                 if let Value::Object(properties) = value {
                     for (name, child) in properties {
-                        self.walk(arg, child, &format!("{at}/properties/{name}"));
+                        self.walk(arg, child, &format!("{at}/properties/{name}"), minor);
                     }
                 }
             }
             if keyword == "items" || (keyword == "additionalProperties" && !value.is_boolean()) {
-                self.walk(arg, value, &format!("{at}/{keyword}"));
+                self.walk(arg, value, &format!("{at}/{keyword}"), minor);
             }
         }
     }
@@ -560,7 +568,7 @@ struct DomainStates {
 }
 
 impl DomainStates {
-    fn new(doc: &CommandDoc) -> Self {
+    fn new(doc: &CommandDoc, minor: atip::Minor) -> Self {
         let mut states = BTreeMap::new();
         let mut broken = Vec::new();
         for (index, arg) in doc.args().enumerate() {
@@ -569,7 +577,7 @@ impl DomainStates {
             };
             let mut state = DomainState::default();
             let at = format!("the domain of {}", arg.name);
-            state.walk(arg, domain, &at);
+            state.walk(arg, domain, &at, minor);
             if state.profile.is_empty() && state.patterns.is_empty() {
                 if let Err(error) = schemas().validator(domain) {
                     state.compile = Some(format!("{at} does not compile: {}", first_line(&error)));

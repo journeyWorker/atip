@@ -1565,7 +1565,7 @@ impl<'a> Judge<'a> {
         let mut judged = false;
         let mut unprovided: Vec<(String, String)> = Vec::new();
         for doc in self.docs().commands.values() {
-            for (condition, problem) in documents::pattern_findings(doc) {
+            for (condition, problem) in documents::pattern_findings(doc, self.claim) {
                 judged = true;
                 c.holds_in(
                     self.doc_call(&doc.command),
@@ -1625,7 +1625,7 @@ impl<'a> Judge<'a> {
                 }
                 for pattern in patterns {
                     judged = true;
-                    if regex::form_problem(&pattern).is_some()
+                    if regex::form_problem(&pattern, documents::minor_of(self.claim)).is_some()
                         || regex::rust_problem(&pattern).is_some()
                     {
                         continue;

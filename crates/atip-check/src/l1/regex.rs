@@ -1,9 +1,10 @@
 //! The two regular-expression engines of spec 10.7.4, and the comparison of their answers.
 //!
-//! A domain `pattern` is `^`, an I-Regexp (RFC 9485) body with the restrictions of 10.7.4, and `$`. The claim of the
-//! contract is that, for a pattern of this form that both engines compile, the ECMAScript reading with the `u` flag
-//! and the Rust `regex` crate's reading accept the same values, up to the Unicode version of each engine's `\p{…}`
-//! tables. The checker is a Rust program, so both engines run in-process: [`regress`] is the ECMAScript engine and
+//! A domain `pattern` is `^`, an I-Regexp (RFC 9485) body with the restrictions of 10.7.4, and `$`; from 1.5 the body may
+//! also use the binary property `White_Space` as `\p{White_Space}` and `\P{White_Space}` (Annex V2), so the form depends
+//! on the minor the document declares. The claim of the contract is that, for a pattern of this form that both engines
+//! compile, the ECMAScript reading with the `u` flag and the Rust `regex` crate's reading accept the same values, up to the
+//! Unicode version of each engine's `\p{…}` tables. The checker is a Rust program, so both engines run in-process: [`regress`] is the ECMAScript engine and
 //! [`regex`] (default limits: a compiled size of 10 MiB and a nesting depth of 250) is the Rust one. The contract
 //! repository's own record of cases (`scripts/regex-cases.json`, pinned at the tag) is the evidence that `regress`
 //! reads patterns of the form as Bun's `RegExp(pattern, "u")` does; `tests/regex_parity.rs` runs every case.
@@ -23,19 +24,21 @@ const CATEGORIES: [&str; 30] = [
 const SINGLE_ESCAPES: &str = "()*+-.?[\\]^nrt{|}";
 
 type Memo = std::sync::Mutex<std::collections::HashMap<String, Option<String>>>;
-static FORM: std::sync::LazyLock<Memo> = std::sync::LazyLock::new(Memo::default);
+/// The form problems of the patterns, one memo per minor (indexed by [`atip::Minor`]'s order): the form depends on it.
+static FORM: std::sync::LazyLock<[Memo; atip::Minor::ALL.len()]> =
+    std::sync::LazyLock::new(Default::default);
 static RUST: std::sync::LazyLock<Memo> = std::sync::LazyLock::new(Memo::default);
 
-/// `compute(pattern)`, remembered: a pattern is compiled by the engines at every value a probe judges, and a large one (`\p{L}{1,500}`) takes seconds to compile.
-fn memoised(memo: &Memo, pattern: &str, compute: fn(&str) -> Option<String>) -> Option<String> {
+/// `compute()`, remembered under `key`: a pattern is compiled by the engines at every value a probe judges, and a large one (`\p{L}{1,500}`) takes seconds to compile.
+fn memoised(memo: &Memo, key: &str, compute: impl FnOnce() -> Option<String>) -> Option<String> {
     if let Ok(known) = memo.lock() {
-        if let Some(answer) = known.get(pattern) {
+        if let Some(answer) = known.get(key) {
             return answer.clone();
         }
     }
-    let answer = compute(pattern);
+    let answer = compute();
     if let Ok(mut known) = memo.lock() {
-        known.insert(pattern.to_string(), answer.clone());
+        known.insert(key.to_string(), answer.clone());
     }
     answer
 }
@@ -197,13 +200,16 @@ pub fn compare(pattern: &str, value: &str) -> Comparison {
     }
 }
 
-/// Why `pattern` is not of the form of spec 10.7.4: `^`, an I-Regexp body with its restrictions, `$`, and it compiles in the
-/// ECMAScript engine. `None` when it is. (Compiling in the Rust engine is [`rust_problem`].)
-pub fn form_problem(pattern: &str) -> Option<String> {
-    memoised(&FORM, pattern, uncached_form_problem)
+/// Why `pattern` is not of the form of spec 10.7.4 in a document that declares `minor`: `^`, an I-Regexp body with its
+/// restrictions, `$`, and it compiles in the ECMAScript engine. `None` when it is. (Compiling in the Rust engine is
+/// [`rust_problem`].)
+pub fn form_problem(pattern: &str, minor: atip::Minor) -> Option<String> {
+    memoised(&FORM[minor as usize], pattern, || {
+        uncached_form_problem(pattern, minor)
+    })
 }
 
-fn uncached_form_problem(pattern: &str) -> Option<String> {
+fn uncached_form_problem(pattern: &str, minor: atip::Minor) -> Option<String> {
     let body = pattern
         .strip_prefix('^')
         .and_then(|rest| rest.strip_suffix('$'))
@@ -211,7 +217,7 @@ fn uncached_form_problem(pattern: &str) -> Option<String> {
     let Some(body) = body else {
         return Some("is not ^…$".to_string());
     };
-    if let Some(problem) = body_problem(body) {
+    if let Some(problem) = body_problem(body, minor) {
         return Some(problem);
     }
     ecmascript(pattern).err().map(|reason| {
@@ -221,7 +227,7 @@ fn uncached_form_problem(pattern: &str) -> Option<String> {
 
 /// Why the Rust `regex` crate refuses `pattern` at its default limits; `None` when it compiles.
 pub fn rust_problem(pattern: &str) -> Option<String> {
-    memoised(&RUST, pattern, uncached_rust_problem)
+    memoised(&RUST, pattern, || uncached_rust_problem(pattern))
 }
 
 fn uncached_rust_problem(pattern: &str) -> Option<String> {
@@ -234,12 +240,14 @@ fn uncached_rust_problem(pattern: &str) -> Option<String> {
 }
 
 /// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of spec 10.7.4 that make the two
-/// readings of `^body$` agree: no `|` outside parentheses, no `.`, `^` or `$` outside a character class, no `\-` outside
-/// one, and no `&&` or `~~` inside one. The first problem, or `None`.
-pub fn body_problem(body: &str) -> Option<String> {
+/// readings of `^body$` agree, in a document that declares `minor`: no `|` outside parentheses, no `.`, `^` or `$` outside
+/// a character class, no `\-` outside one, no `&&` or `~~` inside one, and `\p{White_Space}` / `\P{White_Space}` only from
+/// 1.5. The first problem, or `None`.
+pub fn body_problem(body: &str, minor: atip::Minor) -> Option<String> {
     let mut parser = Body {
         cps: body.chars().collect(),
         i: 0,
+        minor,
     };
     let outcome = parser.alternatives(0).and_then(|()| match parser.at(0) {
         Some(c) => parser.fail(&format!("unmatched {c}")),
@@ -251,6 +259,7 @@ pub fn body_problem(body: &str) -> Option<String> {
 struct Body {
     cps: Vec<char>,
     i: usize,
+    minor: atip::Minor,
 }
 
 impl Body {
@@ -275,7 +284,16 @@ impl Body {
                 return self.fail("unclosed \\p{");
             };
             let name: String = self.cps[self.i + 3..self.i + 3 + end].iter().collect();
-            if !is_category_name(&name) {
+            if name == "White_Space" {
+                if !self.minor.at_least(atip::domain::WHITE_SPACE_SINCE) {
+                    return self.fail(&format!(
+                        "\\{}{{White_Space}} is since {}, but the document declares contract {}",
+                        self.cps[self.i + 1],
+                        atip::domain::WHITE_SPACE_SINCE,
+                        self.minor
+                    ));
+                }
+            } else if !is_category_name(&name) {
                 return self.fail(&format!("unknown category {name}"));
             }
             self.i += 3 + end + 1;
@@ -450,6 +468,8 @@ fn is_category_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use atip::Minor;
+
     use super::{
         body_problem, compare, ecmascript_category, form_problem, is_category_name, rust_category,
         rust_problem, Comparison,
@@ -457,40 +477,79 @@ mod tests {
 
     #[test]
     fn atip_checkl1_regex_the_form_of_a_pattern_is_the_restricted_i_regexp() {
-        for good in [
-            "^[a-z][a-z0-9-]*$",
-            "^(core|lead)$",
-            "^\\p{L}+$",
-            "^[^a]$",
-            "^a{1,3}b?$",
-            "^[\\-a]$",
-            "^[a\\-]$",
-            "^x-[a&b]$",
-            "^[a~b]$",
-        ] {
-            assert_eq!(form_problem(good), None, "{good}");
+        for minor in Minor::ALL {
+            for good in [
+                "^[a-z][a-z0-9-]*$",
+                "^(core|lead)$",
+                "^\\p{L}+$",
+                "^[^a]$",
+                "^a{1,3}b?$",
+                "^[\\-a]$",
+                "^[a\\-]$",
+                "^x-[a&b]$",
+                "^[a~b]$",
+            ] {
+                assert_eq!(form_problem(good, minor), None, "{good} at {minor}");
+            }
+            for (bad, why) in [
+                ("[a-z]+", "^…$"),
+                ("^a|b$", "| outside"),
+                ("^a.b$", "."),
+                ("^a\\-b$", "\\-"),
+                ("^[a&&b]+$", "&&"),
+                ("^[a~~b]+$", "~~"),
+                ("^\\d$", "escape"),
+                ("^\\s$", "escape \\s"),
+                ("^\\S$", "escape \\S"),
+                ("^\\p{WSpace}$", "category WSpace"),
+                ("^(?:a)$", "without an atom"),
+                ("^a^b$", "^"),
+                ("^[[:alpha:]]$", "character class"),
+                ("^[]$", "character class"),
+                ("^\\p{Xx}$", "category"),
+                ("^a{2$", "unclosed"),
+                ("^(a$", "unclosed"),
+                ("^a)$", "unmatched"),
+            ] {
+                let problem = form_problem(bad, minor)
+                    .unwrap_or_else(|| panic!("{bad} must be refused at {minor}"));
+                assert!(problem.contains(why), "{bad}: {problem}");
+            }
+            assert_eq!(body_problem("a", minor), None);
         }
-        for (bad, why) in [
-            ("[a-z]+", "^…$"),
-            ("^a|b$", "| outside"),
-            ("^a.b$", "."),
-            ("^a\\-b$", "\\-"),
-            ("^[a&&b]+$", "&&"),
-            ("^[a~~b]+$", "~~"),
-            ("^\\d$", "escape"),
-            ("^(?:a)$", "without an atom"),
-            ("^a^b$", "^"),
-            ("^[[:alpha:]]$", "character class"),
-            ("^[]$", "character class"),
-            ("^\\p{Xx}$", "category"),
-            ("^a{2$", "unclosed"),
-            ("^(a$", "unclosed"),
-            ("^a)$", "unmatched"),
+    }
+
+    #[test]
+    fn atip_checkl1_regex_white_space_is_of_the_form_from_1_5() {
+        for pattern in [
+            "^\\p{White_Space}$",
+            "^[^\\P{White_Space}]$",
+            "^\\P{White_Space}([\\P{White_Space}\\p{Zs}\\t]*\\P{White_Space})?$",
         ] {
-            let problem = form_problem(bad).unwrap_or_else(|| panic!("{bad} must be refused"));
-            assert!(problem.contains(why), "{bad}: {problem}");
+            for minor in Minor::ALL {
+                let problem = form_problem(pattern, minor);
+                if minor.at_least(Minor::V1_5) {
+                    assert_eq!(problem, None, "{pattern} at {minor}");
+                } else {
+                    let problem = problem.unwrap_or_else(|| panic!("{pattern} at {minor}"));
+                    assert!(
+                        problem.contains(&format!(
+                            "{{White_Space}} is since 1.5, but the document declares contract {minor}"
+                        )),
+                        "{pattern} at {minor}: {problem}"
+                    );
+                }
+            }
+            assert_eq!(rust_problem(pattern), None, "{pattern}");
         }
-        assert_eq!(body_problem("a"), None);
+        // Both engines read the property, so the answers agree on the code points where `\s` differs.
+        for (value, inside) in [("\u{85}", true), ("\u{feff}", false), ("\u{a0}", true)] {
+            assert_eq!(
+                compare("^\\p{White_Space}$", value),
+                Comparison::Agree(inside),
+                "{value:?}"
+            );
+        }
     }
 
     #[test]

@@ -464,10 +464,11 @@ fn relation_key(rule: &ConstraintDoc) -> String {
 
 // ----------------------------------------------------------------- document
 
-/// What a command document's declarations break of the rules a document alone decides (spec 10.13 rules 3, 4 and 13):
-/// every name names an operand or option; no relation is stated twice; `in` is absent on a switch and a count and holds valid
-/// values of the argument, inside its domain; every `code` is in `errors`; a validator reads named arguments, has a code
-/// in `errors`, a description and at least one `rejects`, none of which is one of the `examples`.
+/// What a command document's declarations break of the rules a document alone decides (spec 10.13 rules 3, 4 and 13), in
+/// a document that declares `minor` (which decides the pattern profile of Annex V2): every name names an operand or
+/// option; no relation is stated twice; `in` is absent on a switch and a count and holds valid values of the argument,
+/// inside its domain; every `code` is in `errors`; a validator reads named arguments, has a code in `errors`, a
+/// description and at least one `rejects`, none of which is one of the `examples`.
 pub fn document_problems(
     options: &[OptionDoc],
     operands: &[OperandDoc],
@@ -475,6 +476,7 @@ pub fn document_problems(
     validators: &[ValidatorDoc],
     errors: &[String],
     examples: &[String],
+    minor: crate::Minor,
 ) -> Vec<String> {
     struct Known<'a> {
         value_type: ValueType,
@@ -523,7 +525,7 @@ pub fn document_problems(
         }));
     for (name, value_type, domain, default) in domained {
         let Some(domain) = domain else { continue };
-        for problem in crate::domain::profile_problems(value_type, domain) {
+        for problem in crate::domain::profile_problems(value_type, domain, minor) {
             problems.push(format!("`{name}`: {problem}"));
         }
         let defaults: Vec<&Value> = match default {
@@ -831,20 +833,21 @@ mod tests {
             Rule::at_most_one(&["b", "a"]).code("OTHER").doc(),
         ];
         let errors = vec!["USAGE".to_string(), "OTHER".to_string()];
-        let problems = document_problems(&options, &[], &twice, &[], &errors, &[]);
+        let latest = crate::Minor::LATEST;
+        let problems = document_problems(&options, &[], &twice, &[], &errors, &[], latest);
         assert!(
             problems.iter().any(|p| p.contains("stated twice")),
             "{problems:?}"
         );
         let unknown = [Rule::requires("a", &["zzz"]).doc()];
         assert!(
-            document_problems(&options, &[], &unknown, &[], &errors, &[])
+            document_problems(&options, &[], &unknown, &[], &errors, &[], latest)
                 .iter()
                 .any(|p| p.contains("zzz"))
         );
         let uncoded = [Rule::requires("a", &["b"]).code("MISSING").doc()];
         assert!(
-            document_problems(&options, &[], &uncoded, &[], &errors, &[])
+            document_problems(&options, &[], &uncoded, &[], &errors, &[], latest)
                 .iter()
                 .any(|p| p.contains("MISSING"))
         );
@@ -854,7 +857,8 @@ mod tests {
             &[Rule::requires("a", &["b"]).doc()],
             &[],
             &errors,
-            &[]
+            &[],
+            latest
         )
         .is_empty());
     }

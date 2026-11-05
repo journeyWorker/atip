@@ -1,10 +1,11 @@
-//! The documents of atip/1 1.3 and 1.4 (approaches/checker.md 6 and 7.2) as input of the pure judging functions of the checker.
+//! The documents of atip/1 1.3 to 1.5 (approaches/checker.md 6 and 7.2) as input of the pure judging functions of the checker.
 //!
 //! The repository's own `examples/` (read from `../../examples`, not the pinned copies of `tests/fixtures/`, which hold 1.0-1.2) are the
-//! subject: acme declares 1.4 and holds every condition of the rows `L1.tree`, `L1.walk`, `L1.schemas`, `L1.code-names`, `L1.warnings`,
-//! `L1.reserved-applicable` and `L0.compact`; each `examples/invalid/` document that is about 1.3 or 1.4 breaks one rule, and the table
-//! `JUDGED` says which function judges it and which condition it breaks. What no function of this slice judges is in `OUT_OF_SCOPE` with the
-//! reason; a file of `invalid/` that names acme and is in neither list fails the test, so a new example is never left unaccounted for.
+//! subject: acme declares 1.4 (its `member find`, which uses `\p{White_Space}`, 1.5) and holds every condition of the rows `L1.tree`,
+//! `L1.walk`, `L1.schemas`, `L1.code-names`, `L1.warnings`, `L1.reserved-applicable`, `L1.patterns` and `L0.compact`; each `examples/invalid/`
+//! document that is about 1.3, 1.4 or 1.5 breaks one rule, and the table `JUDGED` says which function judges it and which condition it breaks.
+//! What no function of this slice judges is in `OUT_OF_SCOPE` with the reason; a file of `invalid/` that names acme and is in neither list
+//! fails the test, so a new example is never left unaccounted for.
 //!
 //! The full view of a 1.4 command (`l1::view`) is built from the acme tree, the command's document and its schemas answer, as a run does.
 
@@ -211,7 +212,7 @@ fn judged(acme: &Acme, doc: &CommandDoc, claim: Claim) -> Vec<String> {
     add("L1.walk", command_form_findings(doc, claim));
     add("L1.grammar", grammar_findings(&[], Some(doc), minor));
     add("L1.examples", examples_findings(doc, "acme"));
-    add("L1.patterns", pattern_findings(doc));
+    add("L1.patterns", pattern_findings(doc, claim));
     add("L1.reserved-applicable", reserved_applicable_findings(doc));
     found.sort();
     found.dedup();
@@ -246,11 +247,14 @@ fn atip_check14_20_acme_holds_every_condition_of_the_1_4_rows() {
         Vec::<String>::new()
     );
     // Every command: its document validates, its view passes every rule, its schemas answer holds the refs and the derived `Input`.
+    // Each is judged at the minor it declares: `member find` is acme built for 1.5 (a `\p{White_Space}` pattern, Annex V2).
     for (id, data) in &acme.commands {
         let envelope = {
             let file = format!("schema-command-acme-{}.json", id.replace(' ', "-"));
             load(&file)
         };
+        let claim = claim_of(&envelope);
+        assert!(claim.declares_1_4(), "{id}");
         assert_eq!(
             schema_doc_problems(&envelope, claim),
             Vec::<String>::new(),
@@ -339,12 +343,13 @@ fn atip_check14_22_every_acme_document_that_declares_1_4_is_compact() {
             let Ok(document) = serde_json::from_str::<Value>(line.trim_end()) else {
                 continue;
             };
-            // The caller examples are stated at 1.5 and are not 1.4 documents; the others declare the minor they print.
+            // The caller examples are stated at a later minor (1.6) the checker does not know; the others declare the minor they print.
             let declares = document
                 .pointer("/meta/contractVersion")
                 .or_else(|| document.get("contractVersion"))
-                .and_then(Value::as_str);
-            if declares != Some("1.4") {
+                .and_then(Value::as_str)
+                .and_then(Claim::parse);
+            if !declares.is_some_and(Claim::declares_1_4) {
                 continue;
             }
             judged += 1;
@@ -393,6 +398,8 @@ fn atip_check14_23_a_1_3_acme_document_keeps_the_members_a_1_4_one_leaves_out() 
 /// How an invalid example is judged.
 #[derive(Debug, Clone, Copy)]
 enum Judge {
+    /// `pattern_findings` over the view, the claim the file declares.
+    Patterns,
     /// `command_form_findings` over the document (its view for 1.4), the claim the file declares.
     CommandForm,
     /// `command_findings` over the view with the acme schemas answer of the same command.
@@ -420,16 +427,26 @@ enum Judge {
 }
 
 use Judge::{
-    CodeNames, CommandForm, Compact, ContractVersion, EmittedWarnings, Grammar, ReservedApplicable,
-    Schemas, TreeForm, TreeOptionsNamed, Walk, WalkWithAnswer,
+    CodeNames, CommandForm, Compact, ContractVersion, EmittedWarnings, Grammar, Patterns,
+    ReservedApplicable, Schemas, TreeForm, TreeOptionsNamed, Walk, WalkWithAnswer,
 };
 
-/// The invalid examples of 1.3 and 1.4: the file, how it is judged, the conditions it breaks (and no other).
+/// The invalid examples of 1.3 to 1.5: the file, how it is judged, the conditions it breaks (and no other).
 const JUDGED: &[(&str, Judge, &[&str])] = &[
     (
         "invalid/schema-command-acme-build-count-repeatable.json",
         CommandForm,
         &["no-default-members"],
+    ),
+    (
+        "invalid/schema-command-acme-member-find-1-4-white-space.json",
+        Patterns,
+        &["form"],
+    ),
+    (
+        "invalid/schema-command-acme-member-find-shorthand-s.json",
+        Patterns,
+        &["form"],
     ),
     (
         "invalid/schema-command-acme-member-list-limit-not-flag-only.json",
@@ -679,7 +696,7 @@ fn judge_file(acme: &Acme, file: &str, judge: Judge) -> Vec<String> {
             let claim = claim_of(&document);
             let data = &document["data"];
             match judge {
-                CommandForm | Walk | ReservedApplicable | WalkWithAnswer => {
+                CommandForm | Walk | ReservedApplicable | WalkWithAnswer | Patterns => {
                     let id = acme.id_of(
                         name.strip_prefix("schema-command-acme-")
                             .or_else(|| name.strip_prefix("schema-schemas-acme-"))
@@ -702,6 +719,7 @@ fn judge_file(acme: &Acme, file: &str, judge: Judge) -> Vec<String> {
                     let findings = match judge {
                         CommandForm => command_form_findings(&doc, claim),
                         ReservedApplicable => reserved_applicable_findings(&doc),
+                        Patterns => pattern_findings(&doc, claim),
                         _ => command_findings(&doc, "acme", claim, &exit_of(acme)),
                     };
                     failing(&findings)

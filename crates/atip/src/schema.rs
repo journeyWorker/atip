@@ -39,7 +39,7 @@ pub const CONTRACT: &str = "atip/1";
 /// `meta.contractVersion`: the newest minor of the contract this crate implements ([`crate::Minor::LATEST`]), which is
 /// not the minor a tool declares. A tool states its own minor in a constant of its own, so that adopting a crate release
 /// does not change what the tool prints (spec 15.7). The value is never `"1.0"` written out.
-pub const CONTRACT_VERSION: &str = "1.4";
+pub const CONTRACT_VERSION: &str = "1.5";
 
 /// `$id` of the error schema, which the envelope and the registry entry `$ref`.
 #[cfg(feature = "validate")]

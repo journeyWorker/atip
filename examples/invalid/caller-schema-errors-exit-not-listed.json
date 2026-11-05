@@ -208,8 +208,8 @@
   "meta": {
     "command": "schema",
     "contract": "atip/1",
-    "contractVersion": "1.5",
-    "schemaVersion": "1.5",
+    "contractVersion": "1.6",
+    "schemaVersion": "1.6",
     "tool": "acme",
     "toolVersion": "1.0.0"
   }
