@@ -729,7 +729,12 @@ fn atip_crate16_04_a_tree_of_1_6_declares_its_path_shape_and_one_of_1_5_cannot()
         ),
         "pathShape is written after level"
     );
-    for bad in [&[][..], &["product", "product"][..], &["Product"][..]] {
+    for bad in [
+        &[][..],
+        &["product", "product"][..],
+        &["Product"][..],
+        &["noun", "verb"][..],
+    ] {
         assert!(
             Described::new(Minor::V1_6, "L1", entries.clone(), commands.clone())
                 .expect("a model")

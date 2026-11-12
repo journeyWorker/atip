@@ -47,6 +47,8 @@ held to that minor's release text (15.7, which now names `v1.5.0`). No document 
   with `LEVEL_FAILED`, keeping its "not a level claim" statement; a passing preview exits 0 (#13, resolving #11). The
   L1.paging changed-filter probe always gives a value other than the paged invocation's (each element of a repeatable
   option is avoided, a free value may be changed), and is undecided, never failed, when none can be made (#14).
+  `L2.input-refusals` accepts any usage refusal for a comma item in a document (`USAGE`, its registered replacement or
+  the argument's own code). `Described::path_shape` refuses a shape shorter than a path of the tree (rule 19).
 
 ## 1.5.0 (2026-11-05)
 

@@ -349,7 +349,10 @@ impl<'a> Judge<'a> {
                     .envelope(run.call)
                     .filter(|document| document.get("ok") == Some(&Value::Bool(false)));
                 let (code, field) = document.map_or((None, None), refusal_of);
-                let refused = code == Some(run.code);
+                // A domain failure in a document (the item of a comma list) answers with the codes used without `--input` (spec 10.7 step 6):
+                // `USAGE`, its registered finer replacement, or the argument's own code, `field` the pointer.
+                let refused = code == Some(run.code)
+                    || (run.code == "USAGE" && run.at.is_some() && self.is_usage(code, field));
                 c.holds_at(run.call, "refused", refused, || {
                     format!(
                         "{}: {} was not refused with {}: {}",

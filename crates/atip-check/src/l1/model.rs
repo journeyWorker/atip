@@ -440,7 +440,7 @@ fn path_of(command: &str) -> Vec<String> {
 pub struct Tree {
     pub level: String,
     pub commands: Vec<TreeEntry>,
-    /// The labels of `pathShape` (since 1.6), one per word position; its length is the tool's deepest path. `None` when the tree declares none.
+    /// The labels of `pathShape` (since 1.6), one per word of a full-length path; no path is longer (Annex S2 rule 19, `L1.tree` `path-shape`). `None` when the tree declares none.
     pub path_shape: Option<Vec<String>>,
 }
 

@@ -59,7 +59,8 @@ pub(crate) struct RefusalRun {
     pub code: &'static str,
     pub reasons: Vec<&'static str>,
     pub details: Option<usize>,
-    /// The JSON pointer the refusal must name, when the probe knows it (the item of a comma list).
+    /// The JSON pointer the refusal must name, when the probe knows it (the item of a comma list). With it, a `code` of `USAGE` admits any usage
+    /// refusal (`Judge::is_usage`): `USAGE`, its registered finer replacement, or the argument's own code.
     pub at: Option<String>,
 }
 

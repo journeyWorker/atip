@@ -90,8 +90,8 @@ pub enum Error {
     InputIsReserved { command: String },
     /// A validator has no `rejects` invocation (spec 9.8.2): the schemas answer lists at least one per validator.
     EmptyRejects { command: String, validator: usize },
-    /// The tree's `pathShape` (spec 4.1.1) is empty, has a label that is not a kebab-case word or a label twice, or the
-    /// tool declares a minor before 1.6.
+    /// The tree's `pathShape` (spec 4.1.1) is empty, has a label that is not a kebab-case word or a label twice, is shorter
+    /// than a path of the tree (Annex S2 rule 19), or the tool declares a minor before 1.6.
     PathShape(String),
     /// An option is a comma list (spec 9.7.6), which a document of a minor before 1.6 cannot say (Annex S2 rule 16).
     CommaListBeforeMinor {
@@ -694,9 +694,9 @@ impl Described {
         self
     }
 
-    /// What each word of a path means, one label per position (`["area", "noun", "verb"]`, spec 4.1.1): the tree's
-    /// `pathShape`, whose length is the tool's longest path. Since 1.6; the labels are kebab-case words, at least one,
-    /// each once. A path longer than the shape is not refused here: keeping within it is a SHOULD.
+    /// What each word of a full-length path means, one label per word (`["area", "noun", "verb"]`, spec 4.1.1): the
+    /// tree's `pathShape`. Since 1.6; the labels are kebab-case words, at least one, each once, and no path of the tree
+    /// has more words than the shape has labels (Annex S2 rule 19): a longer path is refused here.
     pub fn path_shape<I, S>(mut self, labels: I) -> Result<Self, Error>
     where
         I: IntoIterator<Item = S>,
@@ -713,6 +713,17 @@ impl Described {
         } else if let Some(label) = labels.iter().find(|label| !is_kebab_word(label)) {
             Some(format!(
                 "has the label `{label}`, which is not a kebab-case word"
+            ))
+        } else if let Some(entry) = self
+            .entries
+            .iter()
+            .find(|entry| entry.path.len() > labels.len())
+        {
+            Some(format!(
+                "has {} labels, and the path `{}` has {} words (Annex S2 rule 19)",
+                labels.len(),
+                entry.path.join(" "),
+                entry.path.len()
             ))
         } else {
             labels
