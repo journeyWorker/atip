@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6.0 (unreleased)
+## 1.6.0 (2026-11-13)
 
 A minor (15.1) from implementer feedback (D42-D44). Its two optional members and the scoped one-meaning rule bind only
 documents that declare `meta.contractVersion` `"1.6"`; a tool that declares 1.0 to 1.5 stays conforming as that minor,

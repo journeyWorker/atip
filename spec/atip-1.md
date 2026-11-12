@@ -1,14 +1,14 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.6.0, release candidate**: a minor (15.1) that lets a repeatable option take a comma-separated list in one
-argv value (`--tag a,b`, 9.7.6), lets a tree declare what each word of its paths means (`pathShape`, 4.1.1), with no
-fixed depth, and scopes an option name's one meaning to its group (Annex S1 item 4; Appendix A D42-D44). Version 1.5.0,
-adopted 2026-11-05 after one round of independent review, is a minor that lets a domain pattern use `\p{White_Space}`
-and `\P{White_Space}` (Annex V2, D41). Version 1.4.2, adopted 2026-11-04 after one round of independent review, is a
-patch that says how a caller writes none for a repeatable option in `--input` and that `--version --json` resolves its
-path first (D40); 1.4.1 and 1.4.0 are described in D39 and D38. `CHANGELOG.md` lists every version. Annexes:
-`spec/annex-fields.md` (F, field selection), `spec/annex-domains.md` (V, argument domains and numbers),
-`spec/annex-schema.md` (S, self-description rules).
+Status: **1.6.0**, adopted 2026-11-13 after one round of independent review and a confirmation: a minor (15.1) that lets
+a repeatable option take a comma-separated list in one argv value (`--tag a,b`, 9.7.6), lets a tree declare what each
+word of its paths means (`pathShape`, 4.1.1), with no fixed depth, and scopes an option name's one meaning to its group
+(Annex S1 item 4; Appendix A D42-D44). Version 1.5.0, adopted 2026-11-05 after one round of independent review, is a
+minor that lets a domain pattern use `\p{White_Space}` and `\P{White_Space}` (Annex V2, D41). Version 1.4.2, adopted
+2026-11-04 after one round of independent review, is a patch that says how a caller writes none for a repeatable option
+in `--input` and that `--version --json` resolves its path first (D40); 1.4.1 and 1.4.0 are described in D39 and D38.
+`CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md` (V,
+argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 
 Contents: 1 Introduction · 2 Terms · 3 Conformance · 4 Invocation · 5 Output channels · 6 Envelope · 7 Errors ·
 8 Exit status · 9 Self-description · 10 Input documents · 11 Effects and the destructive exchange · 12 Long-running
