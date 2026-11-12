@@ -92,8 +92,10 @@ fn execute(args: &[OsString]) -> Result<String, Failure> {
         Command::CheckHelp => Ok(CHECK_HELP.to_string()),
         Command::Check(check, mode, source) => {
             let report = check_binary_at(&check, mode, source)?;
-            // A preview has no level verdict: it exits 0 and lists the checks it failed; the warning that the level is still met is not its to give.
-            if !report.passed && !report.is_preview() {
+            // A run with a failed or unprovided MUST check is a negative answer, exit 1 (spec 5.3), a preview too: a preview has no level verdict
+            // and says so (`not a level claim`), but its answer to "does this pass as that minor" is still no. Only a passing preview exits 0, and
+            // the warning that the level is still met is not its to give.
+            if !report.passed {
                 return Err(level_not_met(&report).unwrap_or_else(|failure| failure));
             }
             Ok(if json {
@@ -117,8 +119,8 @@ fn internal_error(error: impl std::fmt::Display) -> Failure {
         .hint("Report it at https://github.com/journeyWorker/atip/issues with the command line.")
 }
 
-/// The failed level (in interface mode, the failed interface checks): exit 1 with the check list in `data`; in text mode the same list follows the
-/// error line on stderr.
+/// The failed level (in interface mode, the failed interface checks; in a preview, the failed checks of the minor previewed, with the statement that it is
+/// not a level claim): exit 1 with the check list in `data`; in text mode the same list follows the error line on stderr.
 fn level_not_met(report: &Report) -> Result<Failure, Failure> {
     let blocking: Vec<&str> = report
         .checks
@@ -127,9 +129,10 @@ fn level_not_met(report: &Report) -> Result<Failure, Failure> {
         .map(|check| check.id)
         .collect();
     let data = serde_json::to_value(report).map_err(internal_error)?;
-    let verdict = match report.mode {
-        Mode::Deep => format!("{} is not met", report.level),
-        Mode::Interface => format!("the interface checks of {} failed", report.level),
+    let verdict = match (&report.statement, report.mode) {
+        (Some(statement), _) => statement.clone(),
+        (None, Mode::Deep) => format!("{} is not met", report.level),
+        (None, Mode::Interface) => format!("the interface checks of {} failed", report.level),
     };
     Ok(Failure::new(Code::LevelFailed, format!("{verdict}: {} MUST checks fail or are unprovided ({})", blocking.len(), blocking.join(", ")))
         .in_command("check")

@@ -145,8 +145,11 @@ pub(crate) struct PagingRun {
     pub first: usize,
     pub next: Option<usize>,
     pub changed: Vec<(String, usize)>,
-    /// Why the run could not go on: the first page has no next page, or no argument could be changed.
+    /// Why the run could not go on: the first page has no next page.
     pub why_not: Option<String>,
+    /// No argument of the command could be given a value different from the paged invocation's (issue #14): the
+    /// changed-filter probe is undecided for this command, never a failure.
+    pub undecided: bool,
     /// For a claim of 1.2 (spec 6.9): the `next` entry with `--limit 1` replaced by `--all`.
     pub all_swap: Option<usize>,
     /// For a claim of 1.2: the `next` entry with an option written out at its declared non-null default: the option and the call.
@@ -1224,6 +1227,14 @@ impl Run<'_> {
 
     /// A value for `option`: one a documented example gives it (a value the author wrote is a value the parser takes), else a generated one; never one of `avoid`.
     pub(crate) fn choose(doc: &CommandDoc, option: &Arg, avoid: &[Value]) -> Option<String> {
+        // A repeatable option's value is an array: each of its elements is avoided, not the array's text (issue #14).
+        let avoid: Vec<Value> = avoid
+            .iter()
+            .flat_map(|value| match value {
+                Value::Array(items) => items.clone(),
+                other => vec![other.clone()],
+            })
+            .collect();
         let avoided: Vec<String> = avoid.iter().map(witness::word_of).collect();
         let from_examples = doc.examples.iter().flat_map(|line| -> Vec<String> {
             let Some(words) = invocation::split_line(line).ok() else {
@@ -1255,7 +1266,28 @@ impl Run<'_> {
         from_examples
             .filter(|word| !avoided.contains(word))
             .find(|word| invocation::value_problem(option, &witness::typed(option, word)).is_none())
-            .or_else(|| witness::generate(option, avoid))
+            .or_else(|| witness::generate(option, &avoid))
+            .or_else(|| {
+                // A free value whose domain the generic candidates miss: the avoided value itself, changed (`org` → `org:x`).
+                (!matches!(option.value_type.as_str(), "enum" | "json"))
+                    .then(|| {
+                        avoided.iter().flat_map(|word| {
+                            ["x", "-x", ":x", "0", "_x", ".x", "/x"]
+                                .map(|suffix| format!("{word}{suffix}"))
+                                .into_iter()
+                                .chain([format!("x{word}")])
+                        })
+                    })
+                    .into_iter()
+                    .flatten()
+                    .find(|word| {
+                        !avoided.contains(word)
+                            && invocation::value_problem(option, &witness::typed(option, word))
+                                .is_none()
+                    })
+            })
+            // The changed value is never one of the values avoided, whichever source gave it.
+            .filter(|word| !avoided.contains(word))
     }
 
     fn plan_paging_of(
@@ -1280,6 +1312,7 @@ impl Run<'_> {
             next: None,
             changed: Vec::new(),
             why_not: None,
+            undecided: false,
             all_swap: None,
             defaults: Vec::new(),
             envs: Vec::new(),
@@ -1380,9 +1413,7 @@ impl Run<'_> {
             let call = self.invoke_after(sequence, Call::new(argv))?;
             paging.changed.push((label, call));
         }
-        if paging.changed.is_empty() {
-            paging.why_not = Some("no argument of the command could be changed to test that the cursor is bound to them".to_string());
-        }
+        paging.undecided = paging.changed.is_empty();
         if claim.at_least(Claim::V1_2) {
             self.plan_paging_1_2(doc, &mut paging, base, &next_argv, sequence)?;
         }
@@ -1799,4 +1830,68 @@ pub(crate) fn given_value(doc: &CommandDoc, invocation: &Invocation, arg: &Arg) 
                 })
                 .nth(index)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{json, Value};
+
+    use super::Run;
+    use crate::l1::model::CommandDoc;
+
+    /// A paged command whose `--scope` is a free value (repeatable or not) and whose `--kind` is an enum, each written in an example.
+    fn doc(repeatable: bool) -> CommandDoc {
+        CommandDoc::parse(&json!({
+            "kind": "command", "command": "memory list", "path": ["memory", "list"], "effect": "read",
+            "operands": [],
+            "options": [
+                {"name": "scope", "valueType": "string", "required": false, "repeatable": repeatable, "default": null, "valueName": "SCOPE", "help": "h",
+                 "domain": {"pattern": "^org(:[a-z]+)?$"}},
+                {"name": "kind", "valueType": "enum", "possibleValues": ["note", "fact"], "required": false, "repeatable": false, "default": null, "valueName": "KIND", "help": "h"}
+            ],
+            "examples": ["forge memory list --scope org --kind note --json"]
+        }))
+        .expect("a command")
+    }
+
+    #[test]
+    fn atip_check16_50_the_changed_value_of_a_paging_probe_differs_from_the_paged_invocations() {
+        // Issue #14: the fixture's paged invocation already gives the value the examples give (`org`, `note`).
+        for repeatable in [false, true] {
+            let doc = doc(repeatable);
+            let scope = doc
+                .options
+                .iter()
+                .find(|o| o.name == "scope")
+                .expect("scope");
+            let current = if repeatable {
+                json!(["org"])
+            } else {
+                json!("org")
+            };
+            let word = Run::choose(&doc, scope, &[current]).expect("another scope");
+            assert_ne!(word, "org", "repeatable {repeatable}");
+            let kind = doc.options.iter().find(|o| o.name == "kind").expect("kind");
+            assert_eq!(
+                Run::choose(&doc, kind, &[json!("note")]).as_deref(),
+                Some("fact")
+            );
+        }
+        // No valid value other than the given one can be made (a one-member enum; a pattern no candidate or change of `org` meets): no word,
+        // so the probe is undecided rather than a resend of the same value.
+        for scope in [
+            json!({"name": "scope", "valueType": "enum", "possibleValues": ["org"], "required": false, "repeatable": false, "default": null, "valueName": "SCOPE", "help": "h"}),
+            json!({"name": "scope", "valueType": "string", "required": false, "repeatable": false, "default": null, "valueName": "SCOPE", "help": "h", "domain": {"pattern": "^(org|repo:[a-z]{2,})$"}}),
+        ] {
+            let only = CommandDoc::parse(&json!({
+                "kind": "command", "command": "memory list", "path": ["memory", "list"], "effect": "read",
+                "operands": [], "options": [scope], "examples": ["forge memory list --scope org --json"]
+            }))
+            .expect("a command");
+            assert_eq!(
+                Run::choose(&only, &only.options[0], &[Value::String("org".into())]),
+                None
+            );
+        }
+    }
 }

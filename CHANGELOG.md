@@ -43,7 +43,10 @@ held to that minor's release text (15.7, which now names `v1.5.0`). No document 
   strings split as clap splits them, and written as `commaList`; `Described::path_shape`; `Described::new` refuses a
   comma list below 1.6; `document_problems` checks rule 18 (`domain::pattern_admits_comma`, on `regex-syntax`).
   `atip-check` 0.3.0: see `approaches/checker.md` (the claim 1.6, the row `L1.comma-list`, rule 19 in L1.tree, L1.depth
-  reading `pathShape`, per-group L1.one-meaning).
+  reading `pathShape`, per-group L1.one-meaning). A `--contract` preview whose report has `passed: false` now exits 1
+  with `LEVEL_FAILED`, keeping its "not a level claim" statement; a passing preview exits 0 (#13, resolving #11). The
+  L1.paging changed-filter probe always gives a value other than the paged invocation's (each element of a repeatable
+  option is avoided, a free value may be changed), and is undecided, never failed, when none can be made (#14).
 
 ## 1.5.0 (2026-11-05)
 

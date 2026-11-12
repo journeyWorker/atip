@@ -1542,8 +1542,11 @@ fn atip_check_57_the_contract_option_and_the_fixtures_contract_version_pick_the_
     let marker = harness.path("init.log");
     let mut watched = harness.fixture(&json!({"initLog": marker}));
     let different = harness.check_with(&watched, true, &["--contract", "1.0"]);
-    assert_eq!(different.code, Some(0), "{}", different.stdout);
+    // A 1.1 tool does not pass as 1.0 (it carries 1.1 members): the preview's answer is no, exit 1 with LEVEL_FAILED (issue #13).
+    assert_eq!(different.code, Some(1), "{}", different.stdout);
+    assert_eq!(different.envelope()["error"]["code"], "LEVEL_FAILED");
     let data = different.envelope()["data"].clone();
+    assert_eq!(data["passed"], false);
     assert_eq!(
         (
             data["contractVersion"].as_str(),

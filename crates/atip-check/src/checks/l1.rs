@@ -2173,7 +2173,13 @@ impl<'a> Judge<'a> {
                     },
                 );
             }
-            if run.next.is_some() {
+            if run.next.is_some() && run.undecided {
+                // No argument could take a value other than the paged invocation's: nothing tells a bound cursor from an unbound one (issue #14).
+                c.notes.push(format!(
+                    "{}: the changed-filter probe is undecided: no argument could be given a valid value other than the paged invocation's",
+                    run.command
+                ));
+            } else if run.next.is_some() {
                 let mut good = false;
                 let mut bad: Vec<(Option<usize>, String)> = Vec::new();
                 for (label, call) in &run.changed {

@@ -79,9 +79,11 @@ fn atip_check_100_a_minor_the_checker_does_not_know_is_refused_before_a_binary_r
     let fixture = harness.fixture(&json!({"claims": "1.2", "initLog": marker}));
     for given in ["1.1", "1.0"] {
         let output = harness.check_with(&fixture, true, &["--contract", given]);
-        assert_eq!(output.code, Some(0), "{given}: {}", output.stdout);
+        // A 1.2 tool does not pass as an earlier minor (its documents declare 1.2): the preview's answer is no, exit 1 (issue #13).
+        assert_eq!(output.code, Some(1), "{given}: {}", output.stdout);
         let data = output.envelope()["data"].clone();
         assert_eq!(data["verdict"], "preview", "{given}");
+        assert_eq!(data["passed"], false, "{given}");
         assert_eq!(data["declaredContractVersion"], "1.2", "{given}");
         assert_eq!(data["contractVersion"], given);
         assert!(marker.exists(), "the setup did not run for the preview");
@@ -197,7 +199,8 @@ fn atip_check_102_the_checker_declares_1_4_and_passes_its_own_l0_checks_as_a_1_4
     let mut other = args.to_vec();
     other[8] = "1.1";
     let preview = atip_in(&cwd, &tmp, &other);
-    assert_eq!(preview.code, Some(0), "{}", preview.stdout);
+    // The checker's documents declare 1.4, so it does not pass as 1.1: exit 1, still a preview (issue #13).
+    assert_eq!(preview.code, Some(1), "{}", preview.stdout);
     assert_eq!(preview.envelope()["data"]["verdict"], "preview");
     // The help and the messages say the three minors and name no list of two.
     let help = atip_in(&cwd, &tmp, &["check", "--help"]);
@@ -968,10 +971,19 @@ fn atip_check_preview_a_contract_that_differs_from_the_fixtures_is_a_preview_tha
     for member in ["verdict", "declaredContractVersion", "statement"] {
         assert!(data.get(member).is_none(), "{member} in {data}");
     }
-    // A 1.2 tool checked as 1.4: not refused, no level verdict, exit 0, and the checks that would fail are listed.
+    // A 1.2 tool checked as 1.4: not refused, no level verdict, and the checks that fail are listed. It does not pass as 1.4, so the run's
+    // answer is no: exit 1, `LEVEL_FAILED`, whose message is the statement that this is not a level claim (issue #13).
     let output = harness.check_with(&fixture, true, &["--contract", "1.4"]);
-    assert_eq!(output.code, Some(0), "{}", output.stdout);
+    assert_eq!(output.code, Some(1), "{}", output.stdout);
     let document = output.envelope();
+    assert_eq!(document["ok"], false, "{document}");
+    assert_eq!(document["error"]["code"], "LEVEL_FAILED");
+    assert!(
+        document["error"]["message"].as_str().is_some_and(
+            |message| message.starts_with("declared 1.2, checked as 1.4, not a level claim")
+        ),
+        "{document}"
+    );
     let data = &document["data"];
     assert_eq!(data["contractVersion"], "1.4");
     assert_eq!(data["declaredContractVersion"], "1.2");
@@ -989,11 +1001,49 @@ fn atip_check_preview_a_contract_that_differs_from_the_fixtures_is_a_preview_tha
     assert!(document["meta"].get("warnings").is_none(), "{document}");
     // The text says preview, not met or not met.
     let text = harness.check_with(&fixture, false, &["--contract", "1.4"]);
-    assert_eq!(text.code, Some(0), "{}", text.stdout);
-    let summary = text.stdout.lines().last().unwrap_or_default();
+    assert_eq!(text.code, Some(1), "{}", text.stdout);
+    let printed = format!("{}{}", text.stdout, text.stderr);
+    let summary = printed
+        .lines()
+        .find(|line| line.contains("preview ("))
+        .unwrap_or_default();
     assert!(
         summary.contains("preview (declared 1.2, checked as 1.4, not a level claim)")
             && !summary.contains("not met"),
         "{summary}"
+    );
+}
+
+#[test]
+fn atip_check16_13_a_preview_exits_1_when_it_does_not_pass_and_0_when_it_does() {
+    // Issue #13: a preview is still a run with an answer. A 1.2 tool whose fixture states 1.1 but whose documents declare 1.2, checked
+    // as 1.2: a preview (the fixture says otherwise) that passes, exit 0, still not a level claim.
+    let harness = Harness::new();
+    let mut fixture = harness.fixture(&json!({"claims": "1.2"}));
+    fixture["contractVersion"] = json!("1.1");
+    let passing = harness.check_with(&fixture, true, &["--contract", "1.2"]);
+    assert_eq!(passing.code, Some(0), "{}", passing.stdout);
+    let data = passing.envelope()["data"].clone();
+    assert_eq!(
+        (
+            data["verdict"].as_str(),
+            data["passed"].as_bool(),
+            data["statement"].as_str()
+        ),
+        (
+            Some("preview"),
+            Some(true),
+            Some("declared 1.1, checked as 1.2, not a level claim")
+        )
+    );
+    // The same tool checked as 1.4 does not pass: exit 1, LEVEL_FAILED, the statement kept in the message and in `data`.
+    let failing = harness.check_with(&fixture, true, &["--contract", "1.4"]);
+    assert_eq!(failing.code, Some(1), "{}", failing.stdout);
+    let document = failing.envelope();
+    assert_eq!(document["error"]["code"], "LEVEL_FAILED");
+    assert_eq!(document["data"]["passed"], false);
+    assert_eq!(
+        document["data"]["statement"],
+        "declared 1.1, checked as 1.4, not a level claim"
     );
 }
