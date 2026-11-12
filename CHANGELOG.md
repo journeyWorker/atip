@@ -22,9 +22,8 @@ held to that minor's release text (15.7, which now names `v1.5.0`). No document 
   meaning within its group (the path without its verb). A shared tree option, an own option that takes its name, and a
   switch or count keep one meaning tool-wide. Across groups a name may mean different things, and then uses a different
   value name (`--group MEMBER_GROUP`, `--group DEPLOY_GROUP`); the same value name means one thing in every group.
-  The owner adopted this as a minor knowing it goes beyond 15.1's rule for one (D44, 15.10): a 1.5 caller that carries a
-  value across groups by name alone may get a success with another meaning. 15.1 is unchanged; callers read each
-  command's own document and compare `valueName`.
+  A caller of 1.5 reads each command's options from that command's own document, as before, so nothing it does changes
+  (D44, 15.10).
 - **Versioning (15.1, 15.7, 15.10).** 15.7 gains the row 1.0-1.5; 15.10 says what 1.6 means for callers: a 1.5 caller
   ignores both members and gives values one per occurrence, which every 1.6 tool accepts, and its domain check refuses
   a value with a comma rather than letting the tool split it. D32's reference to 15.10 now names the 1.2 text.
