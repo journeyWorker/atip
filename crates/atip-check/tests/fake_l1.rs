@@ -1348,7 +1348,7 @@ fn conditions() -> BTreeSet<String> {
             "grammar",
             &["kebab-words", "no-id-suffix", "reserved-shape"],
         ),
-        ("depth", &["at-most-two-words"]),
+        ("depth", &["within-path-shape"]),
         ("one-meaning", &["value-name", "value-type"]),
         ("one-meaning-values", &["overlapping"]),
         ("help-line", &["mentions-schema"]),
@@ -1461,7 +1461,7 @@ fn probes(case: &Case) -> Vec<Vec<String>> {
         | "no-state/writes-nothing" => &[&["schema"]],
         "no-state/answers-in-an-empty-directory" => &[&["schema"]],
         "walk/answered" => &[&["schema", "touch"]],
-        "depth/at-most-two-words" => &[
+        "depth/within-path-shape" => &[
             &["schema"],
             &["schema", "team", "roster", "list"],
             &["team", "roster", "list"],

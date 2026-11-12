@@ -24,7 +24,9 @@
 // `STOPPED_MIDWAY` (for a document that declares exactly 1.2); 1.3 requires every error code of a registry to be a core
 // code or to follow the `<SUBJECT>_<CONDITION>` grammar with its condition's exit and retryability (7.2.3), and every
 // warning code of an envelope to be in the warning registry (7.5.2); 1.5 lets a domain pattern use `\p{White_Space}` and
-// `\P{White_Space}` (Annex V2), so a pattern is checked against the profile of the minor its document declares.
+// `\P{White_Space}` (Annex V2), so a pattern is checked against the profile of the minor its document declares; 1.6 adds
+// an option's `commaList` (an example's value of such an option is split on ",", spec 9.7.6, Annex S2 rule 18) and the
+// tree's `pathShape` (spec 4.1.1), each refused in an earlier document.
 // Documents of an earlier minor are held to the rules of that minor as before.
 //
 // 1.4 changes the form of the self-description (spec 9, 15.7), so the schema no longer requires what a 1.4 document
@@ -67,6 +69,7 @@ type Arg = {
   flagOnly: boolean
   short?: string
   domain?: JsonObject
+  commaList?: boolean
 }
 // An argument as its document prints it: in a 1.4 document every member at its default is absent (spec 9.5).
 type RawArg = {
@@ -80,6 +83,7 @@ type RawArg = {
   flagOnly?: boolean
   short?: string
   domain?: JsonObject
+  commaList?: boolean
 }
 type Constraint = { rule: string; names?: string[]; if?: { name: string; in?: JsonValue[] }; then?: string[]; code?: string }
 type Validator = { arguments: string[]; code: string; description: string; rejects: string[] }
@@ -127,7 +131,7 @@ type RegistryEntry = { code: string; exit: number; retryable: boolean; meaning?:
 type WarningEntry = { code: string }
 type SchemaData =
   | ({ kind: "command" } & RawCommandDoc)
-  | { kind: "tree"; level: string; query?: string; options?: RawArg[]; commands: TreeEntry[] }
+  | { kind: "tree"; level: string; pathShape?: string[]; query?: string; options?: RawArg[]; commands: TreeEntry[] }
   | { kind: "group"; command: string; path?: string[]; commands: TreeEntry[] }
   | { kind: "schemas"; command: string; schemas: Record<string, SchemaNode>; rejects?: string[][] }
   | { kind: "errors"; errors: RegistryEntry[] }
@@ -211,9 +215,15 @@ const openSchema = (name: string): ValidateFunction => {
 }
 
 /** The contract minors this repository describes; a tool declares one of them (spec 15.5). */
-const MINORS = ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"]
+const MINORS = ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"]
 /** The minor from which a domain pattern may use `\p{White_Space}` and `\P{White_Space}` (spec Annex V2). */
 const WHITE_SPACE_SINCE = "1.5"
+/** The minor from which a repeatable option may declare `commaList` (spec 9.7.6). */
+const COMMA_LIST_SINCE = "1.6"
+/** The minor from which a tree may declare `pathShape` (spec 4.1.1). */
+const PATH_SHAPE_SINCE = "1.6"
+/** The minor from which an option name has one meaning per group rather than tool-wide (Annex S1 item 4). */
+const GROUP_MEANING_SINCE = "1.6"
 const atLeast = (minor: string, since: string) => MINORS.indexOf(minor) >= MINORS.indexOf(since)
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/
 
@@ -837,19 +847,23 @@ function parseInvocation(doc: CommandDoc, tool: string, line: string, problems: 
       documents = inlineDocuments(doc, text, `${where} --input`, problems)
       continue
     }
-    let typed: JsonValue = text
-    if (option.valueType === "json") {
+    // Spec 9.7.6: a comma-list option's argv value is split on "," into several values; an empty piece is invalid.
+    const pieces = option.commaList ? text.split(",") : [text]
+    if (pieces.includes("")) problems.push(`${where}: --${option.name}=${text} has an empty piece (spec 9.7.6)`)
+    const values = pieces.map((piece): JsonValue => {
+      if (option?.valueType !== "json") return piece
       try {
-        typed = JSON.parse(text)
+        return JSON.parse(piece) as JsonValue
       } catch {
         problems.push(`${where}: --${option.name} is not JSON`)
+        return piece
       }
-    }
-    checkValue(`${where} --${option.name}`, option, typed, problems)
+    })
+    for (const typed of values) checkValue(`${where} --${option.name}`, option, typed, problems)
     const previous = args.options.get(option.name)
-    if (option.repeatable) args.options.set(option.name, [...(Array.isArray(previous) ? previous : []), typed])
+    if (option.repeatable) args.options.set(option.name, [...(Array.isArray(previous) ? previous : []), ...values])
     else if (previous !== undefined) problems.push(`${where}: --${option.name} given twice`)
-    else args.options.set(option.name, typed)
+    else args.options.set(option.name, values[0])
   }
   // A count's value is its number of occurrences, known only once every word is read (9.7.2).
   for (const o of doc.options) {
@@ -1479,6 +1493,48 @@ function legacyProblems(data: SchemaData, minor: string, problems: string[]) {
 }
 
 // ---- self-description (Annex S2) ----
+/**
+ * Annex S2 rule 18 (and rule 16 for the member): `commaList` is since 1.6, on a repeatable option whose valueType is
+ * string, integer, number, path or enum, none of whose `possibleValues` contains "," (spec 9.7.6).
+ */
+function commaListProblems(o: RawArg, at: string, minor: string, problems: string[]) {
+  if (o.commaList === undefined) return
+  if (!atLeast(minor, COMMA_LIST_SINCE)) problems.push(`${at}: commaList is since ${COMMA_LIST_SINCE}, but the document declares contract ${minor} (Annex S2 rule 16)`)
+  if (!o.commaList) return
+  const a = fullArg(o)
+  if (!a.repeatable || !["string", "integer", "number", "path", "enum"].includes(a.valueType))
+    problems.push(`${at}: commaList on a ${a.repeatable ? "" : "non-repeatable "}${a.valueType} option (Annex S2 rule 18)`)
+  for (const v of a.possibleValues ?? []) if (v.includes(",")) problems.push(`${at}: possible value ${JSON.stringify(v)} contains "," and a comma list can never give it (Annex S2 rule 18)`)
+}
+
+/** The group of a command for Annex S1 item 4: its path without the final word, the verb; "" for a one-word path. */
+const groupOf = (doc: CommandDoc) => doc.path.slice(0, -1).join(" ")
+
+/**
+ * Annex S1 item 4 between `doc` and the tool's other command documents: an option name has one `valueName` and
+ * `valueType`. Shared tree options are one definition and are not compared. When both documents declare 1.6 or later
+ * the rule holds within a group; across groups the same name with the same `valueName` keeps one `valueType`, and a
+ * different `valueName` is a different meaning, which is allowed. Otherwise it holds tool-wide.
+ */
+function oneMeaningProblems(doc: CommandDoc, tool: string, minor: string, problems: string[]) {
+  for (const [key, other] of commandDocs) {
+    if (!key.startsWith(`${tool} `) || other.command === doc.command) continue
+    const grouped = atLeast(minor, GROUP_MEANING_SINCE) && atLeast(commandMinors.get(key) ?? "1.0", GROUP_MEANING_SINCE)
+    const sameGroup = groupOf(doc) === groupOf(other)
+    for (const o of doc.options) {
+      if (doc.named.includes(o.name)) continue
+      const p = other.options.find((x) => x.name === o.name && !other.named.includes(x.name))
+      if (!p) continue
+      const valueName = (a: Arg) => (a as RawArg & { valueName?: string }).valueName ?? a.name.toUpperCase().replace(/-/g, "_")
+      if (grouped && !sameGroup) {
+        if (valueName(o) === valueName(p) && o.valueType !== p.valueType)
+          problems.push(`--${o.name} ${valueName(o)} is ${o.valueType} here and ${p.valueType} in ${other.command}: the same value name across groups is the same meaning (Annex S1 item 4)`)
+      } else if (valueName(o) !== valueName(p) || o.valueType !== p.valueType)
+        problems.push(`--${o.name} is ${valueName(o)} ${o.valueType} here and ${valueName(p)} ${p.valueType} in ${other.command}${grouped ? `, in the same group ${JSON.stringify(groupOf(doc))}` : ""} (Annex S1 item 4)`)
+    }
+  }
+}
+
 function checkCommandDoc(raw: RawCommandDoc, tool: string, problems: string[], v11: boolean, v12: boolean, v14: boolean, minor: string) {
   const doc = resolveCommand(raw, tool, v14, problems)
   if (v14) checkV14Command(raw, doc, tool, problems)
@@ -1491,6 +1547,9 @@ function checkCommandDoc(raw: RawCommandDoc, tool: string, problems: string[], v
   }
   const shorts = doc.options.flatMap((o) => (o.short ? [o.short] : []))
   if (new Set(shorts).size !== shorts.length) problems.push("duplicate short option letter")
+  // Rule 18.
+  for (const o of doc.options) commaListProblems(o, `option --${o.name}`, minor, problems)
+  oneMeaningProblems(doc, tool, minor, problems)
   // Rule 1.
   if (doc.command !== doc.path.join(" ")) problems.push(`command ${doc.command} is not path ${doc.path.join(" ")}`)
   // Rule 2: refs resolve by membership; every schema compiles; outputs do not share a schemaRef.
@@ -1672,7 +1731,13 @@ for (const { data, meta } of answers) {
   if (data.kind === "warnings") warningRegistries.set(meta.tool, data.warnings)
   toolMinors.set(meta.tool, declaredMinor(meta))
 }
-for (const { data, meta } of answers) if (data.kind === "command") commandDocs.set(`${meta.tool} ${data.command}`, resolveCommand(data, meta.tool, declares14(meta), []))
+/** The minor each command document of the valid examples declares, by `<tool> <command>` (Annex S1 item 4 depends on it). */
+const commandMinors = new Map<string, string>()
+for (const { data, meta } of answers)
+  if (data.kind === "command") {
+    commandDocs.set(`${meta.tool} ${data.command}`, resolveCommand(data, meta.tool, declares14(meta), []))
+    commandMinors.set(`${meta.tool} ${data.command}`, declaredMinor(meta))
+  }
 /** The registry entry of an error code: the tool's own row (with its reasons), else the reserved code's (7.3.1). */
 const registered = (tool: string, code: string): RegistryEntry | undefined =>
   registries.get(tool)?.find((e) => e.code === code) ?? (RESERVED[code] ? { code, ...RESERVED[code] } : undefined)
@@ -1724,9 +1789,14 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
   }
   if (data.kind === "group" && data.command !== pathOf(data).join(" ")) problems.push(`group ${data.command} is not its path ${pathOf(data).join(" ")}`)
   if (data.kind === "group" && v14) v14MemberProblems("group", data, `group ${data.command}`, problems)
+  if (data.kind === "tree" && data.pathShape && !atLeast(declaredMinor(meta), PATH_SHAPE_SINCE))
+    problems.push(`the tree's pathShape is since ${PATH_SHAPE_SINCE}, but the document declares contract ${declaredMinor(meta)} (spec 4.1.1, Annex S2 rule 16)`)
   if (data.kind === "tree" && v14 && data.options) {
     const optionNames = data.options.map((o) => o.name)
-    for (const o of data.options) argumentDefaultProblems("option", o, `tree option ${o.name}`, problems)
+    for (const o of data.options) {
+      argumentDefaultProblems("option", o, `tree option ${o.name}`, problems)
+      commaListProblems(o, `tree option ${o.name}`, declaredMinor(meta), problems)
+    }
     for (const n of new Set(optionNames.filter((n, i) => optionNames.indexOf(n) !== i))) problems.push(`tree option ${n} is defined twice (spec 9.3)`)
     if (!data.query) {
       const used = new Set<string>()

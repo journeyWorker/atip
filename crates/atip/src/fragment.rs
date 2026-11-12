@@ -236,6 +236,7 @@ mod tests {
             possible_values: None,
             required: false,
             repeatable: false,
+            comma_list: false,
             default: Value::Null,
             default_note: None,
             env: None,

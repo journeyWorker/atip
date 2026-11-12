@@ -14,9 +14,9 @@ fn args(words: &[&str]) -> Vec<OsString> {
 }
 
 #[test]
-fn atip_check14_30_the_checker_knows_six_minors_and_names_them_when_it_refuses_another() {
-    assert_eq!(MINORS, ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"]);
-    for minor in ["1.3", "1.4", "1.5"] {
+fn atip_check16_30_the_checker_knows_seven_minors_and_names_them_when_it_refuses_another() {
+    assert_eq!(MINORS, ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"]);
+    for minor in ["1.3", "1.4", "1.5", "1.6"] {
         let parsed = parse(&args(&[
             "check",
             "--bin",
@@ -38,30 +38,31 @@ fn atip_check14_30_the_checker_knows_six_minors_and_names_them_when_it_refuses_a
         "--fixture",
         "f",
         "--contract",
-        "1.6",
+        "1.7",
     ]))
-    .expect_err("a minor later than 1.5 is not known");
+    .expect_err("a minor later than 1.6 is not known");
     assert_eq!(refused.field.as_deref(), Some("--contract"));
     assert_eq!(refused.expected, MINORS);
-    assert_eq!(refused.received.as_deref(), Some("1.6"));
+    assert_eq!(refused.received.as_deref(), Some("1.7"));
     assert!(
-        CHECK_HELP.contains("1.0, 1.1, 1.2, 1.3, 1.4 or 1.5"),
+        CHECK_HELP.contains("1.0, 1.1, 1.2, 1.3, 1.4, 1.5 or 1.6"),
         "{CHECK_HELP}"
     );
 }
 
 #[test]
-fn atip_check14_31_a_fixture_claims_1_3_to_1_5_and_nothing_later() {
+fn atip_check14_31_a_fixture_claims_1_3_to_1_6_and_nothing_later() {
     for (minor, claim) in [
         ("1.3", Claim::V1_3),
         ("1.4", Claim::V1_4),
         ("1.5", Claim::V1_5),
+        ("1.6", Claim::V1_6),
     ] {
         let fixture = fixture::parse(&json!({"contractVersion": minor})).expect("a fixture");
         assert_eq!(fixture.claim(), claim);
     }
-    let refused = fixture::parse(&json!({"contractVersion": "1.6"})).expect_err("unknown minor");
-    assert!(refused.contains("1.3, 1.4, 1.5"), "{refused}");
+    let refused = fixture::parse(&json!({"contractVersion": "1.7"})).expect_err("unknown minor");
+    assert!(refused.contains("1.3, 1.4, 1.5, 1.6"), "{refused}");
     assert_eq!(
         fixture::parse(&json!({})).expect("a fixture").claim(),
         Claim::V1_0,
@@ -73,11 +74,12 @@ fn atip_check14_31_a_fixture_claims_1_3_to_1_5_and_nothing_later() {
 fn atip_check14_32_the_rows_that_1_3_relaxed_are_told_apart_from_the_rows_that_stay() {
     // `L1.check-order` is a MUST for exactly 1.2 and a SHOULD from 1.3; a row that tested "1.2 or later" keeps its meaning for 1.3 and 1.4
     // through `at_least`, and a row that relaxed asks `is_1_2`.
-    for claim in [Claim::V1_3, Claim::V1_4, Claim::V1_5] {
+    for claim in [Claim::V1_3, Claim::V1_4, Claim::V1_5, Claim::V1_6] {
         assert!(claim.at_least(Claim::V1_2) && !claim.is_1_2());
         assert!(claim.declares_1_3());
     }
     assert!(Claim::V1_2.is_1_2() && !Claim::V1_2.declares_1_3());
     assert!(Claim::V1_4.declares_1_4() && !Claim::V1_3.declares_1_4());
     assert!(Claim::V1_5.declares_1_4(), "1.5 keeps every rule of 1.4");
+    assert!(Claim::V1_6.declares_1_4(), "1.6 keeps every rule of 1.4");
 }

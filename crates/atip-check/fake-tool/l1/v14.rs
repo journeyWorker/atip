@@ -139,6 +139,9 @@ fn option_object(arg: &Arg) -> Value {
     if arg.flag_only {
         doc.insert("flagOnly".into(), json!(true));
     }
+    if arg.comma_list {
+        doc.insert("commaList".into(), json!(true));
+    }
     Value::Object(doc)
 }
 

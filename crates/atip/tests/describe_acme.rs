@@ -136,6 +136,7 @@ fn option_of(raw: &Value) -> OptionDoc {
         possible_values: raw.get("possibleValues").map(strings),
         required: flag(raw, "required"),
         repeatable: value_type == ValueType::Count || flag(raw, "repeatable"),
+        comma_list: flag(raw, "commaList"),
         default: raw
             .get("default")
             .cloned()
@@ -628,4 +629,118 @@ fn atip_crate14_18_a_group_lists_its_direct_children_without_path_in_1_4_and_wit
         before.schemas("member tag").is_none(),
         "no schemas answer before 1.4"
     );
+}
+
+#[test]
+fn atip_crate16_01_the_comma_list_command_written_for_acme_at_1_6_is_the_example() {
+    // `acme member select` (examples, 1.6) beside the commands of the 1.4 tree: written at 1.6, its document carries
+    // `commaList` and names the tree's `team`, and the commands of the tree keep their 1.4 form.
+    let tree = data("schema-tree-acme.json");
+    let (mut entries, tree_options) = tree_of(&tree);
+    let raw = data("schema-command-acme-member-select.json");
+    let answer = data("schema-schemas-acme-member-select.json");
+    let (_, _, examples) = acme();
+    let mut commands: Vec<CommandDoc> = examples
+        .iter()
+        .map(|(_, raw, answer)| command_of(raw, answer, &tree_options))
+        .collect();
+    let own = json!({
+        "kind": "command", "command": "schema", "summary": "Describe the CLI", "effect": "read",
+        "outputs": [{ "schemaRef": "#/schemas/SchemaReport" }], "examples": ["acme schema --json"],
+    });
+    let own_answer = json!({ "schemas": { "SchemaReport": { "type": "object" } } });
+    commands.push(command_of(&own, &own_answer, &tree_options));
+    let select = command_of(&raw, &answer, &tree_options);
+    assert!(select
+        .options
+        .iter()
+        .filter(|option| option.name == "tag" || option.name == "role")
+        .all(|option| option.comma_list && option.repeatable));
+    commands.push(select);
+    entries.push(TreeEntry {
+        path: vec!["member".to_string(), "select".to_string()],
+        kind: EntryKind::Command,
+        summary: text_of(&raw, "summary").expect("summary"),
+        effect: Some(Effect::Read),
+        extensions: BTreeMap::new(),
+        command: "member select".to_string(),
+    });
+    let refused = Described::new(Minor::V1_5, "L1", entries.clone(), commands.clone())
+        .expect_err("a comma list cannot be written at 1.5");
+    assert!(refused.to_string().contains("since 1.6"), "{refused}");
+    let described = Described::new(Minor::V1_6, "L1", entries, commands).expect("a 1.6 model");
+    assert_eq!(
+        described
+            .command("member select")
+            .expect("a command")
+            .to_value(),
+        raw
+    );
+    assert_eq!(
+        described
+            .schemas("member select")
+            .expect("an answer")
+            .to_value(),
+        answer
+    );
+    for (command, raw, _) in &examples {
+        assert_eq!(
+            &described.command(command).expect("a command").to_value(),
+            raw,
+            "{command}"
+        );
+    }
+}
+
+#[test]
+fn atip_crate16_04_a_tree_of_1_6_declares_its_path_shape_and_one_of_1_5_cannot() {
+    // The `umbrella` example (1.6): three-word paths under a declared shape, written after `level`.
+    let raw = data("schema-tree-umbrella.json");
+    let (entries, _) = tree_of(&raw);
+    let schema = json!({
+        "kind": "command", "command": "schema", "summary": "Describe the CLI", "effect": "read",
+        "outputs": [{ "schemaRef": "#/schemas/SchemaReport" }], "examples": ["umbrella schema --json"],
+    });
+    let answer = json!({ "schemas": { "SchemaReport": { "type": "object" } } });
+    let commands: Vec<CommandDoc> = entries
+        .iter()
+        .filter(|entry| entry.kind == EntryKind::Command)
+        .map(|entry| {
+            let mut doc = schema.clone();
+            doc["command"] = json!(entry.command);
+            doc["summary"] = json!(entry.summary);
+            doc["effect"] = json!(entry.effect.map_or("read", |effect| match effect {
+                Effect::Read => "read",
+                _ => "write",
+            }));
+            command_of(&doc, &answer, &[])
+        })
+        .collect();
+    let shape = ["product", "noun", "verb"];
+    let described = Described::new(Minor::V1_6, "L1", entries.clone(), commands.clone())
+        .expect("a model")
+        .path_shape(shape)
+        .expect("a shape");
+    let written = described.tree().to_value();
+    assert_eq!(written, raw);
+    assert!(
+        described.tree().to_line().starts_with(
+            r#"{"kind":"tree","level":"L1","pathShape":["product","noun","verb"],"commands":"#
+        ),
+        "pathShape is written after level"
+    );
+    for bad in [&[][..], &["product", "product"][..], &["Product"][..]] {
+        assert!(
+            Described::new(Minor::V1_6, "L1", entries.clone(), commands.clone())
+                .expect("a model")
+                .path_shape(bad.iter().copied())
+                .is_err(),
+            "{bad:?}"
+        );
+    }
+    let early = Described::new(Minor::V1_5, "L1", entries, commands)
+        .expect("a model")
+        .path_shape(shape)
+        .expect_err("since 1.6");
+    assert!(early.to_string().contains("since 1.6"), "{early}");
 }

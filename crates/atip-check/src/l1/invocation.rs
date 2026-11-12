@@ -342,6 +342,16 @@ fn typed(arg: Option<&Arg>, text: &str) -> Result<Value, String> {
     }
 }
 
+/// The values one argv word gives `arg`: the word itself, or for an option with `commaList` its pieces split on "," in order (spec 9.7.6;
+/// pieces are not trimmed, and an empty piece is kept: it is a value problem, not a value).
+pub fn pieces<'a>(arg: &Arg, text: &'a str) -> Vec<&'a str> {
+    if arg.comma_list {
+        text.split(',').collect()
+    } else {
+        vec![text]
+    }
+}
+
 /// The typed arguments of `invocation`.
 pub fn args(doc: &CommandDoc, invocation: &Invocation) -> Args {
     let mut out = Args::default();
@@ -361,17 +371,22 @@ pub fn args(doc: &CommandDoc, invocation: &Invocation) -> Args {
                     let seen = out.options.get(name).and_then(Value::as_u64).unwrap_or(0);
                     out.options.insert(name.clone(), Value::from(seen + 1));
                 } else if let Some(text) = value {
-                    let value = typed(option, text).unwrap_or_else(|_| Value::String(text.clone()));
-                    if option.is_some_and(|option| option.repeatable) {
-                        let entry = out
-                            .options
-                            .entry(name.clone())
-                            .or_insert_with(|| Value::Array(Vec::new()));
-                        if let Value::Array(values) = entry {
-                            values.push(value);
+                    for piece in
+                        option.map_or_else(|| vec![text.as_str()], |option| pieces(option, text))
+                    {
+                        let value = typed(option, piece)
+                            .unwrap_or_else(|_| Value::String(piece.to_string()));
+                        if option.is_some_and(|option| option.repeatable) {
+                            let entry = out
+                                .options
+                                .entry(name.clone())
+                                .or_insert_with(|| Value::Array(Vec::new()));
+                            if let Value::Array(values) = entry {
+                                values.push(value);
+                            }
+                        } else {
+                            out.options.insert(name.clone(), value);
                         }
-                    } else {
-                        out.options.insert(name.clone(), value);
                     }
                 }
             }
@@ -1027,11 +1042,20 @@ fn value_problems(doc: &CommandDoc, invocation: &Invocation) -> Vec<String> {
             }
         };
         let Some(arg) = arg else { continue };
-        match typed(Some(arg), text) {
-            Ok(value) => {
-                problems.extend(value_problem(arg, &value).map(|why| format!("{spelling}: {why}")));
+        for piece in pieces(arg, text) {
+            if piece.is_empty() && arg.comma_list {
+                problems.push(format!(
+                    "{spelling}: an empty piece in {text:?}: a comma list has no empty value (spec 9.7.6)"
+                ));
+                continue;
             }
-            Err(why) => problems.push(format!("{spelling}: {why}")),
+            match typed(Some(arg), piece) {
+                Ok(value) => {
+                    problems
+                        .extend(value_problem(arg, &value).map(|why| format!("{spelling}: {why}")));
+                }
+                Err(why) => problems.push(format!("{spelling}: {why}")),
+            }
         }
     }
     for (name, count) in counts {
@@ -1069,10 +1093,13 @@ pub fn broken_arguments(doc: &CommandDoc, invocation: &Invocation) -> Vec<String
             }
         };
         let Some(arg) = arg else { continue };
-        let wrong = match typed(Some(arg), text) {
-            Ok(value) => value_problem(arg, &value).is_some(),
-            Err(_) => true,
-        };
+        let wrong = pieces(arg, text).into_iter().any(|piece| {
+            piece.is_empty() && arg.comma_list
+                || match typed(Some(arg), piece) {
+                    Ok(value) => value_problem(arg, &value).is_some(),
+                    Err(_) => true,
+                }
+        });
         if wrong && !names.contains(&arg.name) {
             names.push(arg.name.clone());
         }
@@ -2175,5 +2202,81 @@ mod tests {
         let results = problems(&judged(&doc, r#"tool run a --input '{"level":1}'"#));
         assert_eq!(results.len(), 1);
         assert!(results[0].1.contains("declares no input"));
+    }
+
+    /// `select`: a repeatable string `tag` and a repeatable enum `role`, both comma lists, and a plain repeatable `label`.
+    fn comma_doc() -> CommandDoc {
+        CommandDoc::parse(&json!({
+            "kind": "command", "command": "select", "path": ["select"], "effect": "read",
+            "operands": [],
+            "options": [
+                {"name": "tag", "valueType": "string", "required": false, "repeatable": true, "commaList": true, "default": null,
+                 "domain": {"pattern": "^[a-z]+$"}},
+                {"name": "role", "valueType": "enum", "possibleValues": ["owner", "member"], "required": false, "repeatable": true,
+                 "commaList": true, "default": null},
+                {"name": "label", "valueType": "string", "required": false, "repeatable": true, "default": null}
+            ],
+            "errors": [], "outputs": [], "examples": [], "schemas": {}
+        }))
+        .expect("a command")
+    }
+
+    #[test]
+    fn atip_check16_invocation_a_comma_list_is_split_in_order_and_accumulates() {
+        let doc = comma_doc();
+        let one = read(
+            &doc,
+            "select --tag a,b --tag c --role=owner,member --label x,y",
+        );
+        let two = read(
+            &doc,
+            "select --tag a --tag b --tag c --role owner --role member --label x,y",
+        );
+        assert_eq!(args(&doc, &one), args(&doc, &two), "either form, one list");
+        assert_eq!(
+            args(&doc, &one).options["tag"],
+            json!(["a", "b", "c"]),
+            "the pieces are the array"
+        );
+        assert_eq!(
+            args(&doc, &one).options["label"],
+            json!(["x,y"]),
+            "without commaList a comma is part of the value"
+        );
+        assert_eq!(
+            args(&doc, &read(&doc, "select --tag a,B")).options["tag"],
+            json!(["a", "B"]),
+            "pieces are not trimmed or changed"
+        );
+        assert!(broken_arguments(&doc, &one).is_empty());
+        assert!(problems(&judged(&doc, "tool select --tag a,b --role owner,member")).is_empty());
+    }
+
+    #[test]
+    fn atip_check16_invocation_an_empty_piece_or_a_piece_outside_the_domain_is_a_value_problem() {
+        let doc = comma_doc();
+        for line in [
+            "tool select --tag a,,b",
+            "tool select --tag a,",
+            "tool select --tag ,a",
+            "tool select --tag=",
+            "tool select --role owner,",
+        ] {
+            let found = problems(&judged(&doc, line));
+            assert!(
+                found
+                    .iter()
+                    .any(|(condition, why)| *condition == "values" && why.contains("empty piece")),
+                "{line}: {found:?}"
+            );
+            let names = broken_arguments(&doc, &read(&doc, &line["tool ".len()..]));
+            assert_eq!(names.len(), 1, "{line}");
+        }
+        let found = problems(&judged(&doc, "tool select --tag a,B1"));
+        assert!(found[0].1.contains("outside the domain"), "{found:?}");
+        let found = problems(&judged(&doc, "tool select --role owner,admin"));
+        assert!(found[0].1.contains("not a valid enum value"), "{found:?}");
+        // `--label` is no comma list: an empty piece is a value there.
+        assert!(problems(&judged(&doc, "tool select --label a,")).is_empty());
     }
 }

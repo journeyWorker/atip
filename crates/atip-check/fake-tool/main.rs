@@ -106,20 +106,28 @@ impl Tool {
     /// directory) say what the configured ones say.
     fn minor(&self) -> String {
         let alias = std::env::args().next().unwrap_or_default();
-        let default = [("12", "1.2"), ("13", "1.3"), ("14", "1.4")]
-            .iter()
-            .find(|(digits, _)| alias.contains(&format!("claims{digits}")))
-            .map_or("1.1", |(_, minor)| *minor);
+        let default = [
+            ("12", "1.2"),
+            ("13", "1.3"),
+            ("14", "1.4"),
+            ("15", "1.5"),
+            ("16", "1.6"),
+        ]
+        .iter()
+        .find(|(digits, _)| alias.contains(&format!("claims{digits}")))
+        .map_or("1.1", |(_, minor)| *minor);
         self.text("claims", default)
     }
 
-    /// The claimed minor as a number: 0 for 1.0 to 4 for 1.4 (a spelling that is none of them reads as 1.1, as `is_1_1` does).
+    /// The claimed minor as a number: 0 for 1.0 to 6 for 1.6 (a spelling that is none of them reads as 1.1, as `is_1_1` does).
     fn minor_rank(&self) -> u8 {
         match self.minor().as_str() {
             "1.0" => 0,
             "1.2" => 2,
             "1.3" => 3,
             "1.4" => 4,
+            "1.5" => 5,
+            "1.6" => 6,
             _ => 1,
         }
     }
@@ -139,9 +147,14 @@ impl Tool {
         self.minor_rank() >= 3
     }
 
-    /// Whether the tool claims 1.4 (the compact self-description, `--schemas`, `--help --json` refused).
+    /// Whether the tool claims 1.4 or later (the compact self-description, `--schemas`, `--help --json` refused).
     fn is_1_4(&self) -> bool {
         self.minor_rank() >= 4
+    }
+
+    /// Whether the tool claims 1.6 or later (comma lists, `pathShape`).
+    fn is_1_6(&self) -> bool {
+        self.minor_rank() >= 6
     }
 
     /// The name of one of the tool's own codes under the claim: from 1.3 a code is `<SUBJECT>_<CONDITION>` (spec 7.2), so the two codes of
@@ -1028,7 +1041,13 @@ fn main() -> ExitCode {
                     .map(|file| file.to_string_lossy().into_owned())
             })
             .unwrap_or_default();
-        for (digits, minor) in [("12", "1.2"), ("13", "1.3"), ("14", "1.4")] {
+        for (digits, minor) in [
+            ("12", "1.2"),
+            ("13", "1.3"),
+            ("14", "1.4"),
+            ("15", "1.5"),
+            ("16", "1.6"),
+        ] {
             if name.contains(&format!("claims{digits}")) {
                 config.insert("claims".to_string(), json!(minor));
             }
@@ -1441,18 +1460,34 @@ fn team(tool: &Tool, words: &[String], repo_given: bool) -> ExitCode {
             &[("expected", json!(team_verbs(tool)))],
             2,
         ),
-        Some("roster") if tool.flag("deepTree") => match words.get(2).map(String::as_str) {
-            None => tool.fail(
-                "group",
-                "COMMAND_REQUIRED",
-                "team roster needs a command",
-                Some("team roster"),
-                &[("expected", json!(["list"]))],
-                2,
-            ),
-            Some("list") => tool.success("team roster list", json!({"roster": []})),
-            Some(word) => tool.unknown_command(word, &["list"], Some("team roster")),
-        },
+        Some("roster") if tool.flag("deepTree") => {
+            let deeper = tool.flag("deeperTree");
+            let children: &[&str] = if deeper { &["item", "list"] } else { &["list"] };
+            match words.get(2).map(String::as_str) {
+                None => tool.fail(
+                    "group",
+                    "COMMAND_REQUIRED",
+                    "team roster needs a command",
+                    Some("team roster"),
+                    &[("expected", json!(children))],
+                    2,
+                ),
+                Some("list") => tool.success("team roster list", json!({"roster": []})),
+                Some("item") if deeper => match words.get(3).map(String::as_str) {
+                    None => tool.fail(
+                        "group",
+                        "COMMAND_REQUIRED",
+                        "team roster item needs a command",
+                        Some("team roster item"),
+                        &[("expected", json!(["list"]))],
+                        2,
+                    ),
+                    Some("list") => tool.success("team roster item list", json!({"roster": []})),
+                    Some(word) => tool.unknown_command(word, &["list"], Some("team roster item")),
+                },
+                Some(word) => tool.unknown_command(word, children, Some("team roster")),
+            }
+        }
         Some("add") if tool.flag("teamAddNoEnvelope") && tool.json => {
             println!("{}", json!({"ok": true, "data": {}}));
             ExitCode::SUCCESS

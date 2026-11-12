@@ -260,7 +260,11 @@ clap_builder 4.6.7, `src/util/any_value.rs:72`). Failing on an unknown custom pa
 `string` is how canon ended up with no option types at all.
 
 `repeatable` = `ArgAction::Append` or `Count`, or `get_num_args()` with `max_values() > 1`. `required` =
-`is_required_set()`.
+`is_required_set()`. `commaList` (spec 9.7.6, a tool that declares 1.6) = `get_value_delimiter() == Some(',')`; any
+other delimiter is refused by the projection, and `Described::new` refuses a comma list below 1.6. clap keeps empty
+pieces (`--tag a,,b` gives `""`), so a comma-list option also refuses the empty string in its value parser
+(`NonEmptyStringValueParser`, or a domain `minLength: 1`), as spec 9.7.6 requires. A tree's `pathShape` (spec 4.1.1) is
+`Described::path_shape`.
 
 ### 4.2 Constraints
 

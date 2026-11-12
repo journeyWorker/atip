@@ -464,7 +464,7 @@ fn relation_key(rule: &ConstraintDoc) -> String {
 
 // ----------------------------------------------------------------- document
 
-/// What a command document's declarations break of the rules a document alone decides (spec 10.13 rules 3, 4 and 13), in
+/// What a command document's declarations break of the rules a document alone decides (spec 10.13 rules 3, 4, 13 and 18), in
 /// a document that declares `minor` (which decides the pattern profile of Annex V2): every name names an operand or
 /// option; no relation is stated twice; `in` is absent on a switch and a count and holds valid values of the argument,
 /// inside its domain; every `code` is in `errors`; a validator reads named arguments, has a code in `errors`, a
@@ -505,6 +505,33 @@ pub fn document_problems(
         );
     }
     let mut problems = Vec::new();
+    // Annex S2 rule 18: a comma list (spec 9.7.6) is since 1.6, on a repeatable option of a single-word valueType, and no
+    // possible value contains the comma it is split on.
+    for option in options.iter().filter(|option| option.comma_list) {
+        let name = &option.name;
+        if !minor.at_least(crate::describe::COMMA_LIST_SINCE) {
+            problems.push(format!(
+                "`{name}`: a comma list is since 1.6, but the document declares {minor} (Annex S2 rule 16)"
+            ));
+        }
+        if !option.repeatable
+            || matches!(
+                option.value_type,
+                ValueType::Json | ValueType::Switch | ValueType::Count
+            )
+        {
+            problems.push(format!(
+                "`{name}`: a comma list is a repeatable string, integer, number, path or enum option (Annex S2 rule 18)"
+            ));
+        }
+        for value in option.possible_values.iter().flatten() {
+            if value.contains(',') {
+                problems.push(format!(
+                    "`{name}`: the possible value {value:?} contains `,`, which a comma list splits on (Annex S2 rule 18)"
+                ));
+            }
+        }
+    }
     let domained = options
         .iter()
         .map(|option| {
@@ -820,6 +847,7 @@ mod tests {
             possible_values: None,
             required: false,
             repeatable: false,
+            comma_list: false,
             default: json!(false),
             default_note: None,
             env: None,
@@ -861,5 +889,39 @@ mod tests {
             latest
         )
         .is_empty());
+    }
+
+    #[test]
+    fn atip_crate16_02_a_comma_list_is_a_repeatable_single_word_option_of_1_6() {
+        let list = |name: &str, value_type: ValueType, repeatable: bool| OptionDoc {
+            name: name.to_string(),
+            short: None,
+            value_name: Some("V".to_string()),
+            value_type,
+            possible_values: (value_type == ValueType::Enum)
+                .then(|| vec!["a".to_string(), "b,c".to_string()]),
+            required: false,
+            repeatable,
+            comma_list: true,
+            default: Value::Null,
+            default_note: None,
+            env: None,
+            flag_only: false,
+            domain: None,
+            help: "h".to_string(),
+        };
+        let errors = vec!["USAGE".to_string()];
+        let problems = |options: &[OptionDoc], minor| {
+            document_problems(options, &[], &[], &[], &errors, &[], minor)
+        };
+        assert!(problems(&[list("tag", ValueType::String, true)], crate::Minor::V1_6).is_empty());
+        let early = problems(&[list("tag", ValueType::String, true)], crate::Minor::V1_5);
+        assert!(early.iter().any(|p| p.contains("since 1.6")), "{early:?}");
+        for (value_type, repeatable) in [(ValueType::String, false), (ValueType::Json, true)] {
+            let found = problems(&[list("x", value_type, repeatable)], crate::Minor::V1_6);
+            assert!(found.iter().any(|p| p.contains("rule 18")), "{found:?}");
+        }
+        let comma = problems(&[list("role", ValueType::Enum, true)], crate::Minor::V1_6);
+        assert!(comma.iter().any(|p| p.contains("\"b,c\"")), "{comma:?}");
     }
 }

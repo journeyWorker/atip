@@ -75,6 +75,16 @@ pub(crate) struct ConstraintRun {
     pub labels: Vec<String>,
 }
 
+/// The three invocations of `L1.comma-list` for one comma-list option: `--x=v1,v2`, `--x=v1 --x=v2` and `--x=v1,`.
+#[derive(Debug, Clone)]
+pub(crate) struct CommaListRun {
+    pub command: String,
+    pub arg: String,
+    pub joined: usize,
+    pub repeated: usize,
+    pub empty: usize,
+}
+
 /// One value tried for one argument.
 #[derive(Debug, Clone)]
 pub(crate) struct DomainRun {
@@ -204,6 +214,9 @@ pub(crate) struct L1Run {
     pub constraints: Vec<ConstraintRun>,
     pub domains: Vec<DomainRun>,
     pub domain_notes: Vec<DomainNote>,
+    /// A claim of 1.6: the probes of `L1.comma-list`, and the options it could not build them for: command, option, why.
+    pub comma_lists: Vec<CommaListRun>,
+    pub comma_list_gaps: Vec<(String, String, String)>,
     pub numbers: Vec<NumberRun>,
     pub validators: Vec<ValidatorRun>,
     /// The pairs of faults `L1.check-order` runs (a claim of 1.2), and the commands with no passing invocation to build them from.
@@ -721,6 +734,9 @@ impl Run<'_> {
             let bases = self.bases(doc, &tool);
             self.plan_constraints(&mut run, doc, &bases)?;
             self.plan_domains(&mut run, doc, &bases)?;
+            if claim.at_least(Claim::V1_6) {
+                self.plan_comma_lists(&mut run, doc, &bases)?;
+            }
             self.plan_validators(&mut run, doc, &tool)?;
             if claim.at_least(Claim::V1_2) {
                 self.plan_order(&mut run, doc, &bases, &tool)?;
@@ -755,6 +771,106 @@ impl Run<'_> {
         }
         self.plan_nexts(&mut run)?;
         Ok(run)
+    }
+
+    /// The probes of `L1.comma-list` for each comma-list option of `doc` (spec 9.7.6): from a passing invocation that gives the option one
+    /// value `v1`, the option written `--x=v1,v2`, written `--x=v1 --x=v2`, and written `--x=v1,` (an empty piece). `v1` and `v2` are the
+    /// first two possible values of an enum, else the values the invocations of the fixture give the option, else one generated value twice.
+    fn plan_comma_lists(
+        &mut self,
+        run: &mut L1Run,
+        doc: &CommandDoc,
+        bases: &[Invocation],
+    ) -> Result<(), RunError> {
+        for arg in doc.options.iter().filter(|option| option.comma_list) {
+            if self.not_run(&doc.command) {
+                self.skip(
+                    "L1.comma-list",
+                    &doc.command,
+                    format!("{} (an invocation that would not end)", arg.spelling()),
+                );
+                continue;
+            }
+            let gap = |why: &str| (doc.command.clone(), arg.name.clone(), why.to_string());
+            let Some((first, second)) = Self::comma_values(bases, arg) else {
+                run.comma_list_gaps
+                    .push(gap("no valid value of the option could be found"));
+                continue;
+            };
+            let Some(carried) = Self::carrying(doc, bases, arg, &first) else {
+                run.comma_list_gaps.push(gap("no `ok` invocation of the fixture can carry the option and still satisfy the command's requirements and constraints"));
+                continue;
+            };
+            let mut joined = carried.clone();
+            invocation::set_option(&mut joined, &arg.name, Some(format!("{first},{second}")));
+            let mut repeated = carried.clone();
+            if let Some(at) = repeated
+                .items
+                .iter()
+                .position(|item| matches!(item, Item::Option { name, .. } if *name == arg.name))
+            {
+                repeated.items.insert(
+                    at + 1,
+                    Item::Option {
+                        name: arg.name.clone(),
+                        value: Some(second.clone()),
+                    },
+                );
+            }
+            let mut empty = carried.clone();
+            invocation::set_option(&mut empty, &arg.name, Some(format!("{first},")));
+            let joined = self.invoke(Call::new(invocation::render(&joined)))?;
+            let repeated = self.invoke(Call::new(invocation::render(&repeated)))?;
+            let empty = self.invoke(Call::new(invocation::render(&empty)))?;
+            run.comma_lists.push(CommaListRun {
+                command: doc.command.clone(),
+                arg: arg.name.clone(),
+                joined,
+                repeated,
+                empty,
+            });
+        }
+        Ok(())
+    }
+
+    /// The two values `L1.comma-list` gives `arg`; none contains a comma or is empty.
+    fn comma_values(bases: &[Invocation], arg: &Arg) -> Option<(String, String)> {
+        let fine = |word: &str| !word.is_empty() && !word.contains(',');
+        if arg.value_type == "enum" {
+            let mut values = arg.possible_values.iter().filter(|value| fine(value));
+            let first = values.next()?.clone();
+            let second = values.next().unwrap_or(&first).clone();
+            return Some((first, second));
+        }
+        let mut given: Vec<String> = Vec::new();
+        for item in bases.iter().flat_map(|base| &base.items) {
+            let Item::Option {
+                name,
+                value: Some(value),
+            } = item
+            else {
+                continue;
+            };
+            if *name != arg.name {
+                continue;
+            }
+            for piece in invocation::pieces(arg, value) {
+                if fine(piece)
+                    && invocation::value_problem(arg, &witness::typed(arg, piece)).is_none()
+                    && !given.iter().any(|known| known == piece)
+                {
+                    given.push(piece.to_string());
+                }
+            }
+        }
+        match given.as_slice() {
+            [] => {
+                let word = witness::generate(arg, &[]).filter(|word| fine(word))?;
+                Some((word.clone(), word))
+            }
+            [only] => Some((only.clone(), only.clone())),
+            [first, second, ..] => Some((first.clone(), second.clone())),
+        }
     }
 
     fn plan_constraints(
@@ -1088,16 +1204,32 @@ impl Run<'_> {
     /// A value for `option`: one a documented example gives it (a value the author wrote is a value the parser takes), else a generated one; never one of `avoid`.
     pub(crate) fn choose(doc: &CommandDoc, option: &Arg, avoid: &[Value]) -> Option<String> {
         let avoided: Vec<String> = avoid.iter().map(witness::word_of).collect();
-        let from_examples = doc.examples.iter().filter_map(|line| {
-            let words = invocation::split_line(line).ok()?;
-            let parsed = invocation::parse(doc, words.get(1..)?).ok()?;
-            parsed.items.iter().find_map(|item| match item {
-                Item::Option {
-                    name,
-                    value: Some(value),
-                } if *name == option.name => Some(value.clone()),
-                _ => None,
-            })
+        let from_examples = doc.examples.iter().flat_map(|line| -> Vec<String> {
+            let Some(words) = invocation::split_line(line).ok() else {
+                return Vec::new();
+            };
+            let Some(parsed) = words
+                .get(1..)
+                .and_then(|words| invocation::parse(doc, words).ok())
+            else {
+                return Vec::new();
+            };
+            parsed
+                .items
+                .iter()
+                .find_map(|item| match item {
+                    Item::Option {
+                        name,
+                        value: Some(value),
+                    } if *name == option.name => Some(
+                        invocation::pieces(option, value)
+                            .into_iter()
+                            .map(str::to_string)
+                            .collect(),
+                    ),
+                    _ => None,
+                })
+                .unwrap_or_default()
         });
         from_examples
             .filter(|word| !avoided.contains(word))
@@ -1623,7 +1755,13 @@ pub(crate) fn given_value(doc: &CommandDoc, invocation: &Invocation, arg: &Arg) 
         .items
         .iter()
         .find_map(|item| match item {
-            Item::Option { name, value } if arg.is_option && *name == arg.name => value.clone(),
+            Item::Option { name, value } if arg.is_option && *name == arg.name => {
+                value.as_deref().and_then(|value| {
+                    invocation::pieces(arg, value)
+                        .first()
+                        .map(|piece| (*piece).to_string())
+                })
+            }
             _ => None,
         })
         .or_else(|| {

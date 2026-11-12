@@ -35,7 +35,7 @@
 //!   without a table entry fails.
 //! - [`argv`]: the JSON-mode flag and the argv test that decides it.
 //! - [`envelope`]: a document as one compact line, and printing it.
-//! - [`minor`]: [`Minor`], the minors of atip/1 the crate knows (1.0 to 1.5), and
+//! - [`minor`]: [`Minor`], the minors of atip/1 the crate knows (1.0 to 1.6), and
 //!   [`CONTRACT_VERSION`], the newest one the crate implements. A tool's own
 //!   declaration of its minor is its own constant, not this one.
 //! - [`reserved`]: the table of the reserved error codes (name, exit,

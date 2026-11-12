@@ -235,9 +235,9 @@ pub fn standard_registry(with_reasons: bool) -> Value {
     rows
 }
 
-/// Whether a configuration's `claims` is 1.3 or 1.4: the minors whose code names follow `<SUBJECT>_<CONDITION>` (spec 7.2).
+/// Whether a configuration's `claims` is 1.3 or later: the minors whose code names follow `<SUBJECT>_<CONDITION>` (spec 7.2).
 pub fn claims_1_3_or_later(claims: &Value) -> bool {
-    matches!(claims.as_str(), Some("1.3" | "1.4"))
+    matches!(claims.as_str(), Some("1.3" | "1.4" | "1.5" | "1.6"))
 }
 
 /// The registry of a conforming fake of the minor `claims` (`Value::Null` for the default): as [`standard_registry`], with `STATE_FAILED`

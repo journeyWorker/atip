@@ -113,6 +113,7 @@ fn rejected_by(document: &Value) -> Vec<String> {
                 let tree = Tree {
                     level: "L1".to_string(),
                     commands: group.commands.clone(),
+                    path_shape: None,
                 };
                 let _ = &tree;
                 let paths: Vec<(&str, &[String])> =
@@ -121,6 +122,7 @@ fn rejected_by(document: &Value) -> Vec<String> {
                 let own = Tree {
                     level: "L1".to_string(),
                     commands: group.commands.clone(),
+                    path_shape: None,
                 };
                 add("L1.walk", group_findings(&group, &own));
             }

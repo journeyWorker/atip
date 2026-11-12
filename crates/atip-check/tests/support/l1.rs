@@ -497,10 +497,41 @@ impl Harness {
                 fixture["warnings"] = json!(warnings);
             }
         }
-        fixture["commands"] = l1_commands(
+        let mut commands = l1_commands(
             is_1_1,
-            matches!(config["claims"].as_str(), Some("1.2" | "1.3" | "1.4")),
+            matches!(
+                config["claims"].as_str(),
+                Some("1.2" | "1.3" | "1.4" | "1.5" | "1.6")
+            ),
         );
+        if config["claims"] == "1.6" {
+            // Two different tags, so that a comma list of two values differs from one value written twice.
+            commands["member search"]["ok"][0] = json!([
+                "member",
+                "search",
+                "cy",
+                "--tag",
+                "lead",
+                "--tag",
+                "core",
+                "--filter",
+                "{\"team\":\"core\"}",
+                "--min-score",
+                "10",
+                "--age",
+                "30",
+                "--step",
+                "10",
+                "--since",
+                "2026-02-01",
+                "--sort",
+                "name",
+                "--exact",
+                "--verbose",
+                "--json"
+            ]);
+        }
+        fixture["commands"] = commands;
         fixture
     }
 
@@ -854,7 +885,10 @@ pub fn l1_cases() -> Vec<Case> {
             patch(&[("status", vec![remove("/options/name=json/flagOnly")])]),
         ),
         // depth (SHOULD)
-        case("depth/at-most-two-words", json!({"deepTree": true})),
+        case(
+            "depth/within-path-shape",
+            json!({"deepTree": true, "deeperTree": true}),
+        ),
         // one-meaning
         case(
             "one-meaning/value-name",

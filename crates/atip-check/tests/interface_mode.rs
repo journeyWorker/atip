@@ -371,7 +371,7 @@ fn atip_check_deep_14_the_interface_checks_of_l1_fail_on_their_seeded_violations
     for condition in [
         "tree/valid",
         "tree/groups-first",
-        "depth/at-most-two-words",
+        "depth/within-path-shape",
         "help-line/mentions-schema",
         "registry/reserved-exit",
         "warnings/meaning-agrees",
@@ -521,8 +521,8 @@ fn atip_check_deep_18_every_check_is_interface_or_deep_exactly_once_and_the_chec
     );
     assert_eq!(
         every.len(),
-        28 + 32 + 3 + 30,
-        "the 28 of L0, the 31 of L1 and L1.check-order, the 3 rows of 1.3 and 1.4, the 30 of L2"
+        28 + 32 + 3 + 1 + 30,
+        "the 28 of L0, the 31 of L1 and L1.check-order, the 3 rows of 1.3 and 1.4, L1.comma-list of 1.6, the 30 of L2"
     );
     let interface: Vec<&str> = every
         .iter()
@@ -539,7 +539,7 @@ fn atip_check_deep_18_every_check_is_interface_or_deep_exactly_once_and_the_chec
         every.len(),
         "every check has one mode"
     );
-    assert_eq!((interface.len(), deep.len()), (32 + 3, 58));
+    assert_eq!((interface.len(), deep.len()), (32 + 3, 59));
     // The three rows of 1.3 and 1.4 are interface checks, with the deep parts above.
     for (id, part) in DEEP_PARTS_OF_1_3_AND_1_4 {
         assert_eq!(mode_of(id), Mode::Interface, "{id} is an interface check");

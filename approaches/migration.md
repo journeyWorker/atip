@@ -3,7 +3,7 @@
 Not normative. How an existing command-line tool moves to ATIP, level by level, with canon 0.31.0 and lute 0.52.0
 (both Rust, clap) as worked examples. Their status below is from their source and their read-only `schema`
 output; anything not established that way is marked *unmeasured*. Section numbers ("spec 10.7") refer to
-`spec/atip-1.md`, version 1.5.0.
+`spec/atip-1.md`, version 1.6.0.
 
 The contract is not softened to ease adoption; where a rule costs a tool real work, the cost is recorded here (§4).
 
@@ -430,3 +430,25 @@ pattern, at 1.5 too. Rust `regex` reads the pattern as published, so the parser 
 only, spelled exactly so, and compiles patterns with ECMAScript's `u` flag or Rust `regex` as before: both read the
 property natively. A caller written for 1.4 that checks patterns against its release's profile may refuse such a
 pattern; one that only compiles them reads it correctly.
+
+## 11. From 1.5 to 1.6
+
+For the author of a tool that conforms to 1.5, and for the author of a caller. 1.6.0 adds two optional members
+(spec 15.10; the reasons are Appendix A D42-D44), withdraws the two-word SHOULD and scopes one meaning per option
+name to a group. Nothing changes shape and no
+section was renumbered.
+
+**Nothing is forced.** A 1.5 tool stays conforming as a 1.5 tool, held to the 1.5.0 text (spec 15.7). Declaring 1.6
+(the contract constant and the fixture's `contractVersion`) lets it:
+
+- mark a repeatable option `commaList: true` (spec 9.7.6), so that `--tag a,b` is `--tag a --tag b`; the tool's parser
+  splits on `,` (clap: `value_delimiter(',')`), refuses an empty piece, and keeps `--input` arrays as they are;
+- declare `pathShape` in its tree (spec 4.1.1), one label per word position; a path SHOULD fit it, or three words
+  without one. The checker's advisory L1.depth reads it.
+- give an option name different meanings in different groups (Annex S1 item 4), each with its own value name; a shared
+  tree option keeps one meaning.
+
+**A caller.** A caller of 1.6 splits the argv values of a `commaList` option on `,` when it reads an example, `next`
+or guide line, and may write either form; a value with a comma goes in `--input`. It may show `pathShape` to an agent
+choosing words. A caller of 1.5 ignores both members and keeps working: it writes one value per occurrence.
+

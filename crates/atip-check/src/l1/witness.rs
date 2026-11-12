@@ -847,6 +847,11 @@ pub fn with_argument(
     arg: &Arg,
     word: &str,
 ) -> Option<Invocation> {
+    // A comma list splits every argv word (spec 9.7.6): a probe never puts a comma, or the empty word that has an empty piece, into one;
+    // `L1.comma-list` probes that on its own.
+    if arg.comma_list && (word.contains(',') || word.is_empty()) {
+        return None;
+    }
     let mut changed = invocation.clone();
     if arg.is_option {
         if arg.value_type == "count" {
@@ -917,5 +922,31 @@ mod tests {
         assert_eq!(by_word("100"), Some(Expect::Accepted), "maximum");
         assert_eq!(by_word("101"), Some(Expect::Refused), "maximum + 1");
         assert!(!plan.needs_rejects);
+    }
+
+    #[test]
+    fn atip_check16_witness_a_generated_probe_never_puts_a_comma_or_an_empty_word_into_a_comma_list(
+    ) {
+        use crate::l1::invocation::{parse, render};
+
+        let doc = doc_with(
+            json!({"name": "tag", "valueType": "string", "required": false, "repeatable": true, "commaList": true, "default": null, "help": "h"}),
+        );
+        let base = parse(&doc, &["a".to_string(), "--tag=x".to_string()]).expect("parses");
+        let arg = &doc.options[0];
+        assert!(arg.comma_list);
+        for word in ["a,b", ",", "x,", ""] {
+            assert!(
+                super::with_argument(&doc, &base, arg, word).is_none(),
+                "{word:?}"
+            );
+        }
+        let changed = super::with_argument(&doc, &base, arg, "y").expect("one value");
+        assert_eq!(render(&changed), ["a", "--tag=y"]);
+        // Without `commaList` the same words are values.
+        let plain = doc_with(
+            json!({"name": "tag", "valueType": "string", "required": false, "repeatable": true, "default": null, "help": "h"}),
+        );
+        assert!(super::with_argument(&plain, &base, &plain.options[0], "a,b").is_some());
     }
 }

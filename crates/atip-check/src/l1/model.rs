@@ -70,6 +70,8 @@ pub struct Arg {
     pub required: bool,
     /// An option given once per value; `count` is repeatable too, with a single integer value.
     pub repeatable: bool,
+    /// A repeatable option whose every argv value is a comma-separated list (spec 9.7.6, since 1.6); always `false` on an operand.
+    pub comma_list: bool,
     /// An operand that takes the rest (spec 10.6); always `false` on an option.
     pub variadic: bool,
     /// The typed default, `Value::Null` when there is none.
@@ -94,6 +96,7 @@ impl Arg {
             value_type: text(value, "valueType"),
             required: flag(value, "required"),
             repeatable: is_option && flag(value, "repeatable"),
+            comma_list: is_option && flag(value, "commaList"),
             variadic: !is_option && flag(value, "variadic"),
             default: value.get("default").cloned().unwrap_or(Value::Null),
             possible_values: words(value, "possibleValues"),
@@ -437,12 +440,24 @@ fn path_of(command: &str) -> Vec<String> {
 pub struct Tree {
     pub level: String,
     pub commands: Vec<TreeEntry>,
+    /// The labels of `pathShape` (since 1.6), one per word position; its length is the tool's deepest path. `None` when the tree declares none.
+    pub path_shape: Option<Vec<String>>,
 }
 
 impl Tree {
     pub fn parse(data: &Value) -> Option<Self> {
         (data.get("kind").and_then(Value::as_str) == Some("tree")).then(|| Self {
             level: text(data, "level"),
+            path_shape: data
+                .get("pathShape")
+                .and_then(Value::as_array)
+                .map(|labels| {
+                    labels
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                }),
             commands: data
                 .get("commands")
                 .and_then(Value::as_array)

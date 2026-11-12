@@ -275,6 +275,9 @@ pub struct OptionDoc {
     pub possible_values: Option<Vec<String>>,
     pub required: bool,
     pub repeatable: bool,
+    /// True when one argv value of this repeatable option is a comma-separated list, split on `,` (spec 9.7.6; since 1.6).
+    #[serde(skip_serializing_if = "is_false")]
+    pub comma_list: bool,
     /// The typed value used when the option is absent; `null` when there is none or it is computed.
     #[schemars(with = "DefaultValue")]
     pub default: Value,

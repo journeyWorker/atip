@@ -228,11 +228,11 @@ pub fn deep_part(id: &str) -> &'static str {
 }
 
 /// The ids of every check of every level of every claim (the union of the tables, in table order): the 28 of L0, the 31 of L1, `L1.check-order` (from 1.2),
-/// `L1.code-names` (from 1.3), `L1.schemas` and `L1.help-json` (1.4), the L2 ones and `L2.effects`.
+/// `L1.code-names` (from 1.3), `L1.schemas` and `L1.help-json` (1.4), `L1.comma-list` (from 1.6), the L2 ones and `L2.effects`.
 pub fn every_id() -> Vec<&'static str> {
     TABLE
         .iter()
-        .chain(l1::table(Claim::V1_4))
+        .chain(l1::table(Claim::V1_6))
         .chain(l2::table())
         .map(|entry| entry.id)
         .collect()
@@ -1014,7 +1014,10 @@ pub(crate) fn run_checks(
                 cut: finding.cut,
                 notes,
                 ran,
-                unlisted: if matches!(entry.id, "L1.constraints" | "L1.domains" | "L1.validators") {
+                unlisted: if matches!(
+                    entry.id,
+                    "L1.constraints" | "L1.domains" | "L1.validators" | "L1.comma-list"
+                ) {
                     l1.as_ref()
                         .map(|l1| l1.unprobed_writes.clone())
                         .unwrap_or_default()
@@ -1668,7 +1671,7 @@ impl<'a> Judge<'a> {
     fn check(&'a self, id: &'static str) -> Conditions<'a> {
         let entry = TABLE
             .iter()
-            .chain(l1::table(Claim::V1_4))
+            .chain(l1::table(Claim::V1_6))
             .chain(l2::table())
             .find(|entry| entry.id == id)
             .unwrap_or_else(|| panic!("{id} is not in a table"));
@@ -3855,7 +3858,11 @@ mod tests {
             at(&at_1_4, "L1.check-order"),
             at(&at_1_4, "L1.validators") + 1
         );
-        assert_eq!(super::every_id().len(), 28 + 35 + 30);
+        let at_1_6 = ids_of(Claim::V1_6);
+        assert_eq!(at_1_6.len(), 36);
+        assert_eq!(at(&at_1_6, "L1.comma-list"), at(&at_1_6, "L1.patterns") + 1);
+        assert!(!ids_of(Claim::V1_5).contains(&"L1.comma-list"));
+        assert_eq!(super::every_id().len(), 28 + 36 + 30);
     }
 
     #[test]
@@ -3877,7 +3884,7 @@ mod tests {
         let entry = |id: &str| {
             TABLE
                 .iter()
-                .chain(super::l1::table(Claim::V1_4))
+                .chain(super::l1::table(Claim::V1_6))
                 .chain(super::l2::table())
                 .find(|entry| entry.id == id)
                 .expect(id)

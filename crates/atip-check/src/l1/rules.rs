@@ -246,7 +246,8 @@ fn value_issues(arg: &Arg, value: &Value) -> Vec<String> {
 
 /// `L1.walk`, for a command document: spec 10.13 rules 1-11 and 13 (rule 12 is `L1.examples`).
 /// The conditions are `rule-1`, `rule-2-refs`, `rule-2-compile`, `rule-2-outputs`, `rule-3-defaults`, `rule-3-domain-profile`, `rule-3-domain-pattern`,
-/// `rule-3-domain-compile`, `rule-4-names`, `rule-4-codes`, `rule-4-relation-once`, `rule-5`, `rule-6`, `rule-7`, `rule-9`, `rule-10`, `rule-11`, `rule-13`
+/// `rule-3-domain-compile`, `rule-4-names`, `rule-4-codes`, `rule-4-relation-once`, `rule-5`, `rule-6`, `rule-7`, `rule-9`, `rule-10`, `rule-11`, `rule-13`,
+/// `rule-18` (only when an option has `commaList`)
 /// (rule 8 is `L1.grammar`'s).
 /// `exit_of` gives the registered exit of a code; `claim` decides whether a declared map is a cut node (rule 16).
 ///
@@ -313,7 +314,44 @@ pub fn command_findings(
     if !doc.validators.is_empty() {
         findings.push(("rule-13", rule_13(doc, tool, exit_of, &domains)));
     }
+    if doc.options.iter().any(|option| option.comma_list) {
+        findings.push(("rule-18", rule_18(doc)));
+    }
     findings
+}
+
+/// Rule 18 (spec 9.7.6): an option with `commaList` is repeatable, of valueType string, integer, number, path or enum, and none of its
+/// `possibleValues` contains a comma (it could not be told from two values).
+fn rule_18(doc: &CommandDoc) -> Option<String> {
+    let mut problems = Vec::new();
+    for option in doc.options.iter().filter(|option| option.comma_list) {
+        if !option.repeatable {
+            problems.push(format!(
+                "--{} has commaList but is not repeatable",
+                option.name
+            ));
+        }
+        if !matches!(
+            option.value_type.as_str(),
+            "string" | "integer" | "number" | "path" | "enum"
+        ) {
+            problems.push(format!(
+                "--{} has commaList but is of valueType {}",
+                option.name, option.value_type
+            ));
+        }
+        for value in option
+            .possible_values
+            .iter()
+            .filter(|value| value.contains(','))
+        {
+            problems.push(format!(
+                "--{} has commaList but its possible value {value:?} contains a comma",
+                option.name
+            ));
+        }
+    }
+    finding(doc, "18", &problems)
 }
 
 /// Rule 1: `command` is `path` joined by one space.
@@ -1830,5 +1868,54 @@ mod tests {
         let findings = group_findings(&group, &tree);
         assert!(problem_of(&findings, "group-children")
             .contains("finding purge is not a child of finding in the tree"));
+    }
+
+    #[test]
+    fn atip_check16_rule_18_a_comma_list_is_repeatable_of_a_listable_type_and_its_values_hold_no_comma(
+    ) {
+        let command = |option: Value| {
+            CommandDoc::parse(&json!({
+                "kind": "command", "command": "select", "path": ["select"], "effect": "read",
+                "operands": [], "options": [option], "errors": [], "outputs": [], "examples": [], "schemas": {}
+            }))
+            .expect("a command")
+        };
+        let judged = |doc: &CommandDoc| {
+            command_findings(doc, "t", Claim::V1_6, &|_| None)
+                .into_iter()
+                .find(|(condition, _)| *condition == "rule-18")
+        };
+        let plain = command(
+            json!({"name": "x", "valueType": "string", "repeatable": true, "default": null}),
+        );
+        assert!(
+            judged(&plain).is_none(),
+            "nothing to judge without commaList"
+        );
+        let good = command(
+            json!({"name": "x", "valueType": "enum", "possibleValues": ["a", "b"], "repeatable": true, "commaList": true, "default": null}),
+        );
+        assert_eq!(judged(&good), Some(("rule-18", None)));
+        for (option, why) in [
+            (
+                json!({"name": "x", "valueType": "string", "repeatable": false, "commaList": true, "default": null}),
+                "not repeatable",
+            ),
+            (
+                json!({"name": "x", "valueType": "json", "repeatable": true, "commaList": true, "default": null}),
+                "valueType json",
+            ),
+            (
+                json!({"name": "x", "valueType": "enum", "possibleValues": ["a,b", "c"], "repeatable": true, "commaList": true, "default": null}),
+                "contains a comma",
+            ),
+        ] {
+            let (_, problem) = judged(&command(option)).expect("judged");
+            let problem = problem.expect("a problem");
+            assert!(
+                problem.contains(why) && problem.contains("rule 18"),
+                "{problem}"
+            );
+        }
     }
 }

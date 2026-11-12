@@ -282,13 +282,32 @@ pub fn read_words(tool: &Tool, command: &Command, args: &[String]) -> Result<Par
                 arg.field(),
             ));
         };
-        let value = typed(tool, arg, &text)?;
-        let entry = parsed.given.entry(arg.name).or_default();
-        if arg.repeatable {
-            entry.push(value);
+        // A comma list (spec 9.7.6): every argv word is split on `,` into values in order, each typed and checked alone, and an empty piece
+        // refuses the argument. Seeded: `commaListUnsplit` reads the word as one value; `commaListEmptyAccepted` drops an empty piece.
+        let pieces: Vec<&str> = if arg.comma_list && !tool.flag("commaListUnsplit") {
+            text.split(',').collect()
         } else {
-            // A repeated single-valued option: the last one wins.
-            *entry = vec![value];
+            vec![text.as_str()]
+        };
+        for piece in pieces {
+            if piece.is_empty() && arg.comma_list {
+                if tool.flag("commaListEmptyAccepted") {
+                    continue;
+                }
+                return Err(usage(
+                    "parse",
+                    format!("{written} has an empty piece: a comma list has no empty value"),
+                    arg.field(),
+                ));
+            }
+            let value = typed(tool, arg, piece)?;
+            let entry = parsed.given.entry(arg.name).or_default();
+            if arg.repeatable {
+                entry.push(value);
+            } else {
+                // A repeated single-valued option: the last one wins.
+                *entry = vec![value];
+            }
         }
     }
     bind_operands(tool, command, &operands, &mut parsed)?;

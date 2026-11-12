@@ -29,6 +29,8 @@ pub struct Arg {
     pub flag_only: bool,
     /// The variable that gives the option its value when argv does not (spec 10.7.3).
     pub env: Option<&'static str>,
+    /// A repeatable option whose every argv value is a comma-separated list (since 1.6).
+    pub comma_list: bool,
     pub help: &'static str,
 }
 
@@ -53,6 +55,7 @@ impl Arg {
             domain: None,
             flag_only: false,
             env: None,
+            comma_list: false,
             help,
         }
     }
@@ -113,6 +116,12 @@ impl Arg {
     /// The environment variable that gives the option its value when argv gives none.
     pub fn env(mut self, name: &'static str) -> Self {
         self.env = Some(name);
+        self
+    }
+
+    /// The option is a comma list (spec 9.7.6): every argv value is split on `,`.
+    pub fn comma_list(mut self) -> Self {
+        self.comma_list = true;
         self
     }
 
@@ -496,10 +505,14 @@ pub struct Shape {
     pub serve_without_note: bool,
     /// Whether the tree has a path of three words (`team roster list`).
     pub deep: bool,
-    /// The `schemaVersion` of a `schema` answer: the claimed minor, `1.0` to `1.4`.
+    /// Seeded: with `deep`, the tree also has a path of four words (`team roster item list`).
+    pub deeper: bool,
+    /// The `schemaVersion` of a `schema` answer: the claimed minor, `1.0` to `1.6`.
     pub schema_version: &'static str,
     /// Whether the tool claims 1.4 (`schema <command> --schemas`).
     pub is_1_4: bool,
+    /// Whether the tool claims 1.6 or later: `member search` reads `--tag` as a comma list.
+    pub is_1_6: bool,
 }
 
 pub fn groups(shape: Shape) -> Vec<Group> {
@@ -533,6 +546,12 @@ pub fn groups(shape: Shape) -> Vec<Group> {
         groups.push(Group {
             id: "team roster",
             summary: "Read the roster of a team",
+        });
+    }
+    if shape.deep && shape.deeper {
+        groups.push(Group {
+            id: "team roster item",
+            summary: "Read the items of the roster of a team",
         });
     }
     groups
@@ -740,7 +759,16 @@ fn member_list(shape: Shape) -> Command {
     command
 }
 
-fn member_search() -> Command {
+fn member_search(comma_list: bool) -> Command {
+    let tag = Arg::option(
+        "tag",
+        "string",
+        "Only members with this tag; repeat for several",
+    )
+    .value("TAG")
+    .repeatable()
+    .domain(json!({"pattern": TAG_PATTERN}));
+    let tag = if comma_list { tag.comma_list() } else { tag };
     Command::new("member search", "Search the members by name, tag and age")
         .operand(
             Arg::operand("query", "string", "Text the member's name contains")
@@ -748,10 +776,7 @@ fn member_search() -> Command {
                 .domain(json!({"minLength": 2, "maxLength": 40})),
         )
         .options(vec![
-            Arg::option("tag", "string", "Only members with this tag; repeat for several")
-                .value("TAG")
-                .repeatable()
-                .domain(json!({"pattern": TAG_PATTERN})),
+            tag,
             Arg::option("filter", "json", "A filter document: {\"team\": <text>, \"min\": <integer>}")
                 .value("JSON")
                 .domain(json!({
@@ -1100,7 +1125,7 @@ pub fn commands(shape: Shape, schema_offered: bool) -> Vec<Command> {
             .examples(&["{tool} init --json"]),
         state_read("items", "Count the items", "ItemsReport").examples(&["{tool} items --json"]),
         member_list(shape),
-        member_search(),
+        member_search(shape.is_1_6),
         member_tag(shape.l2 && shape.batch, shape.tag_flag_only_rule),
         Command::new("reject", "Send a request the backend always rejects")
             .writes("replay-safe")
@@ -1150,6 +1175,26 @@ pub fn commands(shape: Shape, schema_offered: bool) -> Vec<Command> {
                 }),
             )
             .examples(&["{tool} team roster list --json"]),
+        );
+    }
+    if shape.deep && shape.deeper {
+        commands.push(
+            Command::new(
+                "team roster item list",
+                "List the items of the roster of a team",
+            )
+            .options(Vec::new())
+            .errors(&["USAGE"])
+            .output(
+                "RosterItemReport",
+                json!({
+                    "type": "object",
+                    "required": ["roster"],
+                    "properties": {"roster": {"type": "array", "items": {"type": "string"}}},
+                    "additionalProperties": false
+                }),
+            )
+            .examples(&["{tool} team roster item list --json"]),
         );
     }
     if shape.l2 {

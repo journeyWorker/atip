@@ -7,8 +7,9 @@
 //! check validates against, and judge the document as it was printed (`CommandDoc::raw` for a command).
 //!
 //! Each function returns [`Findings`]: for a claim of 1.4 or later the conditions that judge the 1.4 form, for an earlier
-//! claim the one condition `minor-form`. The names of a command's `options` are read by [`super::view::command_view`],
-//! which keeps what it found in `CommandDoc::v14`; the condition `option-names` reports it.
+//! claim the one condition `minor-form`. From 1.4 `minor-form` is the last condition too: the members the schema marks `x-atip-since` a
+//! minor later than the claim (`commaList`, `pathShape`: since 1.6) are rule 16's, whichever the claim. The names of a command's `options` are
+//! read by [`super::view::command_view`], which keeps what it found in `CommandDoc::v14`; the condition `option-names` reports it.
 
 use std::sync::LazyLock;
 
@@ -122,7 +123,7 @@ fn joined(problems: &[String]) -> Option<String> {
 /// its default, each defined once); an earlier claim has `minor-form`.
 pub fn tree_form_findings(data: &Value, claim: Claim) -> Findings {
     if !claim.declares_1_4() {
-        return vec![("minor-form", joined(&legacy_problems(data)))];
+        return vec![("minor-form", joined(&legacy_problems(data, claim)))];
     }
     let mut form = Form::default();
     form.entries(data.get("commands").unwrap_or(&Value::Null), "tree ");
@@ -158,6 +159,10 @@ pub fn tree_form_findings(data: &Value, claim: Claim) -> Findings {
             joined(&[form.retired, form.defaults].concat()),
         ),
         ("options-form", joined(&problems)),
+        (
+            "minor-form",
+            joined(&later_problems(data, minor_of(claim), None)),
+        ),
     ]
 }
 
@@ -165,7 +170,7 @@ pub fn tree_form_findings(data: &Value, claim: Claim) -> Findings {
 /// member at its default); an earlier claim has `minor-form`.
 pub fn group_form_findings(data: &Value, claim: Claim) -> Findings {
     if !claim.declares_1_4() {
-        return vec![("minor-form", joined(&legacy_problems(data)))];
+        return vec![("minor-form", joined(&legacy_problems(data, claim)))];
     }
     let mut form = Form::default();
     let command = data
@@ -190,7 +195,7 @@ pub fn group_form_findings(data: &Value, claim: Claim) -> Findings {
 /// `minor-form`. `doc` is what [`super::view::command_view`] built for a 1.4 claim, or `CommandDoc::parse` before.
 pub fn command_form_findings(doc: &CommandDoc, claim: Claim) -> Findings {
     if !claim.declares_1_4() {
-        return vec![("minor-form", joined(&legacy_problems(&doc.raw)))];
+        return vec![("minor-form", joined(&legacy_problems(&doc.raw, claim)))];
     }
     let mut form = Form::default();
     let raw = &doc.raw;
@@ -272,7 +277,70 @@ pub fn command_form_findings(doc: &CommandDoc, claim: Claim) -> Findings {
         ("no-retired-members", joined(&form.retired)),
         ("no-default-members", joined(&form.defaults)),
         ("option-names", joined(&names)),
+        (
+            "minor-form",
+            joined(&later_problems(raw, minor_of(claim), None)),
+        ),
     ]
+}
+
+fn minor_of(claim: Claim) -> atip::Minor {
+    atip::Minor::parse(claim.as_str()).expect("a claim names a minor the crate knows")
+}
+
+/// The members of `node`, an object of the definition `def`, that the schema marks `x-atip-since` a minor later than `minor`.
+fn later_members(def: &str, node: &Value, minor: atip::Minor) -> Vec<(String, atip::Minor)> {
+    let (Some(known), Some(object)) = (members(def), node.as_object()) else {
+        return Vec::new();
+    };
+    object
+        .keys()
+        .filter_map(|key| {
+            let since = known.get(key)?.get("x-atip-since")?.as_str()?;
+            let since = atip::Minor::parse(since).ok()?;
+            (!minor.at_least(since)).then(|| (key.clone(), since))
+        })
+        .collect()
+}
+
+/// What a tree or command document of `minor` carries that is since a later minor (Annex S2 rule 16, `x-atip-since`): the members of the
+/// tree or command and of its options. With `after`, only those since a minor later than it (the earlier ones are named by the caller).
+fn later_problems(data: &Value, minor: atip::Minor, after: Option<atip::Minor>) -> Vec<String> {
+    let kind = data.get("kind").and_then(Value::as_str);
+    let command = data
+        .get("command")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let mut found: Vec<String> = Vec::new();
+    let mut look = |def: &str, node: &Value, at: &str| {
+        for (key, since) in later_members(def, node, minor) {
+            if after.is_none_or(|after| since.at_least(after) && !after.at_least(since)) {
+                found.push(format!(
+                    "{at}: {key} is since {since}, but the document declares {minor} (Annex S2 rule 16)"
+                ));
+            }
+        }
+    };
+    let (def, owner) = match kind {
+        Some("tree") => ("tree", "tree".to_string()),
+        Some("command") => ("command", command.to_string()),
+        _ => return found,
+    };
+    look(def, data, &owner);
+    for option in data
+        .get("options")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|option| option.is_object())
+    {
+        let name = option
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        look("option", option, &format!("{owner} option {name}"));
+    }
+    found
 }
 
 /// `L1.walk` (the tree's options): every option the tree defines is named by at least one command (Annex S2 rule 17).
@@ -324,7 +392,8 @@ const LEGACY_REQUIRED: [(&str, &[&str]); 8] = [
 ];
 
 /// What a tree, group or command document of a minor below 1.4 lacks that it carried before 1.4, or carries that is since 1.4.
-fn legacy_problems(data: &Value) -> Vec<String> {
+fn legacy_problems(data: &Value, claim: Claim) -> Vec<String> {
+    let minor = minor_of(claim);
     let mut problems = Vec::new();
     let mut need = |def: &str, node: &Value, at: &str| {
         let required = LEGACY_REQUIRED
@@ -434,6 +503,7 @@ fn legacy_problems(data: &Value) -> Vec<String> {
             "{what} is since 1.4, but the document declares an earlier minor (Annex S2 rule 16)"
         )
     }));
+    problems.extend(later_problems(data, minor, Some(atip::Minor::V1_4)));
     problems
 }
 
@@ -610,5 +680,47 @@ mod tests {
             tree_options_named_findings(&json!({"kind": "tree", "commands": []}), &[&view])
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn atip_check16_01_a_document_below_1_6_carries_no_comma_list_and_no_path_shape() {
+        let command = json!({
+            "kind": "command", "command": "show", "path": ["show"], "summary": "s", "effect": "read",
+            "operands": [], "errors": [], "schemas": {},
+            "options": [{"name": "tag", "valueType": "string", "valueName": "TAG", "required": false, "repeatable": true, "default": null, "commaList": true, "help": "h"}]
+        });
+        let doc = CommandDoc::parse(&command).expect("a command");
+        for claim in [Claim::V1_3, Claim::V1_4, Claim::V1_5, Claim::V1_6] {
+            let findings = command_form_findings(&doc, claim);
+            let failed = failing(&findings);
+            if claim == Claim::V1_6 {
+                assert!(!failed.contains(&"minor-form"), "{claim:?}: {failed:?}");
+            } else {
+                assert!(failed.contains(&"minor-form"), "{claim:?}: {failed:?}");
+                let problem = findings
+                    .iter()
+                    .find_map(|(id, problem)| (*id == "minor-form").then_some(problem))
+                    .and_then(Option::as_deref)
+                    .expect("a problem");
+                assert!(
+                    problem.contains("commaList is since 1.6") && problem.contains("rule 16"),
+                    "{problem}"
+                );
+            }
+        }
+        let tree = json!({
+            "kind": "tree", "level": "L1", "pathShape": ["noun", "verb"],
+            "commands": [{"command": "show", "summary": "s", "effect": "read"}]
+        });
+        assert!(failing(&tree_form_findings(&tree, Claim::V1_5)).contains(&"minor-form"));
+        assert!(!failing(&tree_form_findings(&tree, Claim::V1_6)).contains(&"minor-form"));
+        let mut shared = tree.clone();
+        shared["options"] =
+            json!([{"name": "tag", "repeatable": true, "commaList": true, "help": "h"}]);
+        shared.as_object_mut().expect("object").remove("pathShape");
+        assert!(failing(&tree_form_findings(&shared, Claim::V1_5)).contains(&"minor-form"));
+        assert!(failing(&tree_form_findings(&shared, Claim::V1_6)).is_empty());
+        // Below 1.4 the same members are named too, once.
+        assert!(failing(&tree_form_findings(&tree, Claim::V1_3)).contains(&"minor-form"));
     }
 }

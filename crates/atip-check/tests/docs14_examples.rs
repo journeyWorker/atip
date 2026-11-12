@@ -1,4 +1,5 @@
-//! The documents of atip/1 1.3 to 1.5 (approaches/checker.md 6 and 7.2) as input of the pure judging functions of the checker.
+//! The documents of atip/1 1.3 to 1.6 (approaches/checker.md 6 and 7.2) as input of the pure judging functions of the checker. Acme's `member select` and
+//! `deploy history` declare 1.6 (comma lists, Annex S1 item 4 per group), beside the 1.4 tree.
 //!
 //! The repository's own `examples/` (read from `../../examples`, not the pinned copies of `tests/fixtures/`, which hold 1.0-1.2) are the
 //! subject: acme declares 1.4 (its `member find`, which uses `\p{White_Space}`, 1.5) and holds every condition of the rows `L1.tree`,
@@ -16,8 +17,8 @@ use serde_json::Value;
 
 use atip_check::checks::documents::{
     code_names_findings, emitted_warnings_findings, examples_findings, grammar_findings,
-    pattern_findings, registry_findings, reserved_applicable_findings, schema_doc_problems,
-    schemas_answer_findings, warnings_findings, Finding,
+    one_meaning_findings, pattern_findings, registry_findings, reserved_applicable_findings,
+    schema_doc_problems, schemas_answer_findings, warnings_findings, Finding,
 };
 use atip_check::checks::rules::{compact_problem, contract_version_findings, emitted};
 use atip_check::claim::Claim;
@@ -343,7 +344,7 @@ fn atip_check14_22_every_acme_document_that_declares_1_4_is_compact() {
             let Ok(document) = serde_json::from_str::<Value>(line.trim_end()) else {
                 continue;
             };
-            // The caller examples are stated at a later minor (1.6) the checker does not know; the others declare the minor they print.
+            // The caller examples are stated at a later minor (1.7) the checker does not know; the others declare the minor they print.
             let declares = document
                 .pointer("/meta/contractVersion")
                 .or_else(|| document.get("contractVersion"))
@@ -400,6 +401,12 @@ fn atip_check14_23_a_1_3_acme_document_keeps_the_members_a_1_4_one_leaves_out() 
 enum Judge {
     /// `pattern_findings` over the view, the claim the file declares.
     Patterns,
+    /// `examples_findings` over the view, the claim the file declares.
+    Examples,
+    /// The self-description schema: a document it refuses breaks `schema`.
+    SchemaDoc,
+    /// `one_meaning_findings` over the views of acme's commands, this document in place of the valid one of the same command, at the claim it declares.
+    OneMeaning,
     /// `command_form_findings` over the document (its view for 1.4), the claim the file declares.
     CommandForm,
     /// `command_findings` over the view with the acme schemas answer of the same command.
@@ -427,8 +434,9 @@ enum Judge {
 }
 
 use Judge::{
-    CodeNames, CommandForm, Compact, ContractVersion, EmittedWarnings, Grammar, Patterns,
-    ReservedApplicable, Schemas, TreeForm, TreeOptionsNamed, Walk, WalkWithAnswer,
+    CodeNames, CommandForm, Compact, ContractVersion, EmittedWarnings, Examples, Grammar,
+    OneMeaning, Patterns, ReservedApplicable, SchemaDoc, Schemas, TreeForm, TreeOptionsNamed, Walk,
+    WalkWithAnswer,
 };
 
 /// The invalid examples of 1.3 to 1.5: the file, how it is judged, the conditions it breaks (and no other).
@@ -620,6 +628,31 @@ const JUDGED: &[(&str, Judge, &[&str])] = &[
         EmittedWarnings,
         &["emitted-in-warning-registry"],
     ),
+    (
+        "invalid/schema-command-acme-member-select-1-5-comma-list.json",
+        CommandForm,
+        &["minor-form"],
+    ),
+    (
+        "invalid/schema-command-acme-member-select-comma-list-not-repeatable.json",
+        SchemaDoc,
+        &["schema"],
+    ),
+    (
+        "invalid/schema-command-acme-member-select-comma-list-not-repeatable.json",
+        Walk,
+        &["rule-18"],
+    ),
+    (
+        "invalid/schema-command-acme-member-select-example-empty-piece.json",
+        Examples,
+        &["values"],
+    ),
+    (
+        "invalid/schema-command-acme-deploy-history-group-value-name-reused.json",
+        OneMeaning,
+        &["value-type"],
+    ),
 ];
 
 /// The invalid examples that name acme and no function of this slice judges, with who does.
@@ -696,7 +729,7 @@ fn judge_file(acme: &Acme, file: &str, judge: Judge) -> Vec<String> {
             let claim = claim_of(&document);
             let data = &document["data"];
             match judge {
-                CommandForm | Walk | ReservedApplicable | WalkWithAnswer | Patterns => {
+                CommandForm | Walk | ReservedApplicable | WalkWithAnswer | Patterns | Examples => {
                     let id = acme.id_of(
                         name.strip_prefix("schema-command-acme-")
                             .or_else(|| name.strip_prefix("schema-schemas-acme-"))
@@ -720,6 +753,7 @@ fn judge_file(acme: &Acme, file: &str, judge: Judge) -> Vec<String> {
                         CommandForm => command_form_findings(&doc, claim),
                         ReservedApplicable => reserved_applicable_findings(&doc),
                         Patterns => pattern_findings(&doc, claim),
+                        Examples => examples_findings(&doc, "acme"),
                         _ => command_findings(&doc, "acme", claim, &exit_of(acme)),
                     };
                     failing(&findings)
@@ -767,6 +801,30 @@ fn judge_file(acme: &Acme, file: &str, judge: Judge) -> Vec<String> {
                         &emitted(&document).warnings,
                         Some(&registry),
                     ))
+                }
+                SchemaDoc => {
+                    // The self-description schema (`L1.walk`'s `valid`): a document it refuses breaks `schema`.
+                    if schema_doc_problems(&document, claim).is_empty() {
+                        Vec::new()
+                    } else {
+                        vec!["schema".to_string()]
+                    }
+                }
+                OneMeaning => {
+                    let id = acme.id_of(
+                        name.strip_prefix("schema-command-acme-")
+                            .expect("a command file"),
+                    );
+                    let docs = acme.docs();
+                    let own = acme.view(data, Some(acme.schemas_of(&id)));
+                    let views: Vec<&CommandDoc> = docs
+                        .commands
+                        .iter()
+                        .filter(|(other, _)| **other != id)
+                        .map(|(_, view)| view)
+                        .chain(std::iter::once(&own))
+                        .collect();
+                    failing(&one_meaning_findings(&views, claim))
                 }
                 Compact => unreachable!("judged above"),
             }
@@ -817,6 +875,32 @@ fn atip_check14_25_every_invalid_acme_example_is_judged_or_out_of_scope() {
         unaccounted,
         Vec::<String>::new(),
         "judge them in JUDGED or give OUT_OF_SCOPE a reason"
+    );
+}
+#[test]
+fn atip_check16_20_acme_keeps_one_meaning_per_group_at_1_6_and_the_tool_wide_rule_would_refuse_it()
+{
+    use atip_check::checks::documents::one_meaning_values_findings;
+
+    let acme = acme();
+    let docs = acme.docs();
+    let views: Vec<&CommandDoc> = docs.commands.values().collect();
+    // `--group` is MEMBER_GROUP in `member select` and DEPLOY_GROUP in `deploy history`: two groups, two value names (Annex S1 item 4).
+    for id in ["member select", "deploy history"] {
+        assert!(views.iter().any(|view| view.command == id), "{id}");
+    }
+    assert_eq!(
+        failing(&one_meaning_findings(&views, Claim::V1_6)),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        failing(&one_meaning_values_findings(&views, Claim::V1_6)),
+        Vec::<String>::new()
+    );
+    // Below 1.6 one name has one value name tool-wide, which acme's two `--group` options break.
+    assert_eq!(
+        failing(&one_meaning_findings(&views, Claim::V1_5)),
+        ["value-name"]
     );
 }
 

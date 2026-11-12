@@ -7,7 +7,7 @@
 //! owns (a path word that is not kebab-case, an option named `--x-id`), the schema finding is dropped from `L1.tree` and
 //! `L1.walk` and reported by the owner (`L1.grammar`).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use serde_json::Value;
 
@@ -20,11 +20,14 @@ use crate::claim::Claim;
 use crate::exec::Exit;
 use crate::l1::form;
 use crate::l1::invocation;
-use crate::l1::model::{Arg, ToolDocs};
+use crate::l1::model::{Arg, CommandDoc, ToolDocs};
 use crate::l1::project;
 use crate::l1::regex::{self, Comparison};
 use crate::l1::rules as doc_rules;
 use crate::l1::witness::{Expect, GroupOutcome};
+
+/// The deepest path (in words) of a tree that declares no `pathShape` (spec 4.1.1).
+const DEFAULT_PATH_DEPTH: usize = 3;
 
 /// The L1 table, in the order of approaches/checker.md.
 pub(crate) const TABLE: [Entry; 31] = [
@@ -41,7 +44,7 @@ pub(crate) const TABLE: [Entry; 31] = [
     must("L1.codes-known", &["10.5"], &[]),
     must("L1.groups-not-runnable", &["9.2"], &[]),
     must("L1.grammar", &["9.1", "9.5", "9.8"], &[]),
-    should("L1.depth", &["9.1"], &[]),
+    should("L1.depth", &["4.1.1"], &[]),
     must("L1.one-meaning", &["9.6"], &[]),
     should("L1.one-meaning-values", &["9.6"], &[]),
     must("L1.examples", &["10.5", "10.10"], &[]),
@@ -83,6 +86,9 @@ pub(crate) const SCHEMAS: Entry = must(
 /// `L1.help-json`: run for a claim of 1.4 (spec 4.4.1).
 pub(crate) const HELP_JSON: Entry = must("L1.help-json", &["4.4.1"], &[]);
 
+/// `L1.comma-list`: run from a claim of 1.6 (spec 9.7.6). Deep only.
+pub(crate) const COMMA_LIST: Entry = must("L1.comma-list", &["9.7.6"], &[Commands]);
+
 /// The L1 table of a claim: the 31 checks of 1.1, `L1.schemas` and `L1.help-json` after `L1.schema-errors` (1.4), `L1.code-names` after
 /// `L1.registry` (from 1.3) and `L1.check-order` after `L1.validators` (from 1.2).
 pub(crate) fn table(claim: Claim) -> Vec<&'static Entry> {
@@ -93,6 +99,7 @@ pub(crate) fn table(claim: Claim) -> Vec<&'static Entry> {
             "L1.schema-errors" if claim.declares_1_4() => rows.extend([&SCHEMAS, &HELP_JSON]),
             "L1.registry" if claim.declares_1_3() => rows.push(&CODE_NAMES),
             "L1.validators" if claim.at_least(Claim::V1_2) => rows.push(&CHECK_ORDER),
+            "L1.patterns" if claim.at_least(Claim::V1_6) => rows.push(&COMMA_LIST),
             _ => {}
         }
     }
@@ -336,6 +343,7 @@ impl<'a> Judge<'a> {
             "L1.constraints" => self.l1_constraints(),
             "L1.domains" => self.l1_domains(),
             "L1.patterns" => self.l1_patterns(),
+            "L1.comma-list" => self.l1_comma_list(),
             "L1.numbers" => self.l1_numbers(),
             "L1.validators" => self.l1_validators(),
             "L1.check-order" => self.l1_check_order(),
@@ -1108,20 +1116,37 @@ impl<'a> Judge<'a> {
         c.finish(true)
     }
 
+    /// `L1.depth` (spec 4.1.1, advisory): no path is longer than the tree's `pathShape` (a tree of a 1.6 claim may declare it), or than
+    /// [`DEFAULT_PATH_DEPTH`] words when it declares none. The problem names the limit and where it comes from. A `pathShape` in a tree of an
+    /// earlier claim is `L1.tree`'s to report (`minor-form`) and sets no limit here.
     fn l1_depth(&'a self) -> Finding {
         let mut c = self.check("L1.depth");
         let Some(tree) = &self.docs().tree else {
             return self.no_tree(c);
         };
         let l1_tree_call = self.l1().tree;
+        let shape = tree
+            .path_shape
+            .as_ref()
+            .filter(|shape| !shape.is_empty() && self.claim.at_least(Claim::V1_6));
+        let (limit, source) = match shape {
+            Some(shape) => (
+                shape.len(),
+                format!("the tree's pathShape of {} words", shape.len()),
+            ),
+            None => (
+                DEFAULT_PATH_DEPTH,
+                format!("the default of {DEFAULT_PATH_DEPTH} words"),
+            ),
+        };
         for entry in &tree.commands {
             c.holds_in(
                 Some(l1_tree_call),
-                "at-most-two-words",
-                entry.path.len() <= 2,
+                "within-path-shape",
+                entry.path.len() <= limit,
                 || {
                     format!(
-                        "{} has {} words; a path should have at most two (spec 9.1)",
+                        "{} has {} words; the limit is {limit}, {source} (spec 4.1.1)",
                         entry.command,
                         entry.path.len()
                     )
@@ -1136,39 +1161,14 @@ impl<'a> Judge<'a> {
         if self.docs().tree.is_none() {
             return self.no_tree(c);
         }
-        let mut names: BTreeMap<&str, Vec<(&str, &Arg)>> = BTreeMap::new();
-        for doc in self.docs().commands.values() {
-            for option in &doc.options {
-                names
-                    .entry(option.name.as_str())
-                    .or_default()
-                    .push((doc.command.as_str(), option));
-            }
-        }
-        for (name, uses) in &names {
-            let first = uses[0];
-            let other_name = uses
-                .iter()
-                .find(|(_, option)| option.value_name != first.1.value_name);
-            c.holds("value-name", other_name.is_none(), || {
-                let (command, option) = other_name.copied().unwrap_or(first);
-                format!(
-                    "--{name} has the value name {:?} in {} and {:?} in {command}",
-                    first.1.value_name, first.0, option.value_name
-                )
-            });
-            let other_type = uses
-                .iter()
-                .find(|(_, option)| option.value_type != first.1.value_type);
-            c.holds("value-type", other_type.is_none(), || {
-                let (command, option) = other_type.copied().unwrap_or(first);
-                format!(
-                    "--{name} is {} in {} and {} in {command}",
-                    first.1.value_type, first.0, option.value_type
-                )
+        let docs: Vec<&CommandDoc> = self.docs().commands.values().collect();
+        let findings = documents::one_meaning_findings(&docs, self.claim);
+        for (condition, problem) in &findings {
+            c.holds(condition, problem.is_none(), || {
+                problem.clone().unwrap_or_default()
             });
         }
-        c.finish(!names.is_empty())
+        c.finish(!findings.is_empty())
     }
 
     fn l1_one_meaning_values(&'a self) -> Finding {
@@ -1176,37 +1176,14 @@ impl<'a> Judge<'a> {
         if self.docs().tree.is_none() {
             return self.no_tree(c);
         }
-        let mut names: BTreeMap<&str, Vec<(&str, BTreeSet<&str>)>> = BTreeMap::new();
-        for doc in self.docs().commands.values() {
-            for option in doc
-                .options
-                .iter()
-                .filter(|option| option.value_type == "enum")
-            {
-                names.entry(option.name.as_str()).or_default().push((
-                    doc.command.as_str(),
-                    option.possible_values.iter().map(String::as_str).collect(),
-                ));
-            }
-        }
-        let mut judged = false;
-        for (name, uses) in &names {
-            if uses.len() < 2 {
-                continue;
-            }
-            judged = true;
-            let disjoint = uses.iter().enumerate().find_map(|(at, (first, values))| {
-                uses[at + 1..]
-                    .iter()
-                    .find(|(_, other)| values.is_disjoint(other))
-                    .map(|(second, _)| (*first, *second))
-            });
-            c.holds("overlapping", disjoint.is_none(), || {
-                let (first, second) = disjoint.unwrap_or_default();
-                format!("--{name} has no value in common between {first} and {second}: two meanings behind one name?")
+        let docs: Vec<&CommandDoc> = self.docs().commands.values().collect();
+        let findings = documents::one_meaning_values_findings(&docs, self.claim);
+        for (condition, problem) in &findings {
+            c.holds(condition, problem.is_none(), || {
+                problem.clone().unwrap_or_default()
             });
         }
-        c.finish(judged)
+        c.finish(!findings.is_empty())
     }
 
     fn l1_examples(&'a self) -> Finding {
@@ -1552,6 +1529,86 @@ impl<'a> Judge<'a> {
         if l1.domain_notes.is_empty() {
             return c.finish_as(End::Unsupported(
                 "no argument declares a domain".to_string(),
+            ));
+        }
+        c.finish(true)
+    }
+
+    /// `L1.comma-list` (spec 9.7.6, a claim of 1.6): for each comma-list option of a command the checker may run, `split-same-answer` (the option
+    /// given as `--x=v1,v2` and as `--x=v1 --x=v2` ends with the same exit status and the same envelope: nothing of the envelope is ignored,
+    /// since the normalised arguments are the same list and a tool answers a call by them) and `empty-piece-refused` (`--x=v1,` is refused
+    /// with exit 2 and `field` `--x`, `USAGE` or the registered code of the option).
+    fn l1_comma_list(&'a self) -> Finding {
+        let l1 = self.l1();
+        let mut c = self.check("L1.comma-list");
+        if l1.docs.tree.is_none() {
+            return self.no_tree(c);
+        }
+        if !l1
+            .docs
+            .commands
+            .values()
+            .any(|doc| doc.options.iter().any(|option| option.comma_list))
+        {
+            return c.finish_as(End::Unsupported(
+                "no command option declares commaList".to_string(),
+            ));
+        }
+        let mut judged = false;
+        for run in &l1.comma_lists {
+            if self.gate(&mut c, &run.command) {
+                continue;
+            }
+            judged = true;
+            for call in [run.joined, run.repeated, run.empty] {
+                c.own(call);
+            }
+            let spelling = format!("--{}", run.arg);
+            let argv = |call: usize| self.at(call).call.argv.join(" ");
+            let same = self.at(run.joined).exit == self.at(run.repeated).exit
+                && self.envelope(run.joined).is_some()
+                && self.envelope(run.joined) == self.envelope(run.repeated);
+            c.holds_at(run.joined, "split-same-answer", same, || {
+                format!(
+                    "{}: `{}` ({}) and `{}` ({}) differ: a comma list and the same values repeated are one list (spec 9.7.6)",
+                    run.command,
+                    argv(run.joined),
+                    refusal_text(self.envelope(run.joined), self.at(run.joined).exit),
+                    argv(run.repeated),
+                    refusal_text(self.envelope(run.repeated), self.at(run.repeated).exit)
+                )
+            });
+            let refused = self.failure(run.empty).is_some_and(|(code, field)| {
+                self.refused(run.empty)
+                    && field == Some(spelling.as_str())
+                    && self.is_usage(code, field)
+            });
+            c.holds_at(run.empty, "empty-piece-refused", refused, || {
+                format!(
+                    "{}: `{}` has an empty piece and was not refused with exit 2 on {spelling}: {}",
+                    run.command,
+                    argv(run.empty),
+                    refusal_text(self.envelope(run.empty), self.at(run.empty).exit)
+                )
+            });
+        }
+        if !l1.comma_list_gaps.is_empty() {
+            let entries: Vec<String> = l1
+                .comma_list_gaps
+                .iter()
+                .map(|(command, _, _)| format!("commands.{command}.ok"))
+                .collect();
+            return c.finish_as(End::missing_all(
+                l1.comma_list_gaps
+                    .iter()
+                    .map(|(command, option, why)| format!("{command}: --{option}: {why}"))
+                    .collect(),
+                entries,
+            ));
+        }
+        if !judged {
+            return c.finish_as(End::Unsupported(
+                "no comma-list option belongs to a command the checker may run (a `read` command, or a write the fixture lists with an `ok` invocation)".to_string(),
             ));
         }
         c.finish(true)

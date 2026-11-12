@@ -32,8 +32,10 @@ three kinds:
 - **not verified**: shown for completeness; nothing here establishes it.
 
 **A synthetic reference tool, `acme`** (`*-acme-*`), which declares contract 1.4 (`meta.contractVersion`, spec 15.5),
-except `acme member find` (`schema-command-acme-member-find.json` and its schemas answer), which is acme built for 1.5:
-a standalone document, not part of acme's 1.4 tree (it names that tree's shared option `team`),
+except `acme member find` (`schema-command-acme-member-find.json` and its schemas answer), which is acme built for 1.5,
+and `acme member select` and `acme deploy history` (`schema-command-acme-member-select.json`,
+`schema-command-acme-deploy-history.json` and their schemas answers), acme built for 1.6: each a
+standalone document, not part of acme's 1.4 tree (each names that tree's shared option `team`),
 while canon's translations declare 1.0: an invented tool that exercises what neither translation does,
 so that every rule has a positive witness: a declared short option (`-t`), a required repeatable option and an
 `x-acme` extension member (`acme page label`), an `async` command with an operation key and the command that
@@ -108,6 +110,9 @@ ones that are easiest to miss:
 | the argv example `acme filter test 7`; `acme member tag 0` | `invalid/schema-example-outside-domain-json.json`, `invalid/schema-example-member-tag-zero.json` | rejected by the domain |
 | patterns outside the form (`.`, lookahead, `\w`, top-level `|`, no anchors, `&&` or `~~` in a class), refused by Rust's size limit, or not recorded | `invalid/schema-domain-pattern-*.json` | rejected |
 | `\p{White_Space}` and `\P{White_Space}` in a pattern: the trimmed one-line example of Annex V2 in a document that declares 1.5; the same document declaring 1.4; `\S` in a 1.5 document | `schema-command-acme-member-find.json`; `invalid/schema-command-acme-member-find-1-4-white-space.json`, `invalid/schema-command-acme-member-find-shorthand-s.json` | accepted; rejected (Annex V2, spec 15.7) |
+| a comma list (spec 9.7.6): `acme member select` (1.6) gives `--tag lead,oncall`, the repeated form and both mixed, and an enum comma list `--role owner,maintainer`; the same document declaring 1.5; `commaList` on a non-repeatable option; an example with an empty piece `--tag lead,,oncall` | `schema-command-acme-member-select.json`; `invalid/schema-command-acme-member-select-1-5-comma-list.json`, `invalid/schema-command-acme-member-select-comma-list-not-repeatable.json`, `invalid/schema-command-acme-member-select-example-empty-piece.json` | accepted; rejected (Annex S2 rules 16 and 18, spec 9.7.6) |
+| a tree's `pathShape` (spec 4.1.1): `umbrella`, a 1.6 tool whose paths are product, noun and verb; the same tree declaring 1.5; a label given twice | `schema-tree-umbrella.json`; `invalid/schema-tree-umbrella-1-5-path-shape.json`, `invalid/schema-tree-umbrella-path-shape-label-twice.json` | accepted; rejected (Annex S2 rule 16; the schema) |
+| one meaning per group (Annex S1 item 4, 1.6): `--group MEMBER_GROUP` on `acme member select` and `--group DEPLOY_GROUP` on `acme deploy history`; `deploy history` reusing `MEMBER_GROUP` with valueType `integer` | `schema-command-acme-member-select.json`, `schema-command-acme-deploy-history.json`; `invalid/schema-command-acme-deploy-history-group-value-name-reused.json` | accepted; rejected |
 | keywords outside a valueType's domain profile | `invalid/schema-domain-numeric-keyword-on-string.json`, `-outside-profile.json`, `-structural-enum.json` | rejected |
 | a command offering `--cursor` without `CURSOR_INVALID` | `invalid/schema-command-missing-reserved-code.json` | rejected |
 
@@ -154,8 +159,8 @@ bracketed path in its `meta`, or an unregistered warning in its schema answer is
 | the empty map key `attributes[""]`, a map under `labels[]`, a map written with `properties: {}` | `report-acme-member-list-fields-map-keys.json` | accepted |
 | `labels.region` where `labels` is an array of maps; the empty key left in unselected | `invalid/report-acme-member-list-fields-map-key-without-descent.json`, `invalid/report-acme-member-list-fields-empty-key-leak.json` | rejected |
 
-**Caller documents** (`caller-*.json`) are what a tool of a later minor might print: `contractVersion` `1.6` (they
-model a minor later than the 1.5 this repository describes) and
+**Caller documents** (`caller-*.json`) are what a tool of a later minor might print: `contractVersion` `1.7` (they
+model a minor later than the 1.6 this repository describes) and
 members this repository does not define (`meta.costMs`, `page.exact`, `error.severity`, a registry entry's `docs`).
 A caller of this minor must read them (spec 15.4): each passes the contract schemas read open and fails them
 closed. `invalid/caller-report-nothing-unknown.json` carries nothing unknown, and `invalid/caller-report-wrong-type.json`
@@ -273,7 +278,7 @@ or `plan-digest`; a 1.4 document lists them whenever the command offers them (sp
 | a 1.3 command document without `path`, or in the 1.4 form (an operand with its defaults left out) | `invalid/schema-command-acme-member-show-1-3-no-path.json`, `invalid/schema-command-acme-member-show-1-3-operand-defaults-left-out.json` | rejected: the schema no longer requires them, the checker does (spec 15.7) |
 
 The caller table of spec 15.4 reads an absent member as its default in a 1.4 self-description: a tree entry without
-`kind` is a command, an argument without `valueType` a string. The caller examples are therefore stated at 1.6, a minor
+`kind` is a command, an argument without `valueType` a string. The caller examples are therefore stated at 1.7, a minor
 later than the one this repository describes, and a caller of this minor reads them open (spec 15.6). Those that
 carry a command document or a tree are written in the 1.4 form too (compact, no `path`, no embedded `schemas`, no
 implied options or codes, no member at its default), because that is the form a later minor prints; only

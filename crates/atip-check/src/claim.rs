@@ -8,7 +8,7 @@
 use serde_json::Value;
 
 /// The minors this checker knows.
-pub const MINORS: [&str; 6] = ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"];
+pub const MINORS: [&str; 7] = ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"];
 
 /// The minor a tool claims.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +19,7 @@ pub enum Claim {
     V1_3,
     V1_4,
     V1_5,
+    V1_6,
 }
 
 impl Claim {
@@ -31,6 +32,7 @@ impl Claim {
             "1.3" => Some(Self::V1_3),
             "1.4" => Some(Self::V1_4),
             "1.5" => Some(Self::V1_5),
+            "1.6" => Some(Self::V1_6),
             _ => None,
         }
     }
@@ -43,6 +45,7 @@ impl Claim {
             Self::V1_3 => "1.3",
             Self::V1_4 => "1.4",
             Self::V1_5 => "1.5",
+            Self::V1_6 => "1.6",
         }
     }
 
@@ -77,6 +80,7 @@ impl Claim {
             Self::V1_3 => 3,
             Self::V1_4 => 4,
             Self::V1_5 => 5,
+            Self::V1_6 => 6,
         }
     }
 }
@@ -167,7 +171,9 @@ pub fn without_later_members(document: &Value) -> Value {
 pub fn for_envelope_schema(document: &Value, claim: Claim) -> Value {
     let mut copy = match claim {
         Claim::V1_0 => without_later_members(document),
-        Claim::V1_1 | Claim::V1_2 | Claim::V1_3 | Claim::V1_4 | Claim::V1_5 => document.clone(),
+        Claim::V1_1 | Claim::V1_2 | Claim::V1_3 | Claim::V1_4 | Claim::V1_5 | Claim::V1_6 => {
+            document.clone()
+        }
     };
     for member in ["meta", "error"] {
         if let Some(value) = copy.get_mut(member) {
@@ -385,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn atip_check15_13_the_claim_knows_six_minors_and_what_each_adds() {
+    fn atip_check16_13_the_claim_knows_seven_minors_and_what_each_adds() {
         let claims = [
             Claim::V1_0,
             Claim::V1_1,
@@ -393,13 +399,15 @@ mod tests {
             Claim::V1_3,
             Claim::V1_4,
             Claim::V1_5,
+            Claim::V1_6,
         ];
-        assert_eq!(MINORS, ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"]);
+        assert_eq!(MINORS, ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"]);
         for (claim, minor) in claims.into_iter().zip(MINORS) {
             assert_eq!(claim.as_str(), minor);
             assert_eq!(Claim::parse(minor), Some(claim));
         }
-        assert_eq!(Claim::parse("1.6"), None);
+        assert_eq!(Claim::parse("1.7"), None);
+        assert!(Claim::V1_6.at_least(Claim::V1_5) && !Claim::V1_5.at_least(Claim::V1_6));
         assert!(Claim::V1_5.at_least(Claim::V1_4) && !Claim::V1_4.at_least(Claim::V1_5));
         assert!(Claim::V1_4.at_least(Claim::V1_3) && !Claim::V1_3.at_least(Claim::V1_4));
         assert!(
@@ -412,17 +420,51 @@ mod tests {
             .into_iter()
             .filter(|claim| claim.declares_1_3())
             .collect();
-        assert_eq!(from_1_3, [Claim::V1_3, Claim::V1_4, Claim::V1_5]);
+        assert_eq!(
+            from_1_3,
+            [Claim::V1_3, Claim::V1_4, Claim::V1_5, Claim::V1_6]
+        );
         let from_1_4: Vec<Claim> = claims
             .into_iter()
             .filter(|claim| claim.declares_1_4())
             .collect();
-        assert_eq!(from_1_4, [Claim::V1_4, Claim::V1_5]);
+        assert_eq!(from_1_4, [Claim::V1_4, Claim::V1_5, Claim::V1_6]);
         // A 1.3 or 1.4 document is read like a 1.2 one by the envelope schema.
         let document = json!({"ok": true, "data": {}, "meta": {"contractVersion": "1.4"}});
         assert_eq!(
             for_envelope_schema(&document, Claim::V1_4)["meta"]["contract"],
             "atip/1"
         );
+    }
+
+    /// The self-description schema marks the members of 1.5 and later with `x-atip-since`; `l1::form` judges every such member of a document that
+    /// declares an earlier minor (Annex S2 rule 16), so a mark on a member this list does not name is a member the checker would not judge.
+    #[test]
+    fn atip_check16_14_the_self_description_schema_marks_exactly_the_members_after_1_4_the_checker_judges(
+    ) {
+        let schema: Value =
+            serde_json::from_str(atip::schema::SCHEMA_DOC_SCHEMA).expect("the schema is JSON");
+        let mut later: Vec<String> = Vec::new();
+        for (def, node) in schema["$defs"].as_object().expect("$defs") {
+            for (member, schema) in node
+                .get("properties")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+            {
+                if let Some(since) = schema.get("x-atip-since").and_then(Value::as_str) {
+                    let claim = Claim::parse(since).unwrap_or_else(|| {
+                        panic!(
+                            "{def}.{member} is since {since}, a minor this checker does not know"
+                        )
+                    });
+                    if claim.at_least(Claim::V1_5) {
+                        later.push(format!("{def}.{member} {since}"));
+                    }
+                }
+            }
+        }
+        later.sort();
+        assert_eq!(later, ["option.commaList 1.6", "tree.pathShape 1.6"]);
     }
 }

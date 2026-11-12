@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.6.0 (unreleased)
+
+A minor (15.1) from implementer feedback (D42-D44). Its two optional members and the scoped one-meaning rule bind only
+documents that declare `meta.contractVersion` `"1.6"`; a tool that declares 1.0 to 1.5 stays conforming as that minor,
+held to that minor's release text (15.7, which now names `v1.5.0`). No document changes shape.
+
+- **Comma lists (9.7.6, 4.2.2, Annex S2 rule 18).** A repeatable option of valueType string, integer, number, path or
+  enum may declare `commaList: true`. Each argv value is then split on `,` (the one separator; nothing else can be
+  declared) into values in order, each checked as one value; occurrences add up (`--tag a,b --tag c` is three
+  values); an empty piece is refused like an invalid value. `--input`, `env` and `default` are never split, so a value
+  with a comma goes in `--input`; the derived fragment schema is unchanged. Without the member a comma is part of the
+  value. Callers may write either form. Rule 18: no comma in the possible values of such an option.
+- **Path shape (4.1.1, 9.3).** The two-word SHOULD (D11.14) is withdrawn. A tree may declare `pathShape`, one
+  kebab-case label per word position (`["product", "noun", "verb"]`), whose length is the tool's longest path; the
+  labels carry no other rule. A path SHOULD fit it, or three words without one.
+- **One meaning per group (Annex S1 item 4).** In a 1.6 document an option name has one value name, value type and
+  meaning within its group (the path without its verb); a shared tree option keeps one meaning tool-wide. Across groups
+  a name may mean different things, and then uses a different value name (`--group MEMBER_GROUP`, `--group
+  DEPLOY_GROUP`); the same value name means one thing in every group.
+- **Versioning (15.1, 15.7, 15.10).** 15.7 gains the row 1.0-1.5; 15.10 says what 1.6 means for callers: a 1.5 caller
+  ignores both members and gives values one per occurrence, which every 1.6 tool accepts.
+- **Schemas, `scripts/check.ts`, examples.** `schema-doc.schema.json`: `commaList` on an option (requires `repeatable`
+  and a single-value valueType) and the tree's `pathShape`, both `x-atip-since: "1.6"`. `check.ts` knows 1.6, splits an
+  example's comma-list values (an empty piece fails), refuses both members below 1.6, checks rule 18, and now checks
+  Annex S1 item 4 between a tool's command documents (tool-wide below 1.6, per group from 1.6). New:
+  `acme member select` (1.6, `--tag` and an enum `--role` as comma lists) and the `umbrella` tree (1.6, three-word
+  paths under a `pathShape`), `acme deploy history` (1.6, `--group DEPLOY_GROUP` beside `member select`'s
+  `--group MEMBER_GROUP`); invalid: `deploy history` reusing `MEMBER_GROUP` with another value type, each member in a 1.5 document, `commaList` on a non-repeatable option, an
+  example with an empty piece, a `pathShape` label given twice. `caller-*` examples now model a later minor as 1.7.
+- **Crates.** `atip` 0.3.0: `Minor::V1_6`, `CONTRACT_VERSION` `"1.6"`; `OptionDoc::comma_list` (a public field), read
+  from clap's `value_delimiter(',')` by the projection (another delimiter is `Problem::Delimiter`) and written as
+  `commaList`; `Described::path_shape`; `Described::new` refuses a comma list below 1.6; `document_problems` checks
+  rule 18. `atip-check` 0.3.0: see `approaches/checker.md` (the claim 1.6, the row `L1.comma-list`, L1.depth reading
+  `pathShape`).
+
 ## 1.5.0 (2026-11-05)
 
 A minor (15.1) from implementer feedback (D41, issue #12). Its one addition binds only documents that declare

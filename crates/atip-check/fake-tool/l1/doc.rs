@@ -22,13 +22,16 @@ impl Model {
         let shape = Shape {
             is_1_1: tool.is_1_1(),
             is_1_2: tool.is_1_2(),
-            schema_version: ["1.0", "1.1", "1.2", "1.3", "1.4"][usize::from(tool.minor_rank())],
+            schema_version: ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5", "1.6"]
+                [usize::from(tool.minor_rank())],
             is_1_4: tool.is_1_4(),
             limit_not_flag_only: tool.flag("limitNotFlagOnly"),
             repeatable_default: tool.flag("repeatableDefault"),
             serve: tool.config.contains_key("serveMode"),
             serve_without_note: tool.flag("serveNoEffectNote"),
             deep: tool.flag("deepTree"),
+            deeper: tool.flag("deeperTree"),
+            is_1_6: tool.is_1_6(),
             l2: tool.flag("l2"),
             pair_code: tool.flag("pairCode"),
             batch: !tool.flag("noBatch"),
@@ -169,6 +172,9 @@ fn option_doc(arg: &Arg) -> Value {
     }
     if arg.flag_only {
         doc.insert("flagOnly".into(), json!(true));
+    }
+    if arg.comma_list {
+        doc.insert("commaList".into(), json!(true));
     }
     if let Some(env) = arg.env {
         doc.insert("env".into(), json!(env));

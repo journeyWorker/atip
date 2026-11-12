@@ -1,15 +1,11 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.5.0**, adopted 2026-11-05 after one round of independent review: a minor (15.1) that lets a domain pattern
-of a document that declares 1.5 use `\p{White_Space}` and `\P{White_Space}`, the Unicode `White_Space` property, which
-Rust `regex` and ECMAScript read alike (Annex V2, Appendix A D41). Version 1.4.2, adopted 2026-11-04 after one round of
-independent review, is a patch that says how a caller writes none for a repeatable option in `--input` and that
-`--version --json` resolves its path
-first (D40). Version 1.4.1, adopted 2026-11-04 after one round of independent review, is a patch that states the
-compactness rule as whitespace outside strings only, applies 7.3.2's naming to every minor from 1.3, and words the
-MINOR row for replaced members (D39). Version 1.4.0, adopted 2026-11-04 after two rounds of independent review, is a
-minor (15.1) that makes the self-description small and compact for agents and separates `--help` from `schema` (D38);
-1.3.1 and 1.3.0 are described in D37 and D36.
+Status: **1.6.0, release candidate**: a minor (15.1) that lets a repeatable option take a comma-separated list in one
+argv value (`--tag a,b`, 9.7.6), lets a tree declare what each word of its paths means (`pathShape`, 4.1.1), with no
+fixed depth, and scopes an option name's one meaning to its group (Annex S1 item 4; Appendix A D42-D44). Version 1.5.0, adopted 2026-11-05 after one round of independent review, is a minor
+that lets a domain pattern use `\p{White_Space}` and `\P{White_Space}` (Annex V2, D41). Version 1.4.2, adopted
+2026-11-04 after one round of independent review, is a patch that says how a caller writes none for a repeatable option
+in `--input` and that `--version --json` resolves its path first (D40); 1.4.1 and 1.4.0 are described in D39 and D38.
 `CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
 (V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
 
@@ -98,8 +94,11 @@ tool whose findings against a built binary are evidence, and the tool's own test
 
 ### 4.1. The command tree
 
-4.1.1. A path is a group noun and a verb (`finding close`) or one root word (`schema`); it SHOULD be at most two
-words, each `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`. [Appendix A D4, D11.14]
+4.1.1. A path is group words then a verb (`finding close`, `billing invoice send`) or one root word (`schema`), each
+word `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, short. A tree MAY declare `pathShape` (9.3): one label per word position, chosen
+by the tool (`["product", "noun", "verb"]`), whose length is the tool's longest path; the labels tell a caller what each
+word names and carry no other rule. A path SHOULD be no longer than the declared `pathShape`, or than three words
+without one. [Appendix A D4, D43]
 
 4.1.2. A node is a group or a command, never both; a group run bare refuses with `COMMAND_REQUIRED`, `expected` its
 commands.
@@ -130,9 +129,9 @@ first-char    = %x01-2C / %x2E-10FFFF             ; any character except "-"
 CHAR          = %x01-10FFFF                       ; any Unicode scalar value except NUL
 ```
 
-4.2.2. A repeatable option is given once per value, in order; a count once per occurrence. `--name=value` equals
-`--name value`; a value that is empty or starts with `-` (other than `-`) is written joined, and a tool MUST accept
-the joined form for every valued option. The first `--` ends the options, and a tool MUST accept operands after it.
+4.2.2. A repeatable option is given once per value, in order, or as a comma list when it declares one (9.7.6); a count
+once per occurrence. `--name=value` equals `--name value`; a value that is empty or starts with `-` (other than `-`)
+is written joined, and a tool MUST accept the joined form for every valued option. The first `--` ends the options, and a tool MUST accept operands after it.
 A short option equals its long name and is never joined or bundled.
 
 ### 4.3. Output selection
@@ -465,8 +464,8 @@ nothing (11.2). For one build it SHOULD be byte-identical across runs.
 
 The tree lists every group and command once, in a stable order, a group before its commands, `schema` included (a
 command for the tool's own use MAY be left out). An entry has `command` and `summary`, and `effect` for a command; a
-group's entry has `kind: "group"`. `level` is the claimed level (3.5). `options` defines once the options that commands
-share (9.5); a caller reads the tree once per tool.
+group's entry has `kind: "group"`. `level` is the claimed level (3.5). `pathShape` labels the word positions of a path
+(4.1.1). `options` defines once the options that commands share (9.5); a caller reads the tree once per tool.
 
 ### 9.4. `group`
 
@@ -506,7 +505,8 @@ An operand's `name` names it in `constraints` and is never an option's name; its
 
 9.7.1. An option's `name` is its long name without `--`; `defaultNote` says how a computed default is found; `env`
 names the variable read when the option is absent; `flagOnly` marks an option no document may carry (the flag-only
-reserved options are, whether implied or listed); `short` is a declared letter; `domain` restricts the value (9.7.4).
+reserved options are, whether implied or listed); `short` is a declared letter; `domain` restricts the value (9.7.4);
+`commaList` makes one argv value a list (9.7.6).
 
 9.7.2. **valueType:**
 
@@ -532,6 +532,15 @@ satisfies it.
 
 9.7.5. Integers lie within ±(2^53-1) and are never rounded; a value outside it, as a JSON number literal or as a
 string, is refused like any invalid value. Numbers are finite binary64 (Annex V3).
+
+9.7.6. **Comma lists.** A repeatable option whose valueType is `string`, `integer`, `number`, `path` or `enum` MAY
+declare `commaList: true`. Then each of its argv values (`--tag=a,b`, `--tag a,b`, `-t a,b`) is split on the comma
+`,`, the one separator the contract has, into values in order; each is checked as one value of the option (valueType,
+`possibleValues`, `domain`), pieces are not trimmed, and occurrences add up: `--tag a,b --tag c` gives `["a", "b",
+"c"]`, the same arguments as `--tag a --tag b --tag c`. An empty piece (`a,,b`, `a,`, an empty value) is refused like
+an invalid value. The split applies to argv only: an `--input` value (10.5), an `env` value and `default` stay as they
+are, so a value that contains a comma is given in `--input`. Without `commaList` a comma is part of the value. Callers
+(examples, `next`, guides) may use either form for such an option. [Appendix A D42]
 
 ### 9.8. Constraints and validators
 
@@ -742,7 +751,7 @@ placeholders are substituted (shell pipelines are exempt). Guides SHOULD tell ag
 
 ## 15. Versioning and compatibility
 
-15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.5.0`). A PATCH changes no
+15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.6.0`). A PATCH changes no
 rule. A MINOR adds OPTIONAL members, options, kinds and values, SHOULD and MAY rules, and MUST rules that bind only
 documents that declare it. For those documents it may withdraw a core code whose use the previous minor only
 recommended, and change the shape of the self-description (9) when every member the change leaves out or replaces reads,
@@ -794,11 +803,11 @@ dropped) and rejects only a view that fails. A caller validates against the sche
 (15.7 names the tags): the current files cover every minor and are looser. `$id`s stay under `https://atip.dev/1/`.
 [Appendix A D20, D28, D38]
 
-15.7. **Earlier minors.** A tool that declares 1.0, 1.1, 1.2, 1.3 or 1.4 is held to that minor's last release text
-(tags `v1.0.0`, `v1.1.2`, `v1.2.1`, `v1.3.1`, `v1.4.2`). A caller reads every minor; for it, a document of an earlier
-minor differs thus:
+15.7. **Earlier minors.** A tool that declares 1.0, 1.1, 1.2, 1.3, 1.4 or 1.5 is held to that minor's last release
+text (tags `v1.0.0`, `v1.1.2`, `v1.2.1`, `v1.3.1`, `v1.4.2`, `v1.5.0`). A caller reads every minor; for it, a document
+of an earlier minor differs thus:
 
-| Declared | Differs from 1.5 |
+| Declared | Differs from 1.6 |
 |---|---|
 | 1.0 | `contract` may be absent outside `schema`; no reasons, warning registry, bracketed paths or map-key selection; warning codes in the error registry; a hint may be prose starting with the tool name |
 | 1.0, 1.1 | a cursor also binds `--json` and `--all`, and need not bind `env` values (a variable changed between pages may change the listing silently); `--fields` may need `--json`; `limit`, `cursor`, `all`, `fields` may be document keys |
@@ -807,8 +816,9 @@ minor differs thus:
 | 1.0-1.2 | code names need not follow 7.2 |
 | 1.0-1.3 | the self-description carries every member, defaults included, and `path` beside `command`; a command lists every option it accepts and every code it can emit; it embeds its JSON Schemas in `schemas` (refs resolve in the command document) and declares the fragment schema as `input.schemaRef`; the tree has no `options` and there is no `--schemas`; documents may contain insignificant whitespace; `--help --json` may answer with the `schema` document |
 | 1.0-1.4 | a domain pattern does not use `\p{White_Space}` or `\P{White_Space}` (Annex V2) |
+| 1.0-1.5 | no option is a comma list, and the tree has no `pathShape`; a path SHOULD be at most two words; an option name has one meaning tool-wide (Annex S1 item 4) |
 
-[Appendix A D20, D27, D32, D33, D38, D41]
+[Appendix A D20, D27, D32, D33, D38, D41, D42, D43, D44]
 
 15.8. **1.4 and callers.** 1.4 changes the shape of the self-description for documents that declare it: tree, group
 and command documents leave out `path` and default-valued members, and a command document its JSON Schemas, the
@@ -824,6 +834,14 @@ enforces it); one that compiles the pattern with ECMAScript and the `u` flag, as
 Rust `regex` reads it with the meaning 1.5 gives it, because both engines know the property by that name. A 1.5 tool
 keeps every rule of 1.4 (15.1): its documents are compact, its `--help --json` refuses, and its self-description
 leaves out default-valued members. [Appendix A D41]
+
+15.10. **1.6 and callers.** 1.6 adds two members, for documents that declare it: an option's `commaList` (9.7.6) and the
+tree's `pathShape` (4.1.1). Every document keeps its shape. A caller of 1.5 or earlier ignores both: it gives a comma
+list's values one per occurrence, which every 1.6 tool accepts, and reads a comma in an example or `next` of a 1.6 tool
+as part of one value, which can only make it judge that example more strictly; it passes `next` on as it is, and the
+tool splits it. An option name keeps one meaning within a group rather than tool-wide (Annex S1 item 4); a caller
+already reads each command's options from that command's document, and where two groups give a name two meanings their
+value names differ. [Appendix A D42, D43, D44]
 
 ## 16. Security
 
@@ -966,6 +984,12 @@ sections of this version.
 | # | Owner decision 2026-11-05, version 1.5.0, a minor (15.1) from implementer feedback | Where |
 |---|---|---|
 | D41 | A domain pattern needs a way to say "white space": a tool that wants "one non-empty line with no leading or trailing white space" had to list every white-space code point by hand in each pattern, about sixty characters a reader could not check. In a document that declares 1.5, a pattern may use `\p{White_Space}` and `\P{White_Space}`, in and outside a class, with one meaning in every engine: the Unicode binary property, which Rust `regex` and ECMAScript with the `u` flag both read by that name, so a caller translates nothing. It is the one addition to the profile beyond I-Regexp, whose `\p{…}` has only general categories; only the spelling `White_Space` is admitted. `\s` and `\S` stay out: their meaning differs between the engines (U+0085, U+FEFF), and redefining them in the contract would leave a generic JSON Schema validator reading its own meaning without any sign. A named "trimmed single line" domain was not added: the pattern says it, and Annex V2 gives it as the example, with line terminators excluded as the white space that is neither Zs nor a tab. A 1.4 caller that checks patterns against its release's profile may refuse the escape, so only a document that declares 1.5 may use it (15.1); a document of 1.0 to 1.4 keeps the old profile. D40's candidate (`minItems: 1` for a repeatable option) is not part of 1.5.0. A review found that 1.5, the first minor after the one most rules name ("a 1.4 document"), was not plainly held to them: 15.1 now says that a rule stated for a minor binds every later minor unless a later minor changes it (15.7 lists each change), as the checker and the crate already read it, and 5.1 says "1.4 or later". The same review found no caller treatment for a pattern outside the caller's profile: 15.4's row for an unknown domain keyword now covers it (skip that check; the tool still enforces it). | Annex V2, 5.1, 15.1, 15.4, 15.7, 15.9 |
+
+| # | Owner decision 2026-11-12, version 1.6.0, a minor (15.1) from implementer feedback | Where |
+|---|---|---|
+| D42 | Labels and tags given one occurrence per value (`--tag a --tag b`) are awkward to type and to read. A repeatable option of a single-value valueType (not `json`, whose values contain commas) MAY declare `commaList: true` in a document that declares 1.6; each argv value is then split on `,` into values, each checked as one value, occurrences adding up, an empty piece refused. The separator is fixed by the contract, not declared per option: one rule for every tool, so an agent needs no lookup beyond a boolean. The tool declares it rather than callers guessing, because a comma is an ordinary character in a value; without the declaration it stays part of the value. Nothing escapes a comma on argv: a value that contains one goes in `--input`, which keeps arrays and is never split, so the fragment schema (9.9.2) is unchanged. A caller of 1.5 ignores the member and uses the repeated form, which the tool still accepts. Annex S2 rule 18 keeps a comma out of an enum's possible values, since no argv value could give one. | 4.2.2, 9.7.1, 9.7.6, 15.7, 15.10, Annex S2 rule 18 |
+| D43 | Large CLIs (an umbrella tool over several products) need paths of product, subject and verb, so the two-word SHOULD of D11.14 is withdrawn. The tree MAY declare `pathShape`, one kebab-case label per word position, whose length is its longest path; a path SHOULD fit it, or three words without one. The shape lives in the tool's self-description, where a caller reads it, rather than in a checker's configuration; the labels only tell an agent what each word names. Withdrawing a SHOULD and adding an optional member fails no tool (15.1). The checker's L1.depth stays advisory and reports the limit it used. | 4.1.1, 9.3, 15.7, 15.10 |
+| D44 | In a large CLI one word names different things in different products (`--group` a member group in one, a deployment group in another), and the tool-wide one-meaning rule forced awkward names. In a document that declares 1.6 an option name has one meaning within its group, the path without its verb; a shared tree option keeps one meaning tool-wide, since it is one definition. Across groups a name may mean different things, and then carries a different value name, so the documents show the difference and an agent that compares value names never confuses the two; the same value name means one thing everywhere. A caller already reads each command's options from its own document (15.10). The checker compares within a group, and across groups by value name. | 15.7, 15.10, Annex S1 item 4 |
 
 ## Appendix B. Prior art
 

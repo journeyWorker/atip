@@ -90,6 +90,15 @@ pub enum Error {
     InputIsReserved { command: String },
     /// A validator has no `rejects` invocation (spec 9.8.2): the schemas answer lists at least one per validator.
     EmptyRejects { command: String, validator: usize },
+    /// The tree's `pathShape` (spec 4.1.1) is empty, has a label that is not a kebab-case word or a label twice, or the
+    /// tool declares a minor before 1.6.
+    PathShape(String),
+    /// An option is a comma list (spec 9.7.6), which a document of a minor before 1.6 cannot say (Annex S2 rule 16).
+    CommaListBeforeMinor {
+        command: String,
+        option: String,
+        minor: Minor,
+    },
 }
 
 impl fmt::Display for Error {
@@ -106,6 +115,8 @@ impl fmt::Display for Error {
             Error::MissingSchema { command, name } => write!(f, "`{command}` refers to the schema `{name}`, which its model does not hold (Annex S2 rule 2)"),
             Error::InputIsReserved { command } => write!(f, "a ref of `{command}` names `Input`, which the schemas answer keeps for the derived fragment schema (spec 9.9.3)"),
             Error::EmptyRejects { command, validator } => write!(f, "validator {validator} of `{command}` has no `rejects` invocation (spec 9.8.2)"),
+            Error::PathShape(problem) => write!(f, "the tree's pathShape {problem} (spec 4.1.1)"),
+            Error::CommaListBeforeMinor { command, option, minor } => write!(f, "`{command}` declares --{option} a comma list, which is since 1.6, but the tool declares {minor} (spec 9.7.6, Annex S2 rule 16)"),
         }
     }
 }
@@ -125,6 +136,22 @@ const RESERVED_OPTIONS: [(&str, ValueType, bool); 10] = [
     ("fields", ValueType::String, true),
     ("operation", ValueType::String, false),
 ];
+
+/// The first minor whose options may be comma lists (spec 9.7.6).
+pub const COMMA_LIST_SINCE: Minor = Minor::V1_6;
+/// The first minor whose tree may declare `pathShape` (spec 4.1.1).
+pub const PATH_SHAPE_SINCE: Minor = Minor::V1_6;
+
+/// A word of a path or a `pathShape` label: `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` (spec 4.1.1).
+fn is_kebab_word(word: &str) -> bool {
+    word.starts_with(|c: char| c.is_ascii_lowercase())
+        && word.split('-').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        })
+}
 
 /// What `default` is when a document leaves it out: `false` for a switch, `0` for a count, else `null` (spec 9.5).
 fn default_is_implied(value_type: ValueType, default: &Value) -> bool {
@@ -236,6 +263,9 @@ impl Serialize for OptionView<'_> {
         }
         if option.repeatable && option.value_type != ValueType::Count {
             map.serialize_entry("repeatable", &true)?;
+        }
+        if option.comma_list {
+            map.serialize_entry("commaList", &true)?;
         }
         if !default_is_implied(option.value_type, &option.default) {
             map.serialize_entry("default", &option.default)?;
@@ -469,6 +499,8 @@ impl Serialize for EntryView<'_> {
 struct TreeView<'a> {
     kind: &'static str,
     level: &'a str,
+    #[serde(rename = "pathShape", skip_serializing_if = "<[String]>::is_empty")]
+    path_shape: &'a [String],
     #[serde(skip_serializing_if = "Vec::is_empty")]
     options: Vec<OptionView<'a>>,
     commands: Vec<EntryView<'a>>,
@@ -579,6 +611,7 @@ pub struct Described {
     tree_extensions: BTreeMap<String, Value>,
     group_extensions: BTreeMap<String, BTreeMap<String, Value>>,
     usage_replacements: Vec<String>,
+    path_shape: Vec<String>,
     entries: Vec<TreeEntry>,
     commands: Vec<CommandDoc>,
     layout: Option<Layout>,
@@ -618,6 +651,21 @@ impl Described {
         }) {
             return Err(Error::NoCommandDocument(entry.command.clone()));
         }
+        if !minor.at_least(COMMA_LIST_SINCE) {
+            if let Some((command, option)) = commands.iter().find_map(|command| {
+                command
+                    .options
+                    .iter()
+                    .find(|option| option.comma_list)
+                    .map(|option| (command, option))
+            }) {
+                return Err(Error::CommaListBeforeMinor {
+                    command: command.command.clone(),
+                    option: option.name.clone(),
+                    minor,
+                });
+            }
+        }
         let layout = minor
             .at_least(Minor::V1_4)
             .then(|| Layout::of(&commands))
@@ -626,6 +674,7 @@ impl Described {
             minor,
             level: level.into(),
             tree_extensions: BTreeMap::new(),
+            path_shape: Vec::new(),
             group_extensions: BTreeMap::new(),
             usage_replacements: Vec::new(),
             entries,
@@ -643,6 +692,40 @@ impl Described {
     {
         self.usage_replacements = codes.into_iter().map(Into::into).collect();
         self
+    }
+
+    /// What each word of a path means, one label per position (`["area", "noun", "verb"]`, spec 4.1.1): the tree's
+    /// `pathShape`, whose length is the tool's longest path. Since 1.6; the labels are kebab-case words, at least one,
+    /// each once. A path longer than the shape is not refused here: keeping within it is a SHOULD.
+    pub fn path_shape<I, S>(mut self, labels: I) -> Result<Self, Error>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let labels: Vec<String> = labels.into_iter().map(Into::into).collect();
+        let problem = if !self.minor.at_least(PATH_SHAPE_SINCE) {
+            Some(format!(
+                "is since 1.6, but the tool declares {}",
+                self.minor
+            ))
+        } else if labels.is_empty() {
+            Some("has no label".to_string())
+        } else if let Some(label) = labels.iter().find(|label| !is_kebab_word(label)) {
+            Some(format!(
+                "has the label `{label}`, which is not a kebab-case word"
+            ))
+        } else {
+            labels
+                .iter()
+                .enumerate()
+                .find(|(at, label)| labels[..*at].contains(label))
+                .map(|(_, label)| format!("has the label `{label}` twice"))
+        };
+        if let Some(problem) = problem {
+            return Err(Error::PathShape(problem));
+        }
+        self.path_shape = labels;
+        Ok(self)
     }
 
     /// The tool's own members of the tree (`x-<tool>`, spec 9.10.2): a tool that filters its tree (spec 9.3) says so here.
@@ -679,6 +762,7 @@ impl Described {
             Some(layout) => Body::Tree(TreeView {
                 kind: "tree",
                 level: &self.level,
+                path_shape: &self.path_shape,
                 options: layout
                     .shared
                     .iter()
@@ -1052,6 +1136,7 @@ mod tests {
             possible_values: None,
             required: false,
             repeatable: false,
+            comma_list: false,
             default: match value_type {
                 ValueType::Switch => json!(false),
                 ValueType::Count => json!(0),

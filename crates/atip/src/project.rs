@@ -47,6 +47,12 @@ pub enum Problem {
     MissingText { command: String, what: String },
     /// An option has no long name.
     NoLongName { command: String, argument: String },
+    /// An option splits its values on a delimiter other than `,`, the only one the contract has (spec 9.7.6).
+    Delimiter {
+        command: String,
+        argument: String,
+        delimiter: char,
+    },
 }
 
 impl fmt::Display for Problem {
@@ -56,6 +62,7 @@ impl fmt::Display for Problem {
             Problem::BadDefault { command, argument, default, reason } => write!(f, "`{command}`: the default `{default}` of `{argument}` {reason}"),
             Problem::MissingText { command, what } => write!(f, "`{command}`: {what} has no text"),
             Problem::NoLongName { command, argument } => write!(f, "`{command}`: option `{argument}` has no long name"),
+            Problem::Delimiter { command, argument, delimiter } => write!(f, "`{command}`: option `{argument}` splits its values on `{delimiter}`; a comma list splits on `,` only (spec 9.7.6)"),
         }
     }
 }
@@ -496,6 +503,18 @@ pub fn option_doc(
     let repeatable = is_repeatable(arg);
     let valued = !matches!(value_type, ValueType::Switch | ValueType::Count);
     let members = possible_values(arg);
+    // A comma list (spec 9.7.6) is clap's `value_delimiter(',')`; any other delimiter has no meaning in the contract.
+    let comma_list = match arg.get_value_delimiter() {
+        None => false,
+        Some(',') => true,
+        Some(delimiter) => {
+            return Err(Problem::Delimiter {
+                command: command.to_string(),
+                argument: long.to_string(),
+                delimiter,
+            })
+        }
+    };
     Ok(OptionDoc {
         name: long.to_string(),
         short: arg.get_short().map(|short| short.to_string()),
@@ -504,6 +523,7 @@ pub fn option_doc(
         possible_values: (value_type == ValueType::Enum).then_some(members),
         required,
         repeatable,
+        comma_list,
         default: typed_default(command, arg, value_type, required, repeatable)?,
         default_note: None,
         env: arg
@@ -1428,5 +1448,30 @@ mod tests {
             flag_only_problems(&marked, Minor::V1_2),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn atip_crate16_03_a_comma_delimiter_is_a_comma_list_and_another_delimiter_is_refused() {
+        let tag = Arg::new("tag")
+            .long("tag")
+            .help("A tag")
+            .action(clap::ArgAction::Append)
+            .value_delimiter(',');
+        let doc = option_doc("member select", &tag, &[], &[]).expect("a comma list");
+        assert!(doc.comma_list && doc.repeatable);
+        let plain = Arg::new("tag")
+            .long("tag")
+            .help("A tag")
+            .action(clap::ArgAction::Append);
+        assert!(
+            !option_doc("member select", &plain, &[], &[])
+                .expect("an option")
+                .comma_list
+        );
+        let other = plain.clone().value_delimiter(';');
+        assert!(matches!(
+            option_doc("member select", &other, &[], &[]),
+            Err(Problem::Delimiter { delimiter: ';', .. })
+        ));
     }
 }

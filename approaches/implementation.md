@@ -66,6 +66,9 @@ parser; the answer must equal validating the document directly, codes and the po
   `true`, the count's name repeated, and every operand after one `--`. The joined form keeps a value that starts with
   `-`, `{` or `[`, or is `-`, from being read as an option or as an inline-JSON, file or stdin selector.
 - Write a `json` value as its compact JSON text in one word.
+- Give a comma-list option (spec 9.7.6) one `--name=value` per element, and never convert an element that contains a
+  comma: the parser would split it. A tool whose parser splits converts such a document by another route, or validates
+  it directly.
 - Translate the parser's `field` back to the document pointer (`/round`, `/operands/0`, `/1/round` in a batch), and
   for a required argument missing from both sources, to the pointer its key would have.
 

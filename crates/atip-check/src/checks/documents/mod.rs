@@ -761,6 +761,125 @@ pub fn pattern_findings(doc: &CommandDoc, claim: Claim) -> Vec<Finding> {
     findings
 }
 
+/// The group of a command (Annex S1 item 4): its path without the final word, the verb; the empty string for a one-word path.
+pub fn group_of(doc: &CommandDoc) -> String {
+    doc.path[..doc.path.len().saturating_sub(1)].join(" ")
+}
+
+/// The uses of each option name over `docs`, in the order of the names: the command and the option.
+fn uses_by_name<'a>(
+    docs: &[&'a CommandDoc],
+    enums_only: bool,
+) -> std::collections::BTreeMap<&'a str, Vec<(&'a CommandDoc, &'a crate::l1::model::Arg)>> {
+    let mut names: std::collections::BTreeMap<&str, Vec<(&CommandDoc, &crate::l1::model::Arg)>> =
+        std::collections::BTreeMap::new();
+    for doc in docs {
+        for option in doc
+            .options
+            .iter()
+            .filter(|option| !enums_only || option.value_type == "enum")
+        {
+            names
+                .entry(option.name.as_str())
+                .or_default()
+                .push((doc, option));
+        }
+    }
+    names
+}
+
+/// `L1.one-meaning`, over the command documents of a tool: `value-name` and `value-type`, one pair per option name. A name keeps one value name
+/// and one value type tool-wide; for a claim of 1.6 it keeps them per group (the command path without its verb), and across groups only where the
+/// value name is the same: the same name with another value name in another group is another option, and the same value name is the same thing,
+/// so the same value type (Annex S1 item 4).
+pub fn one_meaning_findings(docs: &[&CommandDoc], claim: Claim) -> Vec<Finding> {
+    let per_group = claim.at_least(Claim::V1_6);
+    let mut findings: Vec<Finding> = Vec::new();
+    for (name, uses) in &uses_by_name(docs, false) {
+        let pairs: Vec<_> = uses
+            .iter()
+            .enumerate()
+            .flat_map(|(at, first)| uses[at + 1..].iter().map(move |other| (first, other)))
+            .collect();
+        let scope = if per_group { " in one group" } else { "" };
+        let other_name = pairs.iter().find(|(first, other)| {
+            (!per_group || group_of(first.0) == group_of(other.0))
+                && first.1.value_name != other.1.value_name
+        });
+        findings.push((
+            "value-name",
+            other_name.map(|(first, other)| {
+                format!(
+                    "--{name} has the value name {:?} in {} and {:?} in {}{scope}",
+                    first.1.value_name, first.0.command, other.1.value_name, other.0.command
+                )
+            }),
+        ));
+        let other_type = pairs.iter().find(|(first, other)| {
+            (!per_group
+                || group_of(first.0) == group_of(other.0)
+                || first.1.value_name == other.1.value_name)
+                && first.1.value_type != other.1.value_type
+        });
+        findings.push((
+            "value-type",
+            other_type.map(|(first, other)| {
+                format!(
+                    "--{name} is {} in {} and {} in {}{}",
+                    first.1.value_type,
+                    first.0.command,
+                    other.1.value_type,
+                    other.0.command,
+                    if per_group {
+                        " (one group, or one value name)"
+                    } else {
+                        ""
+                    }
+                )
+            }),
+        ));
+    }
+    findings
+}
+
+/// `L1.one-meaning-values`, over the command documents of a tool: `overlapping`, one for each enum option name that two uses share. For a claim
+/// of 1.6 two uses are compared only within a group, or across groups with the same value name (Annex S1 item 4).
+pub fn one_meaning_values_findings(docs: &[&CommandDoc], claim: Claim) -> Vec<Finding> {
+    let per_group = claim.at_least(Claim::V1_6);
+    let mut findings: Vec<Finding> = Vec::new();
+    for (name, uses) in &uses_by_name(docs, true) {
+        let mut compared = false;
+        let mut disjoint: Option<(&str, &str)> = None;
+        for (at, (first_doc, first)) in uses.iter().enumerate() {
+            for (other_doc, other) in &uses[at + 1..] {
+                if per_group
+                    && group_of(first_doc) != group_of(other_doc)
+                    && first.value_name != other.value_name
+                {
+                    continue;
+                }
+                compared = true;
+                let (a, b): (BTreeSet<&str>, BTreeSet<&str>) = (
+                    first.possible_values.iter().map(String::as_str).collect(),
+                    other.possible_values.iter().map(String::as_str).collect(),
+                );
+                if disjoint.is_none() && a.is_disjoint(&b) {
+                    disjoint = Some((first_doc.command.as_str(), other_doc.command.as_str()));
+                }
+            }
+        }
+        if compared {
+            findings.push((
+                "overlapping",
+                disjoint.map(|(first, second)| {
+                    format!("--{name} has no value in common between {first} and {second}: two meanings behind one name?")
+                }),
+            ));
+        }
+    }
+    findings
+}
+
 /// `L1.examples`, for one command document: the nine conditions of `invocation::check_line` for each line of `examples`.
 pub fn examples_findings(doc: &CommandDoc, tool: &str) -> Vec<Finding> {
     let mut findings: Vec<Finding> = Vec::new();
