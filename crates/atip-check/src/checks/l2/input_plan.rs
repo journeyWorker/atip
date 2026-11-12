@@ -59,6 +59,8 @@ pub(crate) struct RefusalRun {
     pub code: &'static str,
     pub reasons: Vec<&'static str>,
     pub details: Option<usize>,
+    /// The JSON pointer the refusal must name, when the probe knows it (the item of a comma list).
+    pub at: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -537,6 +539,7 @@ impl Run<'_> {
                 code,
                 reasons,
                 details,
+                at: None,
             });
         }
         if let Some(max) = input
@@ -554,7 +557,36 @@ impl Run<'_> {
                 code: "INPUT_TOO_LARGE",
                 reasons: vec!["TOO_MANY_BYTES"],
                 details: None,
+                at: None,
             });
+        }
+        // A claim of 1.6: an item of the array of a comma-list option that holds a comma (`["v1,v2"]`) is outside the domain: a comma is never part of a value of
+        // a comma-list option on any channel, and a document is not split (spec 9.7.6). The domain is checked at step 6 of 10.7 with the codes used without
+        // `--input`: `USAGE`, `field` the pointer of the item (`/<key>/0`) or of the key.
+        if claim.at_least(Claim::V1_6) {
+            let example = input.example.as_object().cloned().unwrap_or_default();
+            for option in doc
+                .options
+                .iter()
+                .filter(|option| option.comma_list && !option.flag_only)
+            {
+                let Some((first, second)) = Self::comma_values(&[], option) else {
+                    continue;
+                };
+                let key = camel(&option.name);
+                let mut probe = example.clone();
+                probe.insert(key.clone(), json!([format!("{first},{second}")]));
+                let text = Value::Object(probe).to_string();
+                let call = self.invoke(Call::new(framing_argv(before, &doc.path, &text)))?;
+                command.refusals.push(RefusalRun {
+                    label: format!("the item {first},{second} of the comma list {key}"),
+                    call,
+                    code: "USAGE",
+                    reasons: Vec::new(),
+                    details: None,
+                    at: Some(format!("/{key}/0")),
+                });
+            }
         }
         // A claim of 1.4: the example with the key of each repeatable option set to `[]` (spec 9.7.2, 9.9.2). The derived schema says neither "none" nor "refused", so a tool
         // may do either; the probe never fails it and reports which it did (a note of `L2.input-refusals`).

@@ -768,7 +768,11 @@ fn member_search(comma_list: bool) -> Command {
     .value("TAG")
     .repeatable()
     .domain(json!({"pattern": TAG_PATTERN}));
-    let tag = if comma_list { tag.comma_list() } else { tag };
+    let tag = if comma_list {
+        tag.comma_list().env("FAKE_TAG")
+    } else {
+        tag
+    };
     Command::new("member search", "Search the members by name, tag and age")
         .operand(
             Arg::operand("query", "string", "Text the member's name contains")
@@ -864,7 +868,13 @@ fn member_search(comma_list: bool) -> Command {
         ])
 }
 
-fn member_tag(l2: bool, flag_only_rule: bool) -> Command {
+fn member_tag(l2: bool, flag_only_rule: bool, comma_list: bool) -> Command {
+    let tag = Arg::option("tag", "string", "The tag to add; repeat for several")
+        .value("TAG")
+        .required()
+        .repeatable()
+        .domain(json!({"pattern": TAG_PATTERN}));
+    let tag = if comma_list { tag.comma_list() } else { tag };
     Command::new(
         "member tag",
         "Tag a member; the tags go to tags/<MEMBER>.json",
@@ -877,11 +887,7 @@ fn member_tag(l2: bool, flag_only_rule: bool) -> Command {
             .domain(json!({"minimum": 1})),
     )
     .options(vec![
-        Arg::option("tag", "string", "The tag to add; repeat for several")
-            .value("TAG")
-            .required()
-            .repeatable()
-            .domain(json!({"pattern": TAG_PATTERN})),
+        tag,
         Arg::option("note", "string", "A note kept with the tags")
             .value("TEXT")
             .domain(json!({"maxLength": 80})),
@@ -1126,7 +1132,11 @@ pub fn commands(shape: Shape, schema_offered: bool) -> Vec<Command> {
         state_read("items", "Count the items", "ItemsReport").examples(&["{tool} items --json"]),
         member_list(shape),
         member_search(shape.is_1_6),
-        member_tag(shape.l2 && shape.batch, shape.tag_flag_only_rule),
+        member_tag(
+            shape.l2 && shape.batch,
+            shape.tag_flag_only_rule,
+            shape.is_1_6,
+        ),
         Command::new("reject", "Send a request the backend always rejects")
             .writes("replay-safe")
             .options(Vec::new())

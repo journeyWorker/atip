@@ -89,6 +89,7 @@ dependencies = [
  "clap",
  "jsonschema",
  "regex",
+ "regex-syntax",
  "schemars",
  "serde",
  "serde_json",

@@ -791,8 +791,14 @@ fn uses_by_name<'a>(
 /// `L1.one-meaning`, over the command documents of a tool: `value-name` and `value-type`, one pair per option name. A name keeps one value name
 /// and one value type tool-wide; for a claim of 1.6 it keeps them per group (the command path without its verb), and across groups only where the
 /// value name is the same: the same name with another value name in another group is another option, and the same value name is the same thing,
-/// so the same value type (Annex S1 item 4).
-pub fn one_meaning_findings(docs: &[&CommandDoc], claim: Claim) -> Vec<Finding> {
+/// so the same value type (Annex S1 item 4). Two exceptions keep the tool-wide rule at every claim: a switch or a count has no value name, so the
+/// same name keeps one value type across groups; and an option of a command's own with the name of a shared option (`tree_options`, the `options`
+/// of the tree answer, since 1.4) keeps the shared option's value name and value type, whatever the group.
+pub fn one_meaning_findings(
+    docs: &[&CommandDoc],
+    tree_options: &[Value],
+    claim: Claim,
+) -> Vec<Finding> {
     let per_group = claim.at_least(Claim::V1_6);
     let mut findings: Vec<Finding> = Vec::new();
     for (name, uses) in &uses_by_name(docs, false) {
@@ -801,42 +807,74 @@ pub fn one_meaning_findings(docs: &[&CommandDoc], claim: Claim) -> Vec<Finding> 
             .enumerate()
             .flat_map(|(at, first)| uses[at + 1..].iter().map(move |other| (first, other)))
             .collect();
+        let shared = tree_options
+            .iter()
+            .find(|option| option.get("name").and_then(Value::as_str) == Some(*name))
+            .map(|option| {
+                crate::l1::model::Arg::parse(&crate::l1::view::full_argument(option, true), true)
+            });
         let scope = if per_group { " in one group" } else { "" };
         let other_name = pairs.iter().find(|(first, other)| {
             (!per_group || group_of(first.0) == group_of(other.0))
                 && first.1.value_name != other.1.value_name
         });
+        let own_name = shared.as_ref().and_then(|shared| {
+            uses.iter()
+                .find(|(_, option)| option.value_name != shared.value_name)
+                .map(|(doc, option)| {
+                    format!(
+                        "--{name} has the value name {:?} in {}, and the shared option --{name} has {:?}",
+                        option.value_name, doc.command, shared.value_name
+                    )
+                })
+        });
         findings.push((
             "value-name",
-            other_name.map(|(first, other)| {
-                format!(
-                    "--{name} has the value name {:?} in {} and {:?} in {}{scope}",
-                    first.1.value_name, first.0.command, other.1.value_name, other.0.command
-                )
-            }),
+            other_name
+                .map(|(first, other)| {
+                    format!(
+                        "--{name} has the value name {:?} in {} and {:?} in {}{scope}",
+                        first.1.value_name, first.0.command, other.1.value_name, other.0.command
+                    )
+                })
+                .or(own_name),
         ));
         let other_type = pairs.iter().find(|(first, other)| {
             (!per_group
                 || group_of(first.0) == group_of(other.0)
-                || first.1.value_name == other.1.value_name)
+                || first.1.value_name == other.1.value_name
+                || first.1.is_flag()
+                || other.1.is_flag())
                 && first.1.value_type != other.1.value_type
+        });
+        let own_type = shared.as_ref().and_then(|shared| {
+            uses.iter()
+                .find(|(_, option)| option.value_type != shared.value_type)
+                .map(|(doc, option)| {
+                    format!(
+                        "--{name} is {} in {}, and the shared option --{name} is {}",
+                        option.value_type, doc.command, shared.value_type
+                    )
+                })
         });
         findings.push((
             "value-type",
-            other_type.map(|(first, other)| {
-                format!(
-                    "--{name} is {} in {} and {} in {}{}",
-                    first.1.value_type,
-                    first.0.command,
-                    other.1.value_type,
-                    other.0.command,
-                    if per_group {
-                        " (one group, or one value name)"
-                    } else {
-                        ""
-                    }
-                )
-            }),
+            other_type
+                .map(|(first, other)| {
+                    format!(
+                        "--{name} is {} in {} and {} in {}{}",
+                        first.1.value_type,
+                        first.0.command,
+                        other.1.value_type,
+                        other.0.command,
+                        if per_group {
+                            " (one group, one value name, or a switch or a count)"
+                        } else {
+                            ""
+                        }
+                    )
+                })
+                .or(own_type),
         ));
     }
     findings

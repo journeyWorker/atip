@@ -117,6 +117,11 @@ fn cases_1_6() -> Vec<Case> {
             "comma-list/empty-piece-refused",
             json!({"commaListEmptyAccepted": true}),
         ),
+        case(
+            "1.6",
+            "comma-list/env-split",
+            json!({"commaListEnvUnsplit": true}),
+        ),
         // Annex S2 rule 18: `commaList` on a command the checker does not run, on an option that is not repeatable.
         case(
             "1.6",
@@ -143,9 +148,9 @@ fn cases_1_6() -> Vec<Case> {
             "tree/minor-form",
             patch(&[("<tree>", vec![add("/pathShape", json!(["noun", "verb"]))])]),
         ),
-        // L1.depth: a path longer than the tree's `pathShape`, and longer than the default of three words.
+        // Annex S2 rule 19: a path longer than the tree's `pathShape`.
         Case {
-            condition: "depth/within-path-shape",
+            condition: "tree/path-shape",
             config: config(
                 "1.6",
                 &path_shape(
@@ -247,32 +252,30 @@ fn atip_check16_41_each_violation_of_a_1_6_row_fails_the_row_that_owns_it_and_no
 }
 
 #[test]
-fn atip_check16_42_the_depth_problem_names_the_limit_and_where_it_comes_from() {
-    let seeded = |extra: &Value| {
-        let output = run(&config("1.6", extra), true);
+fn atip_check16_42_the_depth_problem_names_the_limit_and_a_path_shape_is_the_trees_to_judge() {
+    let seeded = |claims: &str, extra: &Value| {
+        let output = run(&config(claims, extra), true);
         let depth = output.check("L1.depth").clone();
         assert_eq!(depth["result"], "fail", "{}", output.stdout);
         // A SHOULD: the level is met.
         assert_eq!(output.code, Some(0), "{}", output.stdout);
         depth["reason"].as_str().unwrap_or_default().to_string()
     };
-    let shaped = seeded(&patched(
-        &[("<tree>", vec![add("/pathShape", json!(["noun", "verb"]))])],
-        &json!({"deepTree": true}),
-    ));
-    assert!(
-        shaped.contains("team roster list has 3 words")
-            && shaped.contains("the tree's pathShape of 2 words")
-            && shaped.contains("4.1.1"),
-        "{shaped}"
-    );
-    let default = seeded(&json!({"deepTree": true, "deeperTree": true}));
+    let default = seeded("1.6", &json!({"deepTree": true, "deeperTree": true}));
     assert!(
         default.contains("team roster item list has 4 words")
-            && default.contains("the default of 3 words"),
+            && default.contains("the default of 3 words")
+            && default.contains("4.1.1"),
         "{default}"
     );
-    // Three words are within the default: the conforming tool with a three-word path passes `L1.depth`.
+    // Below 1.6 the default is two words.
+    let below = seeded("1.5", &json!({"deepTree": true}));
+    assert!(
+        below.contains("team roster list has 3 words")
+            && below.contains("the default of 2 words for a 1.5 claim"),
+        "{below}"
+    );
+    // Three words are within the default of a 1.6 tree: the conforming tool with a three-word path passes `L1.depth`.
     let three = run(&config("1.6", &json!({"deepTree": true})), true);
     assert_eq!(
         three.check("L1.depth")["result"],
@@ -280,6 +283,40 @@ fn atip_check16_42_the_depth_problem_names_the_limit_and_where_it_comes_from() {
         "{}",
         three.stdout
     );
+    // A tree that declares a `pathShape` has its limit from it, judged by rule 19 in `L1.tree`; `L1.depth` has nothing to add.
+    let shaped = run(
+        &config(
+            "1.6",
+            &patched(
+                &[("<tree>", vec![add("/pathShape", json!(["noun", "verb"]))])],
+                &json!({"deepTree": true}),
+            ),
+        ),
+        true,
+    );
+    assert_eq!(shaped.check("L1.depth")["result"], "unsupported");
+    let tree = shaped.check("L1.tree");
+    assert_eq!(tree["result"], "fail", "{}", shaped.stdout);
+    let reason = tree["reason"].as_str().unwrap_or_default();
+    assert!(
+        reason.contains("team roster list has 3 words") && reason.contains("2 labels"),
+        "{reason}"
+    );
+    // A `pathShape` of three labels lets the three-word path through.
+    let wide = run(
+        &config(
+            "1.6",
+            &patched(
+                &[(
+                    "<tree>",
+                    vec![add("/pathShape", json!(["product", "noun", "verb"]))],
+                )],
+                &json!({"deepTree": true}),
+            ),
+        ),
+        true,
+    );
+    assert_eq!(wide.check("L1.tree")["result"], "pass", "{}", wide.stdout);
 }
 
 #[test]
@@ -312,4 +349,30 @@ fn atip_check16_43_an_option_name_may_mean_two_things_in_two_groups_when_the_val
         "{}",
         output.stdout
     );
+}
+
+#[test]
+fn atip_check16_44_a_comma_in_an_item_of_a_document_is_refused_for_a_comma_list() {
+    // The conforming L2 fake of 1.6: `member tag --tag` is a comma list, and `["a,b"]` in a document is no value of it (spec 9.7.6).
+    let harness = Harness::new();
+    let config = support::l2::l2_config_of("1.6", &json!({}));
+    let fixture = harness.l2_fixture(&config);
+    let output = harness.check_l2_at(&config, &fixture, "L2");
+    let data = output.envelope()["data"].clone();
+    assert_eq!(not_passing(&data), "", "{}", output.stdout);
+    let refusals = check_of(&data, "L2.input-refusals");
+    assert_eq!(refusals["result"], "pass", "{}", output.stdout);
+    let observed = refusals["observed"].to_string();
+    assert!(
+        observed.contains("member") && observed.contains("tag") && observed.contains("x,x"),
+        "{observed}"
+    );
+
+    // Seeded: the tool leaves the domain of the comma list unchecked, so the item is kept as one value: `L2.input-refusals` fails `refused`.
+    let config = support::l2::l2_config_of("1.6", &json!({"commaItemAccepted": true}));
+    let fixture = harness.l2_fixture(&config);
+    let output = harness.check_l2_at(&config, &fixture, "L2");
+    let data = output.envelope()["data"].clone();
+    verdict(&data, "L2.input-refusals").expect("the owner fails");
+    kind_verdict(&data, "L2.input-refusals", "refused").expect("the condition refused");
 }

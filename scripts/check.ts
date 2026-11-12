@@ -1494,8 +1494,34 @@ function legacyProblems(data: SchemaData, minor: string, problems: string[]) {
 
 // ---- self-description (Annex S2) ----
 /**
+ * Whether a domain pattern can match a value containing ",": one of its atoms (a literal, an escape, a property, a
+ * class) matches ",". Quantifier braces are skipped. Errs only towards true (`[,]{0}`), as the Rust crate's check does.
+ */
+function patternAdmitsComma(pattern: string): boolean {
+  const cps = [...pattern.replace(/^\^/, "").replace(/\$$/, "")]
+  const atoms: string[] = []
+  for (let i = 0; i < cps.length; i++) {
+    if (cps[i] === "\\") {
+      if (cps[i + 1] === "p" || cps[i + 1] === "P") {
+        const end = cps.indexOf("}", i)
+        atoms.push(cps.slice(i, end + 1).join(""))
+        i = end
+      } else atoms.push(cps.slice(i, i + 2).join("")), i++
+    } else if (cps[i] === "[") {
+      let j = i + 1
+      while (j < cps.length && cps[j] !== "]") j += cps[j] === "\\" ? 2 : 1
+      atoms.push(cps.slice(i, j + 1).join(""))
+      i = j
+    } else if (cps[i] === "{") i = cps.indexOf("}", i)
+    else if (!"()|*+?".includes(cps[i])) atoms.push(cps[i])
+  }
+  return atoms.some((atom) => new RegExp(`^(?:${atom})$`, "u").test(","))
+}
+
+/**
  * Annex S2 rule 18 (and rule 16 for the member): `commaList` is since 1.6, on a repeatable option whose valueType is
- * string, integer, number, path or enum, none of whose `possibleValues` contains "," (spec 9.7.6).
+ * string, integer, number, path or enum, none of whose values can contain ",": no possible value, no default element,
+ * and a string or path comma list has a domain pattern that cannot match "," (spec 9.7.6).
  */
 function commaListProblems(o: RawArg, at: string, minor: string, problems: string[]) {
   if (o.commaList === undefined) return
@@ -1505,6 +1531,10 @@ function commaListProblems(o: RawArg, at: string, minor: string, problems: strin
   if (!a.repeatable || !["string", "integer", "number", "path", "enum"].includes(a.valueType))
     problems.push(`${at}: commaList on a ${a.repeatable ? "" : "non-repeatable "}${a.valueType} option (Annex S2 rule 18)`)
   for (const v of a.possibleValues ?? []) if (v.includes(",")) problems.push(`${at}: possible value ${JSON.stringify(v)} contains "," and a comma list can never give it (Annex S2 rule 18)`)
+  for (const v of Array.isArray(a.default) ? a.default : []) if (typeof v === "string" && v.includes(",")) problems.push(`${at}: default element ${JSON.stringify(v)} contains "," (Annex S2 rule 18)`)
+  const pattern = a.domain?.pattern
+  if ((a.valueType === "string" || a.valueType === "path") && (typeof pattern !== "string" || patternAdmitsComma(pattern)))
+    problems.push(`${at}: a ${a.valueType} comma list needs a domain pattern that admits no "," (Annex S2 rule 18)`)
 }
 
 /** The group of a command for Annex S1 item 4: its path without the final word, the verb; "" for a one-word path. */
@@ -1517,6 +1547,17 @@ const groupOf = (doc: CommandDoc) => doc.path.slice(0, -1).join(" ")
  * different `valueName` is a different meaning, which is allowed. Otherwise it holds tool-wide.
  */
 function oneMeaningProblems(doc: CommandDoc, tool: string, minor: string, problems: string[]) {
+  // An option of the command's own that takes a shared option's name keeps its value name and value type (9.5).
+  const shared = trees.get(tool)?.options ?? new Map<string, RawArg>()
+  for (const o of doc.options) {
+    const s = shared.get(o.name)
+    if (!s || doc.named.includes(o.name)) continue
+    const own = o as RawArg & { valueName?: string }
+    const a = fullArg(s) as Arg & { valueName?: string }
+    const name = (x: { valueName?: string; name: string }) => x.valueName ?? x.name.toUpperCase().replace(/-/g, "_")
+    if (name(own) !== name(a) || o.valueType !== a.valueType)
+      problems.push(`--${o.name} is ${name(own)} ${o.valueType} here and ${name(a)} ${a.valueType} as the tree's shared option (Annex S1 item 4)`)
+  }
   for (const [key, other] of commandDocs) {
     if (!key.startsWith(`${tool} `) || other.command === doc.command) continue
     const grouped = atLeast(minor, GROUP_MEANING_SINCE) && atLeast(commandMinors.get(key) ?? "1.0", GROUP_MEANING_SINCE)
@@ -1526,7 +1567,9 @@ function oneMeaningProblems(doc: CommandDoc, tool: string, minor: string, proble
       const p = other.options.find((x) => x.name === o.name && !other.named.includes(x.name))
       if (!p) continue
       const valueName = (a: Arg) => (a as RawArg & { valueName?: string }).valueName ?? a.name.toUpperCase().replace(/-/g, "_")
-      if (grouped && !sameGroup) {
+      // A switch or a count has no value name to mark another meaning: it keeps one tool-wide.
+      const valueless = (a: Arg) => a.valueType === "switch" || a.valueType === "count"
+      if (grouped && !sameGroup && !valueless(o) && !valueless(p)) {
         if (valueName(o) === valueName(p) && o.valueType !== p.valueType)
           problems.push(`--${o.name} ${valueName(o)} is ${o.valueType} here and ${p.valueType} in ${other.command}: the same value name across groups is the same meaning (Annex S1 item 4)`)
       } else if (valueName(o) !== valueName(p) || o.valueType !== p.valueType)
@@ -1791,6 +1834,10 @@ function checkSchemaAnswer(value: unknown, problems: string[]) {
   if (data.kind === "group" && v14) v14MemberProblems("group", data, `group ${data.command}`, problems)
   if (data.kind === "tree" && data.pathShape && !atLeast(declaredMinor(meta), PATH_SHAPE_SINCE))
     problems.push(`the tree's pathShape is since ${PATH_SHAPE_SINCE}, but the document declares contract ${declaredMinor(meta)} (spec 4.1.1, Annex S2 rule 16)`)
+  if (data.kind === "tree" && data.pathShape)
+    for (const entry of data.commands)
+      if (entry.command.split(" ").length > data.pathShape.length)
+        problems.push(`path ${JSON.stringify(entry.command)} is longer than the tree's pathShape of ${data.pathShape.length} words (Annex S2 rule 19)`)
   if (data.kind === "tree" && v14 && data.options) {
     const optionNames = data.options.map((o) => o.name)
     for (const o of data.options) {

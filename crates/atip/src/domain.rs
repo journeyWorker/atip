@@ -261,6 +261,33 @@ fn is_safe_integer(value: &Value) -> bool {
             .is_some_and(|number| number.fract() == 0.0 && number.abs() <= SAFE_INTEGER as f64)
 }
 
+/// Whether `pattern` can match a value that contains `,`: some literal or class of its syntax tree holds the comma. A
+/// comma list's domain admits no such value (spec 9.7.6, Annex S2 rule 18). The answer errs only towards `true`, for a
+/// piece that can never take part in a match (`[,]{0}`); a pattern that does not parse is `true` too.
+pub fn pattern_admits_comma(pattern: &str) -> bool {
+    use regex_syntax::hir::{Class, Hir, HirKind};
+    fn holds(hir: &Hir) -> bool {
+        match hir.kind() {
+            HirKind::Empty | HirKind::Look(_) => false,
+            HirKind::Literal(literal) => literal.0.contains(&b','),
+            HirKind::Class(Class::Unicode(class)) => class
+                .ranges()
+                .iter()
+                .any(|range| range.start() <= ',' && ',' <= range.end()),
+            HirKind::Class(Class::Bytes(class)) => class
+                .ranges()
+                .iter()
+                .any(|range| range.start() <= b',' && b',' <= range.end()),
+            HirKind::Repetition(repetition) => holds(&repetition.sub),
+            HirKind::Capture(capture) => holds(&capture.sub),
+            HirKind::Concat(parts) | HirKind::Alternation(parts) => parts.iter().any(holds),
+        }
+    }
+    regex_syntax::Parser::new()
+        .parse(pattern)
+        .map_or(true, |hir| holds(&hir))
+}
+
 /// What is wrong with `pattern` as a domain `pattern` of a document that declares `minor` (spec 10.7.4): `None` when it
 /// is `^`, an I-Regexp body with the contract's restrictions, and `$`, and the Rust `regex` crate compiles it with its
 /// default limits (a compiled size of 10 MiB, a nesting depth of 250). From 1.5 the body may use `\p{White_Space}` and

@@ -75,14 +75,17 @@ pub(crate) struct ConstraintRun {
     pub labels: Vec<String>,
 }
 
-/// The three invocations of `L1.comma-list` for one comma-list option: `--x=v1,v2`, `--x=v1 --x=v2` and `--x=v1,`.
+/// The invocations of `L1.comma-list` for one comma-list option: `--x=v1,v2`, `--x=v1 --x=v2` (and again, for what varies between runs), `--x=v1,`, and, for an
+/// option that reads an environment variable, the variable set to `v1,v2` with the option left out.
 #[derive(Debug, Clone)]
 pub(crate) struct CommaListRun {
     pub command: String,
     pub arg: String,
     pub joined: usize,
     pub repeated: usize,
+    pub twin: usize,
     pub empty: usize,
+    pub env: Option<usize>,
 }
 
 /// One value tried for one argument.
@@ -820,21 +823,39 @@ impl Run<'_> {
             let mut empty = carried.clone();
             invocation::set_option(&mut empty, &arg.name, Some(format!("{first},")));
             let joined = self.invoke(Call::new(invocation::render(&joined)))?;
-            let repeated = self.invoke(Call::new(invocation::render(&repeated)))?;
+            let repeated_call = self.invoke(Call::new(invocation::render(&repeated)))?;
+            // The repeated form again, in a fresh copy of the state: what differs between the two runs varies on its own and is not compared.
+            let twin = self.invoke(Call::new(invocation::render(&repeated)))?;
             let empty = self.invoke(Call::new(invocation::render(&empty)))?;
+            // The same values in the environment variable the option reads, the option itself left out (spec 9.7.6: `env` is split too).
+            let env = match &arg.env {
+                Some(variable) => {
+                    let mut without = carried.clone();
+                    invocation::remove_option(&mut without, &arg.name);
+                    Some(
+                        self.invoke(
+                            Call::new(invocation::render(&without))
+                                .with_env(variable, &format!("{first},{second}")),
+                        )?,
+                    )
+                }
+                None => None,
+            };
             run.comma_lists.push(CommaListRun {
                 command: doc.command.clone(),
                 arg: arg.name.clone(),
                 joined,
-                repeated,
+                repeated: repeated_call,
+                twin,
                 empty,
+                env,
             });
         }
         Ok(())
     }
 
     /// The two values `L1.comma-list` gives `arg`; none contains a comma or is empty.
-    fn comma_values(bases: &[Invocation], arg: &Arg) -> Option<(String, String)> {
+    pub(crate) fn comma_values(bases: &[Invocation], arg: &Arg) -> Option<(String, String)> {
         let fine = |word: &str| !word.is_empty() && !word.contains(',');
         if arg.value_type == "enum" {
             let mut values = arg.possible_values.iter().filter(|value| fine(value));

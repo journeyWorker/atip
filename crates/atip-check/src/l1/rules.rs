@@ -106,6 +106,32 @@ pub fn tree_findings(answer: &Value, tree: &Tree, claimed_level: &str) -> Findin
     findings
 }
 
+/// `L1.tree`, Annex S2 rule 19, for a claim of 1.6 or later: when the tree declares a `pathShape`, no path has more words than it has labels
+/// (condition `path-shape`). Judged only then; a tree without one is `L1.depth`'s, and a `pathShape` in a tree of an earlier claim is rule 16's.
+pub fn path_shape_findings(tree: &Tree, claim: Claim) -> Findings {
+    let Some(shape) = tree
+        .path_shape
+        .as_ref()
+        .filter(|shape| !shape.is_empty() && claim.at_least(Claim::V1_6))
+    else {
+        return Findings::new();
+    };
+    let problems: Vec<String> = tree
+        .commands
+        .iter()
+        .filter(|entry| entry.path.len() > shape.len())
+        .map(|entry| {
+            format!(
+                "{} has {} words, and the tree's pathShape has {} labels (Annex S2 rule 19)",
+                entry.command,
+                entry.path.len(),
+                shape.len()
+            )
+        })
+        .collect();
+    vec![("path-shape", joined("tree: ", &problems))]
+}
+
 /// Rule 1 for each entry of a tree or group answer: `command` is `path` joined by one space.
 fn entry_path_problem(owner: &str, entries: &[TreeEntry]) -> Option<String> {
     let problems: Vec<String> = entries
@@ -347,6 +373,42 @@ fn rule_18(doc: &CommandDoc) -> Option<String> {
         {
             problems.push(format!(
                 "--{} has commaList but its possible value {value:?} contains a comma",
+                option.name
+            ));
+        }
+        // A comma is never part of a value of a comma list, on any channel: argv and `env` are split, a document item with one is outside the domain,
+        // and a default is written as its pieces. Integers, numbers and enum values (checked above) cannot hold one; a string or a path can.
+        if matches!(option.value_type.as_str(), "string" | "path") {
+            match option
+                .domain
+                .as_ref()
+                .and_then(|domain| domain.get("pattern"))
+                .and_then(Value::as_str)
+            {
+                None => problems.push(format!(
+                    "--{} has commaList and no domain `pattern`, so its domain admits a value that contains a comma",
+                    option.name
+                )),
+                Some(pattern) if atip::domain::pattern_admits_comma(pattern) => {
+                    problems.push(format!(
+                        "--{} has commaList and its domain pattern {pattern:?} admits a value that contains a comma",
+                        option.name
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+        let defaults: Vec<&Value> = match &option.default {
+            Value::Array(items) => items.iter().collect(),
+            Value::Null => Vec::new(),
+            other => vec![other],
+        };
+        for item in defaults
+            .into_iter()
+            .filter(|item| item.as_str().is_some_and(|text| text.contains(',')))
+        {
+            problems.push(format!(
+                "--{} has commaList and its default {item} contains a comma (a default is written as its pieces)",
                 option.name
             ));
         }
@@ -1349,9 +1411,9 @@ mod tests {
 
     use serde_json::{json, Value};
 
-    use super::{command_findings, group_findings, tree_findings, Findings};
+    use super::{command_findings, group_findings, path_shape_findings, tree_findings, Findings};
     use crate::claim::Claim;
-    use crate::l1::model::{CommandDoc, GroupDoc, Tree};
+    use crate::l1::model::{CommandDoc, GroupDoc, Tree, TreeEntry};
 
     fn fixtures() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -1917,5 +1979,75 @@ mod tests {
                 "{problem}"
             );
         }
+    }
+
+    #[test]
+    fn atip_check16_rule_18_a_string_comma_list_has_a_domain_that_admits_no_comma_and_a_default_without_one(
+    ) {
+        let command = |option: Value| {
+            CommandDoc::parse(&json!({
+                "kind": "command", "command": "select", "path": ["select"], "effect": "read",
+                "operands": [], "options": [option], "errors": [], "outputs": [], "examples": [], "schemas": {}
+            }))
+            .expect("a command")
+        };
+        let problem = |option: Value| {
+            command_findings(&command(option), "t", Claim::V1_6, &|_| None)
+                .into_iter()
+                .find(|(condition, _)| *condition == "rule-18")
+                .and_then(|(_, problem)| problem)
+        };
+        let string = |extra: Value| {
+            let mut option = json!({"name": "x", "valueType": "string", "repeatable": true, "commaList": true, "default": null});
+            for (key, value) in extra.as_object().into_iter().flatten() {
+                option[key] = value.clone();
+            }
+            option
+        };
+        assert_eq!(
+            problem(string(json!({"domain": {"pattern": "^[a-z]+$"}}))),
+            None
+        );
+        let open = problem(string(json!({}))).expect("a string without a domain admits a comma");
+        assert!(open.contains("no domain `pattern`"), "{open}");
+        let wide =
+            problem(string(json!({"domain": {"pattern": "^.+$"}}))).expect("`.` admits a comma");
+        assert!(
+            wide.contains("admits a value that contains a comma"),
+            "{wide}"
+        );
+        let default = problem(string(
+            json!({"domain": {"pattern": "^[a-z,]+$"}, "default": ["a,b"]}),
+        ))
+        .expect("a comma in a default and in the domain");
+        assert!(default.contains("default"), "{default}");
+    }
+
+    #[test]
+    fn atip_check16_rule_19_no_path_is_longer_than_the_path_shape() {
+        let tree = |shape: Option<Vec<&str>>, paths: &[&[&str]]| Tree {
+            level: "L1".to_string(),
+            commands: paths
+                .iter()
+                .map(|path| TreeEntry {
+                    command: path.join(" "),
+                    path: path.iter().map(ToString::to_string).collect(),
+                    kind: "command".to_string(),
+                    effect: None,
+                })
+                .collect(),
+            path_shape: shape.map(|labels| labels.into_iter().map(ToString::to_string).collect()),
+        };
+        let deep: [&[&str]; 2] = [&["a", "list"], &["a", "b", "list"]];
+        let found = path_shape_findings(&tree(Some(vec!["noun", "verb"]), &deep), Claim::V1_6);
+        assert_eq!(found.len(), 1);
+        assert!(found[0]
+            .1
+            .as_deref()
+            .is_some_and(|why| why.contains("a b list has 3 words") && why.contains("2 labels")));
+        let wide = path_shape_findings(&tree(Some(vec!["p", "n", "v"]), &deep), Claim::V1_6);
+        assert_eq!(wide, vec![("path-shape", None)]);
+        assert!(path_shape_findings(&tree(None, &deep), Claim::V1_6).is_empty());
+        assert!(path_shape_findings(&tree(Some(vec!["n", "v"]), &deep), Claim::V1_5).is_empty());
     }
 }

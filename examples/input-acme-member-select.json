@@ -1,0 +1,12 @@
+{
+  "team": "core",
+  "tag": [
+    "lead",
+    "oncall"
+  ],
+  "role": [
+    "owner",
+    "member"
+  ],
+  "group": "platform"
+}

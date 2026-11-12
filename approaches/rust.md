@@ -263,8 +263,11 @@ clap_builder 4.6.7, `src/util/any_value.rs:72`). Failing on an unknown custom pa
 `is_required_set()`. `commaList` (spec 9.7.6, a tool that declares 1.6) = `get_value_delimiter() == Some(',')`; any
 other delimiter is refused by the projection, and `Described::new` refuses a comma list below 1.6. clap keeps empty
 pieces (`--tag a,,b` gives `""`), so a comma-list option also refuses the empty string in its value parser
-(`NonEmptyStringValueParser`, or a domain `minLength: 1`), as spec 9.7.6 requires. A tree's `pathShape` (spec 4.1.1) is
-`Described::path_shape`.
+(`NonEmptyStringValueParser`, or a domain `minLength: 1`), as spec 9.7.6 requires. clap splits an `env` value as it
+splits argv, which is what 9.7.6 says, and splits `default_values` too: the projection writes the default as those
+pieces. A `string` or `path` comma list declares a domain `pattern` that admits no `,` (Annex S2 rule 18,
+`domain::pattern_admits_comma`); the value parser enforces it. A tree's `pathShape` (spec 4.1.1) is
+`Described::path_shape`, and Annex S2 rule 19 keeps every path within it.
 
 ### 4.2 Constraints
 

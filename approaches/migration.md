@@ -433,22 +433,23 @@ pattern; one that only compiles them reads it correctly.
 
 ## 11. From 1.5 to 1.6
 
-For the author of a tool that conforms to 1.5, and for the author of a caller. 1.6.0 adds two optional members
-(spec 15.10; the reasons are Appendix A D42-D44), withdraws the two-word SHOULD and scopes one meaning per option
-name to a group. Nothing changes shape and no
-section was renumbered.
+For the author of a tool that conforms to 1.5, and for the author of a caller. 1.6.0 adds two optional members (spec
+15.10; the reasons are Appendix A D42-D44), withdraws the two-word SHOULD and scopes one meaning per option name to a
+group. Nothing changes shape and no section was renumbered.
 
 **Nothing is forced.** A 1.5 tool stays conforming as a 1.5 tool, held to the 1.5.0 text (spec 15.7). Declaring 1.6
 (the contract constant and the fixture's `contractVersion`) lets it:
 
 - mark a repeatable option `commaList: true` (spec 9.7.6), so that `--tag a,b` is `--tag a --tag b`; the tool's parser
-  splits on `,` (clap: `value_delimiter(',')`), refuses an empty piece, and keeps `--input` arrays as they are;
-- declare `pathShape` in its tree (spec 4.1.1), one label per word position; a path SHOULD fit it, or three words
-  without one. The checker's advisory L1.depth reads it.
+  splits argv and `env` values on `,` (clap: `value_delimiter(',')`) and refuses an empty piece. No value of the option
+  contains a comma: a `string` or `path` comma list declares a domain `pattern` that admits none (Annex S2 rule 18),
+  which also refuses such an element in `--input`;
+- declare `pathShape` in its tree (spec 4.1.1), one label per word of a full-length path; no path is longer (Annex S2
+  rule 19). Without one, a path SHOULD be at most three words; the checker's advisory L1.depth reads it;
 - give an option name different meanings in different groups (Annex S1 item 4), each with its own value name; a shared
-  tree option keeps one meaning.
+  tree option, its name on a command's own option, and a switch or count keep one meaning tool-wide.
 
 **A caller.** A caller of 1.6 splits the argv values of a `commaList` option on `,` when it reads an example, `next`
-or guide line, and may write either form; a value with a comma goes in `--input`. It may show `pathShape` to an agent
-choosing words. A caller of 1.5 ignores both members and keeps working: it writes one value per occurrence.
-
+or guide line, and may write either form. It may show `pathShape` to an agent choosing words. A caller of 1.5 ignores
+both members and keeps working: it writes one value per occurrence, and its domain check refuses a value with a comma.
+A caller that relied on an option name meaning one thing tool-wide compares value names instead.

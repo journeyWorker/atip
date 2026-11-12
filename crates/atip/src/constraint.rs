@@ -506,7 +506,8 @@ pub fn document_problems(
     }
     let mut problems = Vec::new();
     // Annex S2 rule 18: a comma list (spec 9.7.6) is since 1.6, on a repeatable option of a single-word valueType, and no
-    // possible value contains the comma it is split on.
+    // value of it contains the comma it is split on: no possible value, no default element, and a string or path comma
+    // list has a domain `pattern` that cannot match a `,`.
     for option in options.iter().filter(|option| option.comma_list) {
         let name = &option.name;
         if !minor.at_least(crate::describe::COMMA_LIST_SINCE) {
@@ -528,6 +529,31 @@ pub fn document_problems(
             if value.contains(',') {
                 problems.push(format!(
                     "`{name}`: the possible value {value:?} contains `,`, which a comma list splits on (Annex S2 rule 18)"
+                ));
+            }
+        }
+        if let Some(value) = option
+            .default
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .find(|value| value.contains(','))
+        {
+            problems.push(format!(
+                "`{name}`: the default element {value:?} contains `,`, which a comma list splits on (Annex S2 rule 18)"
+            ));
+        }
+        if matches!(option.value_type, ValueType::String | ValueType::Path) {
+            let pattern = option
+                .domain
+                .as_ref()
+                .and_then(|domain| domain.get("pattern"))
+                .and_then(Value::as_str);
+            if pattern.is_none_or(crate::domain::pattern_admits_comma) {
+                problems.push(format!(
+                    "`{name}`: a {} comma list needs a domain `pattern` that admits no `,` (Annex S2 rule 18)",
+                    option.value_type.as_str()
                 ));
             }
         }
@@ -907,7 +933,7 @@ mod tests {
             default_note: None,
             env: None,
             flag_only: false,
-            domain: None,
+            domain: Some(serde_json::json!({ "pattern": "^[a-z]+$" })),
             help: "h".to_string(),
         };
         let errors = vec!["USAGE".to_string()];
@@ -915,6 +941,33 @@ mod tests {
             document_problems(options, &[], &[], &[], &errors, &[], minor)
         };
         assert!(problems(&[list("tag", ValueType::String, true)], crate::Minor::V1_6).is_empty());
+        // A string or path comma list keeps `,` out of its domain, and out of its default.
+        for (domain, admits) in [
+            (None, true),
+            (Some("^[a-z,]+$"), true),
+            (Some("^[^a]+$"), true),
+            (Some("^\\p{Po}+$"), true),
+            (Some("^a(,b)?$"), true),
+            (Some("^[a-z][a-z0-9-]*$"), false),
+            (Some("^\\p{L}{1,3}$"), false),
+            (Some("^[^,\\n\\r]+$"), false),
+        ] {
+            let mut option = list("tag", ValueType::Path, true);
+            option.domain = domain.map(|pattern| serde_json::json!({ "pattern": pattern }));
+            let found = problems(&[option], crate::Minor::V1_6);
+            assert_eq!(
+                found.iter().any(|p| p.contains("admits no `,`")),
+                admits,
+                "{domain:?}: {found:?}"
+            );
+        }
+        let mut defaulted = list("tag", ValueType::String, true);
+        defaulted.default = serde_json::json!(["a", "b,c"]);
+        let found = problems(&[defaulted], crate::Minor::V1_6);
+        assert!(
+            found.iter().any(|p| p.contains("default element")),
+            "{found:?}"
+        );
         let early = problems(&[list("tag", ValueType::String, true)], crate::Minor::V1_5);
         assert!(early.iter().any(|p| p.contains("since 1.6")), "{early:?}");
         for (value_type, repeatable) in [(ValueType::String, false), (ValueType::Json, true)] {

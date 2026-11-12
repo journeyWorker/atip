@@ -13,11 +13,12 @@ S2 lists the rules every `schema` answer satisfies beyond `schema/schema-doc.sch
    are allowed). Context (repository, project, run) is never an operand; values that modify the object are options.
 3. Other identifiers are bare-noun options (`--change`, `--run`); no option name ends in `-id`.
 4. Within a tool an option name has one value name, value type and meaning on every command; only `required`, the
-   default and a subset of a shared enum may differ. In a document that declares 1.6 or later this holds for a shared
-   option (spec 9.3) tool-wide and for any other within a group: the path without its final word, the verb (the last
-   position of a `pathShape`, spec 4.1.1; a one-word path's group is the root). Across groups a name MAY mean
-   different things, and then the two sides use different value names (`--group USER_GROUP`, `--group REPO_GROUP`);
-   the same name with the same value name means one thing in every group. [Appendix A D44]
+   default and a subset of a shared enum may differ. In a document that declares 1.6 or later this holds tool-wide for
+   a shared option (spec 9.3), whose name an option of a command's own keeps with its value name and value type, and
+   for a switch or a count, which has no value name; for any other option it holds within a group: the path without its
+   final word, the verb (a one-word path's group is the root). Across groups a name MAY mean different things, and then
+   the two sides use different value names (`--group USER_GROUP`, `--group REPO_GROUP`); the same name with the same
+   value name means one thing in every group. [Appendix A D44]
 5. Options are lower kebab-case long names. A tool SHOULD NOT add short options other than `-h` and `-V`, and declares
    every short option it has (spec 9.7.1). Prefix abbreviation of options or commands MUST NOT be accepted.
    [Appendix A D11.18]
@@ -80,4 +81,7 @@ Every `schema` answer satisfies the rules below. A command's arguments are its o
     command, and a name and an object never give the same
     option twice.
 18. An option with `commaList: true` (since 1.6) is repeatable, its valueType is `string`, `integer`, `number`, `path`
-    or `enum`, and no member of its `possibleValues` contains `,` (spec 9.7.6).
+    or `enum`, and none of its values can contain `,` (spec 9.7.6): no member of its `possibleValues` and no element of
+    its `default` contains one, and a `string` or `path` comma list has a domain `pattern` none of whose literals and
+    classes holds `,` (`^[a-z][a-z0-9-]*$`, `^[^,\n\r]+$`).
+19. When the tree declares `pathShape` (since 1.6), no path has more words than it has labels (spec 4.1.1).

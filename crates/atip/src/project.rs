@@ -442,7 +442,8 @@ fn parse_default(
 
 /// The typed `default` of `arg` (spec 10.7.3): `false` for a switch, `0` for a count, `null` for a required argument or
 /// one with no default, else the clap default parsed with the argument's type (`"100"` is `100`); a repeatable
-/// argument's default is an array of its element type.
+/// argument's default is an array of its element type. A comma list's default strings are split on `,` first, as clap
+/// splits them (spec 9.7.6): `default_values(["x,y"])` is the default `["x", "y"]`.
 pub fn typed_default(
     command: &str,
     arg: &Arg,
@@ -464,8 +465,13 @@ pub fn typed_default(
         return Ok(Value::Null);
     }
     let members = possible_values(arg);
-    let parsed = raw
-        .iter()
+    let pieces: Vec<&str> = if arg.get_value_delimiter() == Some(',') {
+        raw.iter().flat_map(|text| text.split(',')).collect()
+    } else {
+        raw.iter().map(String::as_str).collect()
+    };
+    let parsed = pieces
+        .into_iter()
         .map(|text| parse_default(command, arg, value_type, text, &members))
         .collect::<Result<Vec<Value>, Problem>>()?;
     Ok(if repeatable {
@@ -1473,5 +1479,27 @@ mod tests {
             option_doc("member select", &other, &[], &[]),
             Err(Problem::Delimiter { delimiter: ';', .. })
         ));
+    }
+
+    #[test]
+    fn atip_crate16_05_a_comma_list_default_is_written_as_the_pieces_clap_parses() {
+        let tag = Arg::new("tag")
+            .long("tag")
+            .help("A tag")
+            .action(clap::ArgAction::Append)
+            .value_delimiter(',')
+            .default_values(["x,y", "z"]);
+        let doc = option_doc("member select", &tag, &[], &[]).expect("a comma list");
+        assert_eq!(doc.default, json!(["x", "y", "z"]));
+        let parsed = clap::Command::new("t")
+            .arg(tag)
+            .try_get_matches_from(["t"])
+            .expect("parses");
+        let values: Vec<&String> = parsed.get_many("tag").expect("a default").collect();
+        assert_eq!(
+            values,
+            ["x", "y", "z"],
+            "the document's default is what clap uses"
+        );
     }
 }

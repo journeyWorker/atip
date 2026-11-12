@@ -445,11 +445,17 @@ pub fn check_domains(
         if listed(tool, "acceptDomain", command.id, &json!(arg.name)) {
             continue;
         }
+        // Seeded: `commaItemAccepted` leaves a value of a comma list that holds a comma unchecked: argv never gives one (it is split), so only an item of a
+        // document is kept as one value.
+        let lenient = arg.comma_list && tool.flag("commaItemAccepted");
         let Some(validator) = compiled(domain) else {
             continue;
         };
         let strict = listed(tool, "strictBounds", command.id, &json!(arg.name));
         for value in parsed.values(arg.name) {
+            if lenient && value.as_str().is_some_and(|text| text.contains(',')) {
+                continue;
+            }
             let on_bound = strict
                 && ["minimum", "maximum"]
                     .iter()

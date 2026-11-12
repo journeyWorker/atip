@@ -87,12 +87,12 @@ impl<'a> Judge<'a> {
     /// of `meta` that name the answer. A difference is a problem.
     /// `twin` is the reference run again on a fresh copy of the same state: the paths of `data` whose values differ between the two are varying
     /// (a timestamp, an address derived from one) and are left out of the comparison; exit, `ok`, the code and the rest of `data` are compared.
-    fn differences(&self, call: usize, reference: usize, twin: usize) -> Vec<String> {
+    pub(crate) fn differences(&self, call: usize, reference: usize, twin: usize) -> Vec<String> {
         let (a, b) = (self.at(call), self.at(reference));
         let mut problems = Vec::new();
         if a.exit != b.exit {
             problems.push(format!(
-                "exit {} against exit {} of the argv form",
+                "exit {} against exit {} of the reference run",
                 exit_text(a.exit),
                 exit_text(b.exit)
             ));
@@ -142,7 +142,7 @@ impl<'a> Judge<'a> {
             };
             if left != right {
                 problems.push(format!(
-                    "{pointer}: {} against {} of the argv form",
+                    "{pointer}: {} against {} of the reference run",
                     show_value(left.as_ref()),
                     show_value(right.as_ref())
                 ));
@@ -365,8 +365,11 @@ impl<'a> Judge<'a> {
                 if !refused {
                     continue;
                 }
-                // The size of the document is checked before it is read: INPUT_TOO_LARGE points at `--input`, not into the document.
-                let on_field = if run.code == "INPUT_TOO_LARGE" {
+                // The size of the document is checked before it is read: INPUT_TOO_LARGE points at `--input`, not into the document. An item of a comma
+                // list is the item itself (`/tag/0`) or the key that holds it (`/tag`).
+                let on_field = if let Some(at) = &run.at {
+                    field.is_some_and(|field| at == field || at_pointer(at, field))
+                } else if run.code == "INPUT_TOO_LARGE" {
                     field == Some("--input")
                 } else {
                     field.is_some_and(is_pointer_or_input)
@@ -377,7 +380,9 @@ impl<'a> Judge<'a> {
                         command.command,
                         run.label,
                         field.unwrap_or("no field"),
-                        if run.code == "INPUT_TOO_LARGE" {
+                        if let Some(at) = &run.at {
+                            at.as_str()
+                        } else if run.code == "INPUT_TOO_LARGE" {
                             "--input"
                         } else {
                             "a JSON pointer or --input"

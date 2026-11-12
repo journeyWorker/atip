@@ -2,12 +2,13 @@
 
 Status: **1.6.0, release candidate**: a minor (15.1) that lets a repeatable option take a comma-separated list in one
 argv value (`--tag a,b`, 9.7.6), lets a tree declare what each word of its paths means (`pathShape`, 4.1.1), with no
-fixed depth, and scopes an option name's one meaning to its group (Annex S1 item 4; Appendix A D42-D44). Version 1.5.0, adopted 2026-11-05 after one round of independent review, is a minor
-that lets a domain pattern use `\p{White_Space}` and `\P{White_Space}` (Annex V2, D41). Version 1.4.2, adopted
-2026-11-04 after one round of independent review, is a patch that says how a caller writes none for a repeatable option
-in `--input` and that `--version --json` resolves its path first (D40); 1.4.1 and 1.4.0 are described in D39 and D38.
-`CHANGELOG.md` lists every version. Annexes: `spec/annex-fields.md` (F, field selection), `spec/annex-domains.md`
-(V, argument domains and numbers), `spec/annex-schema.md` (S, self-description rules).
+fixed depth, and scopes an option name's one meaning to its group (Annex S1 item 4; Appendix A D42-D44). Version 1.5.0,
+adopted 2026-11-05 after one round of independent review, is a minor that lets a domain pattern use `\p{White_Space}`
+and `\P{White_Space}` (Annex V2, D41). Version 1.4.2, adopted 2026-11-04 after one round of independent review, is a
+patch that says how a caller writes none for a repeatable option in `--input` and that `--version --json` resolves its
+path first (D40); 1.4.1 and 1.4.0 are described in D39 and D38. `CHANGELOG.md` lists every version. Annexes:
+`spec/annex-fields.md` (F, field selection), `spec/annex-domains.md` (V, argument domains and numbers),
+`spec/annex-schema.md` (S, self-description rules).
 
 Contents: 1 Introduction · 2 Terms · 3 Conformance · 4 Invocation · 5 Output channels · 6 Envelope · 7 Errors ·
 8 Exit status · 9 Self-description · 10 Input documents · 11 Effects and the destructive exchange · 12 Long-running
@@ -95,10 +96,11 @@ tool whose findings against a built binary are evidence, and the tool's own test
 ### 4.1. The command tree
 
 4.1.1. A path is group words then a verb (`finding close`, `billing invoice send`) or one root word (`schema`), each
-word `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, short. A tree MAY declare `pathShape` (9.3): one label per word position, chosen
-by the tool (`["product", "noun", "verb"]`), whose length is the tool's longest path; the labels tell a caller what each
-word names and carry no other rule. A path SHOULD be no longer than the declared `pathShape`, or than three words
-without one. [Appendix A D4, D43]
+word `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, short. A tree MAY declare `pathShape` (9.3): labels chosen by the tool, one per
+word of a path of full length (`["product", "noun", "verb"]`); no path is longer (Annex S2 rule 19). The labels tell a
+caller what each word of a full-length path names and carry no other rule; in a shorter path only the last word has a
+fixed role, the verb (or the root word). A tree without `pathShape` SHOULD keep its paths to three words. [Appendix A
+D4, D43]
 
 4.1.2. A node is a group or a command, never both; a group run bare refuses with `COMMAND_REQUIRED`, `expected` its
 commands.
@@ -130,9 +132,9 @@ CHAR          = %x01-10FFFF                       ; any Unicode scalar value exc
 ```
 
 4.2.2. A repeatable option is given once per value, in order, or as a comma list when it declares one (9.7.6); a count
-once per occurrence. `--name=value` equals `--name value`; a value that is empty or starts with `-` (other than `-`)
-is written joined, and a tool MUST accept the joined form for every valued option. The first `--` ends the options, and a tool MUST accept operands after it.
-A short option equals its long name and is never joined or bundled.
+once per occurrence. `--name=value` equals `--name value`; a value that is empty or starts with `-` (other than `-`) is
+written joined, and a tool MUST accept the joined form for every valued option. The first `--` ends the options, and a
+tool MUST accept operands after it. A short option equals its long name and is never joined or bundled.
 
 ### 4.3. Output selection
 
@@ -534,13 +536,15 @@ satisfies it.
 string, is refused like any invalid value. Numbers are finite binary64 (Annex V3).
 
 9.7.6. **Comma lists.** A repeatable option whose valueType is `string`, `integer`, `number`, `path` or `enum` MAY
-declare `commaList: true`. Then each of its argv values (`--tag=a,b`, `--tag a,b`, `-t a,b`) is split on the comma
-`,`, the one separator the contract has, into values in order; each is checked as one value of the option (valueType,
-`possibleValues`, `domain`), pieces are not trimmed, and occurrences add up: `--tag a,b --tag c` gives `["a", "b",
-"c"]`, the same arguments as `--tag a --tag b --tag c`. An empty piece (`a,,b`, `a,`, an empty value) is refused like
-an invalid value. The split applies to argv only: an `--input` value (10.5), an `env` value and `default` stay as they
-are, so a value that contains a comma is given in `--input`. Without `commaList` a comma is part of the value. Callers
-(examples, `next`, guides) may use either form for such an option. [Appendix A D42]
+declare `commaList: true`. A comma is then never part of one of its values, on any channel: its domain admits no value
+that contains `,` (Annex S2 rule 18). Each of its argv values (`--tag=a,b`, `--tag a,b`, `-t a,b`) and its `env` value
+is split on the comma `,`, the one separator the contract has, into values in order; each is checked as one value of
+the option (valueType, `possibleValues`, `domain`), pieces are not trimmed, and occurrences add up: `--tag a,b --tag c`
+gives `["a", "b", "c"]`, the same arguments as `--tag a --tag b --tag c`. An empty piece (`a,,b`, `a,`, an empty
+value) is refused like an invalid value, with the piece as `received`. `default` and an `--input` value (10.5) are
+typed arrays and are not split: an element that contains `,` is outside the domain. Without `commaList` a comma is part
+of the value. A tool may write either form in its examples, `next` and guides; a caller may give either. [Appendix A
+D42]
 
 ### 9.8. Constraints and validators
 
@@ -836,12 +840,14 @@ keeps every rule of 1.4 (15.1): its documents are compact, its `--help --json` r
 leaves out default-valued members. [Appendix A D41]
 
 15.10. **1.6 and callers.** 1.6 adds two members, for documents that declare it: an option's `commaList` (9.7.6) and the
-tree's `pathShape` (4.1.1). Every document keeps its shape. A caller of 1.5 or earlier ignores both: it gives a comma
-list's values one per occurrence, which every 1.6 tool accepts, and reads a comma in an example or `next` of a 1.6 tool
-as part of one value, which can only make it judge that example more strictly; it passes `next` on as it is, and the
-tool splits it. An option name keeps one meaning within a group rather than tool-wide (Annex S1 item 4); a caller
-already reads each command's options from that command's document, and where two groups give a name two meanings their
-value names differ. [Appendix A D42, D43, D44]
+tree's `pathShape` (4.1.1). Every document keeps its shape. A caller of 1.5 or earlier ignores both and gives a comma
+list's values one per occurrence, which every 1.6 tool accepts. A comma list's domain admits no comma (Annex S2 rule
+18), so a caller of 1.5 that checks domains refuses a value with a comma before the tool would split it, and judges an
+example or `next` written in the comma form invalid, never as another meaning; it passes `next` on as it is, and the
+tool splits it. A caller that checks no domain and gives such a value gets it split where 1.5 promised a refusal by the
+tool; the value was outside the domain the document states either way. An option name keeps one meaning within a group
+rather than tool-wide (Annex S1 item 4); a caller already reads each command's options from that command's document, and
+where two groups give a name two meanings their value names differ. [Appendix A D42, D43, D44]
 
 ## 16. Security
 
@@ -953,7 +959,7 @@ sections of this version.
 
 | # | Owner decision 2026-11-02, version 1.2.0, a minor (15.1) from implementer feedback | Where |
 |---|---|---|
-| D32 | Paging, field selection and the stateless checks, for a document that declares 1.2 only (the D27 pattern, now named in 15.1's MINOR row: a tool that declares 1.1 or 1.0 keeps its behaviour and stays conforming). A cursor is bound to every argument except the reserved options that never change the result set (`--json`, `--limit`, `--all`, `--cursor`, `--fields`); an argument given explicitly with its default value is given, except a switch given `false` or a count given `0`, which are absent (10.7.2); a value taken from an `env` variable is bound though not given. The next-page entry carries exactly the arguments the invocation gave explicitly, never a default or an `env` value, so it continues in the same environment. This relaxes 1.1's binding of `--json` and `--all` only where the result set is the same (15.1, 15.10). `--fields` is parsed and validated with or without `--json`; what it does to text is the tool's. `limit`, `cursor`, `all` and `fields` are flag-only. Argv parse failures come before step 6 of 11.7 (the one at the earliest argv position first), which checks `required`, domains, constraints and validators in that order (operands then options in declaration order for the first two, declaration order for the last two), and the first failure answers. A constraint's argument at fault is defined per rule. Declined: per-item batch `--fields`, since 1.1.2 already gives one answer (`USAGE` when the batch output declares no `fields`). | 4.5, 6.9, 6.10, Annex F, 9.8.1, 10.6, 10.7, 15.1, 15.7 (changed for 1.3 by D36) |
+| D32 | Paging, field selection and the stateless checks, for a document that declares 1.2 only (the D27 pattern, now named in 15.1's MINOR row: a tool that declares 1.1 or 1.0 keeps its behaviour and stays conforming). A cursor is bound to every argument except the reserved options that never change the result set (`--json`, `--limit`, `--all`, `--cursor`, `--fields`); an argument given explicitly with its default value is given, except a switch given `false` or a count given `0`, which are absent (10.7.2); a value taken from an `env` variable is bound though not given. The next-page entry carries exactly the arguments the invocation gave explicitly, never a default or an `env` value, so it continues in the same environment. This relaxes 1.1's binding of `--json` and `--all` only where the result set is the same (15.1; 15.10 of the 1.2 text). `--fields` is parsed and validated with or without `--json`; what it does to text is the tool's. `limit`, `cursor`, `all` and `fields` are flag-only. Argv parse failures come before step 6 of 11.7 (the one at the earliest argv position first), which checks `required`, domains, constraints and validators in that order (operands then options in declaration order for the first two, declaration order for the last two), and the first failure answers. A constraint's argument at fault is defined per rule. Declined: per-item batch `--fields`, since 1.1.2 already gives one answer (`USAGE` when the batch output declares no `fields`). | 4.5, 6.9, 6.10, Annex F, 9.8.1, 10.6, 10.7, 15.1, 15.7 (changed for 1.3 by D36) |
 | D33 | `STOPPED_MIDWAY` (exit 1, not retryable) is reserved since 1.2: a command that works in steps and stops after a step made effects, because a later step meets what the command refuses before its work, reports it with that refusal's code as `reason` (the refusal's own reason is not carried), instead of a during-the-work twin of every refusal code. SHOULD for a tool that declares 1.2, so a tool with a code of its own stays conforming; a 1.2 tool that registers the name gives it this exit, retryability and meaning. The reserved meaning holds only in a document that declares 1.2: in an earlier document the code is the tool's own, read by its registry entry. The name is the one the first adopter already uses and says what happened and when; an `*_INCOMPLETE` name was not chosen because exit 1 already covers incomplete answers that made no effect (8.1, 8.5), and `BATCH_INCOMPLETE` stays the code of a batch, under which a stopped item is `failed` with `STOPPED_MIDWAY`. Reserved reason `PLAN_STALE`, for a commit that detects a changed plan between its effects (12.7). | 8.3.2, 11.7, 15.7 (changed for 1.3 by D36) |
 | D34 | Wording and checker rows that a patch could carry, released with 1.2.0: a check that reads an option's `env` value is a validator; a constraint's `field` follows the rule's own order, never argv's; rules said of a document that declares 1.1 hold for every later minor. Approaches: report schemas compare by meaning, not bytes; defaults are decoded at definition; the 1.2 cursor digest. Checker: the `in` check on switches and counts named; `--input` rows for environment values and spelling variants; a fixture invocation listed to succeed and refused with a precondition code is `unprovided`, never a pass, while a refusal from a stateless step is `fail`; the 1.2 rows for paging, `--fields` without `--json`, flag-only document keys, the check order and `STOPPED_MIDWAY`. | 6.10, Annex F, 7.1.2, 7.5.2, 9.8.1, 10.2, approaches/typescript.md, approaches/checker.md |
 
@@ -987,9 +993,9 @@ sections of this version.
 
 | # | Owner decision 2026-11-12, version 1.6.0, a minor (15.1) from implementer feedback | Where |
 |---|---|---|
-| D42 | Labels and tags given one occurrence per value (`--tag a --tag b`) are awkward to type and to read. A repeatable option of a single-value valueType (not `json`, whose values contain commas) MAY declare `commaList: true` in a document that declares 1.6; each argv value is then split on `,` into values, each checked as one value, occurrences adding up, an empty piece refused. The separator is fixed by the contract, not declared per option: one rule for every tool, so an agent needs no lookup beyond a boolean. The tool declares it rather than callers guessing, because a comma is an ordinary character in a value; without the declaration it stays part of the value. Nothing escapes a comma on argv: a value that contains one goes in `--input`, which keeps arrays and is never split, so the fragment schema (9.9.2) is unchanged. A caller of 1.5 ignores the member and uses the repeated form, which the tool still accepts. Annex S2 rule 18 keeps a comma out of an enum's possible values, since no argv value could give one. | 4.2.2, 9.7.1, 9.7.6, 15.7, 15.10, Annex S2 rule 18 |
-| D43 | Large CLIs (an umbrella tool over several products) need paths of product, subject and verb, so the two-word SHOULD of D11.14 is withdrawn. The tree MAY declare `pathShape`, one kebab-case label per word position, whose length is its longest path; a path SHOULD fit it, or three words without one. The shape lives in the tool's self-description, where a caller reads it, rather than in a checker's configuration; the labels only tell an agent what each word names. Withdrawing a SHOULD and adding an optional member fails no tool (15.1). The checker's L1.depth stays advisory and reports the limit it used. | 4.1.1, 9.3, 15.7, 15.10 |
-| D44 | In a large CLI one word names different things in different products (`--group` a member group in one, a deployment group in another), and the tool-wide one-meaning rule forced awkward names. In a document that declares 1.6 an option name has one meaning within its group, the path without its verb; a shared tree option keeps one meaning tool-wide, since it is one definition. Across groups a name may mean different things, and then carries a different value name, so the documents show the difference and an agent that compares value names never confuses the two; the same value name means one thing everywhere. A caller already reads each command's options from its own document (15.10). The checker compares within a group, and across groups by value name. | 15.7, 15.10, Annex S1 item 4 |
+| D42 | Labels and tags given one occurrence per value (`--tag a --tag b`) are awkward to type and to read. A repeatable option of a single-value valueType (not `json`, whose values contain commas) MAY declare `commaList: true` in a document that declares 1.6; each argv value is then split on `,` into values, each checked as one value, occurrences adding up, an empty piece refused. The separator is fixed by the contract, not declared per option: one rule for every tool, so an agent needs no lookup beyond a boolean. The tool declares it rather than callers guessing, because a comma is an ordinary character in a value; without the declaration it stays part of the value. A comma is never part of a value of a comma list, on any channel: its domain admits none (Annex S2 rule 18), so a caller of 1.5 that checks domains refuses `--tag a,b` as one value rather than having the tool read two, and `--input` and `default` (typed arrays, never split, so the fragment schema of 9.9.2 is unchanged) cannot carry one either. A first draft let a comma-containing value through `--input`; review showed a 1.5 caller's argv value would then be split with no sign, a changed meaning. An `env` value is one string from outside and is split like argv, which is also what clap's `value_delimiter` does; a document's `default` is written as the pieces the parser uses. A caller of 1.5 ignores the member and uses the repeated form, which the tool still accepts. | 4.2.2, 9.7.1, 9.7.6, 15.7, 15.10, Annex S2 rule 18 |
+| D43 | Large CLIs (an umbrella tool over several products) need paths of product, subject and verb, so the two-word SHOULD of D11.14 is withdrawn. The tree MAY declare `pathShape`, one kebab-case label per word of a full-length path; no path is longer (Annex S2 rule 19), and in a shorter path only the last word, the verb, has a fixed role. A tree without one SHOULD keep paths to three words. The shape lives in the tool's self-description, where a caller reads it, rather than in a checker's configuration; the labels only tell an agent what each word names. Withdrawing a SHOULD and adding an optional member fails no tool (15.1). The checker's L1.depth stays advisory and reports the limit it used. | 4.1.1, 9.3, 15.7, 15.10, Annex S2 rule 19 |
+| D44 | In a large CLI one word names different things in different products (`--group` a member group in one, a deployment group in another), and the tool-wide one-meaning rule forced awkward names. In a document that declares 1.6 an option name has one meaning within its group, the path without its verb; a shared tree option keeps one meaning tool-wide, since it is one definition. Across groups a name may mean different things, and then carries a different value name, so the documents show the difference and an agent that compares value names never confuses the two; the same value name means one thing everywhere. A caller already reads each command's options from its own document (15.10). A shared option and a switch or count keep one meaning tool-wide: the first is one definition, and the second has no value name to mark a difference; an option of a command's own that takes a shared option's name keeps its value name and type, as 9.5 already lets a command redeclare a shared option. The checker compares within a group, and across groups by value name. | 15.7, 15.10, Annex S1 item 4 |
 
 ## Appendix B. Prior art
 

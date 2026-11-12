@@ -983,10 +983,24 @@ fn seed_projection(tool: &Tool, selection: &[String], record: &Value, projected:
 
 fn search(tool: &Tool, parsed: &Parsed) -> ExitCode {
     let query = parsed.text("query").map(str::to_lowercase);
+    // From 1.6 `--tag` is a comma list that also reads `FAKE_TAG` when argv gives none; the variable is split like an argv word (spec 9.7.6).
+    // Seeded: `commaListEnvUnsplit` reads the whole variable as one tag.
+    let env_tags: Vec<String> = std::env::var("FAKE_TAG")
+        .ok()
+        .filter(|_| tool.is_1_6() && !parsed.has("tag"))
+        .map(|text| {
+            if tool.flag("commaListEnvUnsplit") {
+                vec![text]
+            } else {
+                text.split(',').map(str::to_string).collect()
+            }
+        })
+        .unwrap_or_default();
     let tags: Vec<&str> = parsed
         .values("tag")
         .iter()
         .filter_map(Value::as_str)
+        .chain(env_tags.iter().map(String::as_str))
         .collect();
     let filter_team = parsed
         .values("filter")

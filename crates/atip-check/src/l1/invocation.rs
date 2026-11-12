@@ -538,6 +538,14 @@ fn schema_problems(validator: &Validator, value: &Value) -> Option<String> {
 
 /// What is wrong with `value` as a value of `arg`: not valid for its valueType after normalisation (spec 10.7.2), or outside its domain.
 pub fn value_problem(arg: &Arg, value: &Value) -> Option<String> {
+    // A comma is never part of a value of a comma-list option, on any channel (spec 9.7.6, Annex S2 rule 18): argv and `env` words are split before a
+    // value is judged, so one that holds a comma is an item of an `--input` array (which is not split) or a default.
+    if arg.comma_list && value.as_str().is_some_and(|text| text.contains(',')) {
+        return Some(format!(
+            "{value} contains a comma, which is never part of a value of the comma-list option {} (spec 9.7.6)",
+            arg.name
+        ));
+    }
     let normalised = normalise(&arg.value_type, value);
     if !valid_value(arg, &normalised) {
         return Some(format!("{value} is not a valid {} value", arg.value_type));

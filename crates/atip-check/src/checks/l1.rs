@@ -26,9 +26,6 @@ use crate::l1::regex::{self, Comparison};
 use crate::l1::rules as doc_rules;
 use crate::l1::witness::{Expect, GroupOutcome};
 
-/// The deepest path (in words) of a tree that declares no `pathShape` (spec 4.1.1).
-const DEFAULT_PATH_DEPTH: usize = 3;
-
 /// The L1 table, in the order of approaches/checker.md.
 pub(crate) const TABLE: [Entry; 31] = [
     must("L1.tree", &["10.3", "10.13"], &[]),
@@ -463,6 +460,12 @@ impl<'a> Judge<'a> {
                     c.notes.push("the tree declares level L2 and this run checked L1: the higher claim was not checked (levels are cumulative, so the declaration meets the L1 claim)".to_string());
                 }
                 for (condition, problem) in doc_rules::tree_findings(document, tree, checked) {
+                    c.holds_at(l1.tree, condition, problem.is_none(), || {
+                        problem.clone().unwrap_or_default()
+                    });
+                }
+                // Annex S2 rule 19, a claim of 1.6: no path has more words than the tree's `pathShape` has labels.
+                for (condition, problem) in doc_rules::path_shape_findings(tree, self.claim) {
                     c.holds_at(l1.tree, condition, problem.is_none(), || {
                         problem.clone().unwrap_or_default()
                     });
@@ -1116,28 +1119,32 @@ impl<'a> Judge<'a> {
         c.finish(true)
     }
 
-    /// `L1.depth` (spec 4.1.1, advisory): no path is longer than the tree's `pathShape` (a tree of a 1.6 claim may declare it), or than
-    /// [`DEFAULT_PATH_DEPTH`] words when it declares none. The problem names the limit and where it comes from. A `pathShape` in a tree of an
-    /// earlier claim is `L1.tree`'s to report (`minor-form`) and sets no limit here.
+    /// `L1.depth` (spec 4.1.1, advisory): for a tree that declares no `pathShape`, no path is longer than the default: three words for a claim of 1.6 or
+    /// later, two below (spec 15.7). The problem names the limit and the claim it comes from. A tree that declares a `pathShape` (a claim of 1.6) is
+    /// judged by Annex S2 rule 19 in `L1.tree` (`path-shape`), and one in a tree of an earlier claim by rule 16 (`minor-form`): neither sets a limit here.
     fn l1_depth(&'a self) -> Finding {
         let mut c = self.check("L1.depth");
         let Some(tree) = &self.docs().tree else {
             return self.no_tree(c);
         };
+        if self.claim.at_least(Claim::V1_6)
+            && tree
+                .path_shape
+                .as_ref()
+                .is_some_and(|shape| !shape.is_empty())
+        {
+            return c.finish_as(End::Unsupported(
+                "the tree declares a pathShape: no path longer than it is `L1.tree`'s (Annex S2 rule 19)".to_string(),
+            ));
+        }
         let l1_tree_call = self.l1().tree;
-        let shape = tree
-            .path_shape
-            .as_ref()
-            .filter(|shape| !shape.is_empty() && self.claim.at_least(Claim::V1_6));
-        let (limit, source) = match shape {
-            Some(shape) => (
-                shape.len(),
-                format!("the tree's pathShape of {} words", shape.len()),
-            ),
-            None => (
-                DEFAULT_PATH_DEPTH,
-                format!("the default of {DEFAULT_PATH_DEPTH} words"),
-            ),
+        let (limit, source) = if self.claim.at_least(Claim::V1_6) {
+            (3, "the default of 3 words".to_string())
+        } else {
+            (
+                2,
+                format!("the default of 2 words for a {} claim", self.claim.as_str()),
+            )
         };
         for entry in &tree.commands {
             c.holds_in(
@@ -1162,7 +1169,8 @@ impl<'a> Judge<'a> {
             return self.no_tree(c);
         }
         let docs: Vec<&CommandDoc> = self.docs().commands.values().collect();
-        let findings = documents::one_meaning_findings(&docs, self.claim);
+        let findings =
+            documents::one_meaning_findings(&docs, &self.docs().tree_options, self.claim);
         for (condition, problem) in &findings {
             c.holds(condition, problem.is_none(), || {
                 problem.clone().unwrap_or_default()
@@ -1560,24 +1568,38 @@ impl<'a> Judge<'a> {
                 continue;
             }
             judged = true;
-            for call in [run.joined, run.repeated, run.empty] {
+            for call in [run.joined, run.repeated, run.twin, run.empty]
+                .into_iter()
+                .chain(run.env)
+            {
                 c.own(call);
             }
             let spelling = format!("--{}", run.arg);
             let argv = |call: usize| self.at(call).call.argv.join(" ");
-            let same = self.at(run.joined).exit == self.at(run.repeated).exit
-                && self.envelope(run.joined).is_some()
-                && self.envelope(run.joined) == self.envelope(run.repeated);
-            c.holds_at(run.joined, "split-same-answer", same, || {
+            // The two forms are compared as the L2 rows compare a document with argv: exit, `ok`, the code, `data` (what varies between two runs of the
+            // repeated form, the twin, is left out) and the members of `meta` that name the answer.
+            let problems = self.differences(run.joined, run.repeated, run.twin);
+            c.holds_at(run.joined, "split-same-answer", problems.is_empty(), || {
                 format!(
-                    "{}: `{}` ({}) and `{}` ({}) differ: a comma list and the same values repeated are one list (spec 9.7.6)",
+                    "{}: `{}` did not give the answer of `{}`: {} (a comma list and the same values repeated are one list, spec 9.7.6)",
                     run.command,
                     argv(run.joined),
-                    refusal_text(self.envelope(run.joined), self.at(run.joined).exit),
                     argv(run.repeated),
-                    refusal_text(self.envelope(run.repeated), self.at(run.repeated).exit)
+                    problems.join("; ")
                 )
             });
+            if let Some(env) = run.env {
+                let problems = self.differences(env, run.repeated, run.twin);
+                c.holds_at(env, "env-split", problems.is_empty(), || {
+                    format!(
+                        "{}: `{}` with the environment of {spelling} set to the two values joined by a comma did not give the answer of `{}`: {} (an `env` value of a comma list is split like an argv value, spec 9.7.6)",
+                        run.command,
+                        argv(env),
+                        argv(run.repeated),
+                        problems.join("; ")
+                    )
+                });
+            }
             let refused = self.failure(run.empty).is_some_and(|(code, field)| {
                 self.refused(run.empty)
                     && field == Some(spelling.as_str())

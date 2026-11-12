@@ -181,6 +181,14 @@ impl Acme {
     }
 }
 
+/// The options the acme tree defines for its commands to share.
+fn shared_options(acme: &Acme) -> Vec<Value> {
+    acme.tree["data"]["options"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+}
+
 /// The exit of a registered code of acme at 1.4: a core code's, else the row of acme's registry.
 fn exit_of(acme: &Acme) -> impl Fn(&str) -> Option<i64> + '_ {
     move |code| {
@@ -653,6 +661,21 @@ const JUDGED: &[(&str, Judge, &[&str])] = &[
         OneMeaning,
         &["value-type"],
     ),
+    (
+        "invalid/schema-command-acme-deploy-history-team-own-meaning.json",
+        OneMeaning,
+        &["value-name", "value-type"],
+    ),
+    (
+        "invalid/schema-command-acme-member-select-switch-name-reused.json",
+        OneMeaning,
+        &["value-type"],
+    ),
+    (
+        "invalid/schema-command-acme-member-select-comma-in-domain.json",
+        Walk,
+        &["rule-18"],
+    ),
 ];
 
 /// The invalid examples that name acme and no function of this slice judges, with who does.
@@ -824,7 +847,7 @@ fn judge_file(acme: &Acme, file: &str, judge: Judge) -> Vec<String> {
                         .map(|(_, view)| view)
                         .chain(std::iter::once(&own))
                         .collect();
-                    failing(&one_meaning_findings(&views, claim))
+                    failing(&one_meaning_findings(&views, &shared_options(acme), claim))
                 }
                 Compact => unreachable!("judged above"),
             }
@@ -890,7 +913,11 @@ fn atip_check16_20_acme_keeps_one_meaning_per_group_at_1_6_and_the_tool_wide_rul
         assert!(views.iter().any(|view| view.command == id), "{id}");
     }
     assert_eq!(
-        failing(&one_meaning_findings(&views, Claim::V1_6)),
+        failing(&one_meaning_findings(
+            &views,
+            &shared_options(&acme),
+            Claim::V1_6
+        )),
         Vec::<String>::new()
     );
     assert_eq!(
@@ -899,7 +926,11 @@ fn atip_check16_20_acme_keeps_one_meaning_per_group_at_1_6_and_the_tool_wide_rul
     );
     // Below 1.6 one name has one value name tool-wide, which acme's two `--group` options break.
     assert_eq!(
-        failing(&one_meaning_findings(&views, Claim::V1_5)),
+        failing(&one_meaning_findings(
+            &views,
+            &shared_options(&acme),
+            Claim::V1_5
+        )),
         ["value-name"]
     );
 }
@@ -949,4 +980,43 @@ fn atip_check14_26_the_repeatable_keys_and_the_empty_array_probe_of_acme() {
         EmptyArray::Other(_)
     ));
     assert!(EmptyArray::Refused.note("label").contains("/label"));
+}
+
+#[test]
+fn atip_check16_21_the_umbrella_tree_declares_a_path_shape_and_its_invalid_twins_break_one_rule_each(
+) {
+    use atip_check::l1::model::Tree;
+    use atip_check::l1::rules::path_shape_findings;
+
+    let judged = |relative: &str| {
+        let document = load(relative);
+        let claim = claim_of(&document);
+        let data = &document["data"];
+        let mut failed = failing(&tree_form_findings(data, claim));
+        failed.extend(failing(&path_shape_findings(
+            &Tree::parse(data).expect("a tree"),
+            claim,
+        )));
+        failed.extend(
+            atip_check::checks::documents::schema_doc_problems(&document, claim)
+                .iter()
+                .map(|_| "schema".to_string())
+                .take(1),
+        );
+        failed
+    };
+    assert_eq!(judged("schema-tree-umbrella.json"), Vec::<String>::new());
+    // Three words and a `pathShape` of three labels: L1.depth has nothing to say (the tree's own limit), L1.tree holds.
+    assert_eq!(
+        judged("invalid/schema-tree-umbrella-1-5-path-shape.json"),
+        ["minor-form"]
+    );
+    assert_eq!(
+        judged("invalid/schema-tree-umbrella-path-longer-than-shape.json"),
+        ["path-shape"]
+    );
+    assert_eq!(
+        judged("invalid/schema-tree-umbrella-path-shape-label-twice.json"),
+        ["schema"]
+    );
 }
