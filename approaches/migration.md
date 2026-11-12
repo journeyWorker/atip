@@ -452,4 +452,6 @@ group. Nothing changes shape and no section was renumbered.
 **A caller.** A caller of 1.6 splits the argv values of a `commaList` option on `,` when it reads an example, `next`
 or guide line, and may write either form. It may show `pathShape` to an agent choosing words. A caller of 1.5 ignores
 both members and keeps working: it writes one value per occurrence, and its domain check refuses a value with a comma.
-A caller that relied on an option name meaning one thing tool-wide compares value names instead.
+A caller that relied on an option name meaning one thing tool-wide compares value names instead: 1.6 lets two groups
+give a name two meanings (Annex S1 item 4), an exception to 15.1 the owner recorded in D44, so a 1.5 caller that
+carries a value across groups by name alone may get a success with another meaning.
