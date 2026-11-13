@@ -38,7 +38,9 @@
 //! - *Shared options*: an option whose serialization is the same on two or more commands is defined once in the tree's
 //!   `options`, in the order of its first appearance, and each of those commands names it where it stood. An option that differs
 //!   (`required`, default, enum subset, help) is another definition and stays in full on its command. Two definitions of one
-//!   name cannot both be shared (a name resolves to one): the one on more commands is, the first of equals.
+//!   name cannot both be shared (a name resolves to one): the one on more commands is, the first of equals. From 1.6 a name
+//!   whose definitions differ in value name or value type (one meaning per group, Annex S1 item 4) is not shared at all: a
+//!   shared option is tool-wide.
 //! - *Schemas*: the command document has no `schemas`, `input.schemaRef`, `input.option` or `validators[].rejects`; the schemas
 //!   answer holds exactly the schemas the refs reach (output `schemaRef` and `eventRef`, `input.argumentsRef`, and what they
 //!   refer to through `#/schemas/<Name>`), the derived fragment schema ([`crate::fragment`]) under `Input` when the command has
@@ -668,7 +670,7 @@ impl Described {
         }
         let layout = minor
             .at_least(Minor::V1_4)
-            .then(|| Layout::of(&commands))
+            .then(|| Layout::of(&commands, minor))
             .transpose()?;
         Ok(Described {
             minor,
@@ -964,7 +966,7 @@ fn own_has_help(command: &CommandDoc, option: &OptionDoc) -> Result<(), Error> {
 }
 
 impl Layout {
-    fn of(commands: &[CommandDoc]) -> Result<Layout, Error> {
+    fn of(commands: &[CommandDoc], minor: Minor) -> Result<Layout, Error> {
         let mut reached = Vec::with_capacity(commands.len());
         let mut slots: Vec<Vec<Slot>> = Vec::with_capacity(commands.len());
         let mut definitions: Vec<Definition> = Vec::new();
@@ -1009,6 +1011,25 @@ impl Layout {
             definition_of.push(known);
         }
         let option_at = |(command, option): (usize, usize)| &commands[command].options[option];
+        // From 1.6 a name means one thing within a group only (Annex S1 item 4), and a shared option is tool-wide: a name
+        // whose own definitions differ in value name or value type is never shared, so each group keeps its meaning.
+        let mut meaning_of: HashMap<&str, (Option<&str>, ValueType)> = HashMap::new();
+        let mut several_meanings: BTreeSet<&str> = BTreeSet::new();
+        if minor.at_least(Minor::V1_6) {
+            for definition in &definitions {
+                let option = option_at(definition.first);
+                let meaning = (
+                    option
+                        .value_name
+                        .as_deref()
+                        .filter(|value_name| !is_default_value_name(value_name, &option.name)),
+                    option.value_type,
+                );
+                if *meaning_of.entry(option.name.as_str()).or_insert(meaning) != meaning {
+                    several_meanings.insert(option.name.as_str());
+                }
+            }
+        }
         // One definition per name is shared: the one on the most commands, the first of equals; and only from two commands on.
         let mut best: HashMap<&str, usize> = HashMap::new();
         for (known, definition) in definitions.iter().enumerate() {
@@ -1016,6 +1037,9 @@ impl Layout {
                 continue;
             }
             let name = option_at(definition.first).name.as_str();
+            if several_meanings.contains(name) {
+                continue;
+            }
             if best
                 .get(name)
                 .is_none_or(|&held| definitions[held].commands < definition.commands)
@@ -1561,6 +1585,40 @@ mod tests {
             listed(&written(&tied, "c")),
             [json!({ "name": "team", "required": true, "help": "The team." })]
         );
+    }
+
+    #[test]
+    fn atip_crate16_a_name_with_two_meanings_is_not_shared_from_1_6() {
+        let kind = |value_name: &str| {
+            let mut kind = option("kind", ValueType::String);
+            kind.value_name = Some(value_name.to_string());
+            kind
+        };
+        let commands = vec![
+            with_option("a", kind("AGENT_KIND")),
+            with_option("b", kind("AGENT_KIND")),
+            with_option("c", kind("DEVICE_KIND")),
+            with_option("d", option("tag", ValueType::String)),
+            with_option("e", option("tag", ValueType::String)),
+        ];
+        let at = |minor| {
+            let entries = commands.iter().map(entry).collect();
+            Described::new(minor, "L1", entries, commands.clone()).expect("a model")
+        };
+        let since = at(Minor::V1_6);
+        assert_eq!(
+            since.tree().to_value()["options"],
+            json!([{ "name": "tag", "help": "The tag." }]),
+            "a name with one meaning is still shared"
+        );
+        for command in ["a", "b", "c"] {
+            assert!(
+                listed(&written(&since, command))[0].is_object(),
+                "{command} keeps its --kind in full"
+            );
+        }
+        let before = at(Minor::V1_5);
+        assert_eq!(before.tree().to_value()["options"][0]["name"], "kind");
     }
 
     #[test]

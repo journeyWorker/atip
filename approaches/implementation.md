@@ -188,8 +188,11 @@ with `JSON.stringify(JSON.parse(text))` in a test.
 command. An option whose serialization is the same on two or more commands is defined once in the tree's `options`,
 in the order of its first appearance, and each of those commands names it, at the place its option stood. An option
 whose `required`, default or enum subset differs on a command is a different definition (Annex S1 item 4 allows the
-difference), so that command keeps it in full. An option on one command stays on that command. Every tree option must
-be named by some command (Annex S2 rule 17), which holds by construction when the tree is built from the commands.
+difference), so that command keeps it in full. An option on one command stays on that command. In a document that
+declares 1.6 or later, a name whose definitions differ in value name or value type (one meaning per group, Annex S1
+item 4) is not shared at all, since a tree option is tool-wide: each definition stays in full on its commands. Every
+tree option must be named by some command (Annex S2 rule 17), which holds by construction when the tree is built from
+the commands.
 
 **Why paging options stay listed.** `--limit` carries a default and a bound that differ per command, and `--all`,
 `--cursor` are offered or not per command, so the list is what declares which commands page and how far. A caller finds
