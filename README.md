@@ -9,7 +9,7 @@ for a release when it follows the rules of that minor at that level (spec 3). Th
 (`approaches/checker.md`), is a tool that tests a built binary against the spec; what it finds is evidence for or
 against a claim, not the definition of one (spec 3.7).
 
-**Status: 1.6.0** (2026-11-13). 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0 (2026-11-01),
+**Status: 1.6.1** (2026-11-14). 1.0.0 was adopted 2026-10-30 after six rounds of independent review; 1.1.0 (2026-11-01),
 after four more, adds optional members and SHOULD/MAY rules from implementer feedback; 1.1.1 and 1.1.2 (2026-11-01) are
 patches that clarify wording and checks. 1.2.0 (2026-11-02) is a minor whose new rules bind only a tool that declares
 1.2: which arguments bind a paging cursor, `--fields` without `--json`, flag-only paging and selection options, the
@@ -34,7 +34,9 @@ document that declares 1.5 use `\p{White_Space}` and `\P{White_Space}`, the Unic
 hand-listed class; `\s` stays out. 1.6.0 (2026-11-13), after one round of review and a confirmation, lets a repeatable
 option declare `commaList`, so that `--tag a,b` gives two values, and lets the tree declare `pathShape`, a label per
 word position of its paths, in place of the two-word limit; an option name keeps one meaning within its group, and two
-groups that give it two meanings give it two value names. The decisions behind all of the versions are in Appendix A of
+groups that give it two meanings give it two value names. 1.6.1 (2026-11-14) is a patch that records `^[^,]+$` and
+`^[^,\p{White_Space}]+$` in the cross-engine record, so a string comma list of free-form ids can state its comma-free
+pattern. The decisions behind all of the versions are in Appendix A of
 the spec; no question is open. `CHANGELOG.md` lists the versions; spec 15 says how versions work, 15.7 lists what
 differs in the earlier minors, and 15.8-15.10 say what 1.4, 1.5 and 1.6 mean for callers. Until its second revision the
 contract was called `agent-cli/1`.

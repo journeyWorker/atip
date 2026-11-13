@@ -967,6 +967,13 @@
       "ecmascript": true,
       "rust": "error",
       "note": "251 nested groups exceed Rust's nesting limit of 250; refused by spec 10.7.4"
-    }
+    },
+    { "pattern": "^[^,]+$", "value": "team/member-a.1758", "form": true, "ecmascript": true, "rust": true, "note": "a comma-free string (rule 18): a free-form id" },
+    { "pattern": "^[^,]+$", "value": "a,b", "form": true, "ecmascript": false, "rust": false, "note": "a comma-free string (rule 18)" },
+    { "pattern": "^[^,]+$", "value": "", "form": true, "ecmascript": false, "rust": false, "note": "a comma-free string (rule 18): not empty" },
+    { "pattern": "^[^,\\p{White_Space}]+$", "value": "npub1qy2.x/y-z", "form": true, "formSince": "1.5", "ecmascript": true, "rust": true, "note": "a comma-free id without white space (rule 18, Annex V2)" },
+    { "pattern": "^[^,\\p{White_Space}]+$", "value": "a b", "form": true, "formSince": "1.5", "ecmascript": false, "rust": false, "note": "a comma-free id without white space (rule 18, Annex V2)" },
+    { "pattern": "^[^,\\p{White_Space}]+$", "value": "a,b", "form": true, "formSince": "1.5", "ecmascript": false, "rust": false, "note": "a comma-free id without white space (rule 18, Annex V2)" },
+    { "pattern": "^[^,\\p{White_Space}]+$", "value": "a\u0085b", "form": true, "formSince": "1.5", "ecmascript": false, "rust": false, "note": "a comma-free id without white space (rule 18, Annex V2): NEL is white space in both engines" }
   ]
 }

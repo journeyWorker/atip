@@ -1,6 +1,7 @@
 # ATIP: Agent Terminal Invocation Protocol (`atip/1`)
 
-Status: **1.6.0**, adopted 2026-11-13 after one round of independent review and a confirmation: a minor (15.1) that lets
+Status: **1.6.1**, a patch of 2026-11-14 that records two comma-free string patterns for comma lists. Version 1.6.0,
+adopted 2026-11-13 after one round of independent review and a confirmation, is a minor (15.1) that lets
 a repeatable option take a comma-separated list in one argv value (`--tag a,b`, 9.7.6), lets a tree declare what each
 word of its paths means (`pathShape`, 4.1.1), with no fixed depth, and scopes an option name's one meaning to its group
 (Annex S1 item 4; Appendix A D42-D44). Version 1.5.0, adopted 2026-11-05 after one round of independent review, is a
@@ -755,7 +756,7 @@ placeholders are substituted (shell pipelines are exempt). Guides SHOULD tell ag
 
 ## 15. Versioning and compatibility
 
-15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.6.0`). A PATCH changes no
+15.1. **Classes.** `atip/1` names the major; versions are `MAJOR.MINOR.PATCH` (this is `1.6.1`). A PATCH changes no
 rule. A MINOR adds OPTIONAL members, options, kinds and values, SHOULD and MAY rules, and MUST rules that bind only
 documents that declare it. For those documents it may withdraw a core code whose use the previous minor only
 recommended, and change the shape of the self-description (9) when every member the change leaves out or replaces reads,

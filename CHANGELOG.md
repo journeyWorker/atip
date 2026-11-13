@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.1 (2026-11-14)
+
+A patch (15.1) from implementer feedback on 1.6. No rule changes; `meta.contractVersion` stays `"1.6"`.
+
+- **Comma-free string patterns are recorded (rule 18, Annex V2).** `scripts/check.ts` accepts only patterns recorded in
+  `scripts/regex-cases.json`, and none fit a string comma list of free-form ids (with `/` and `.`). The record now has
+  `^[^,]+$` (any non-empty value without a comma) and `^[^,\p{White_Space}]+$` (the same without white space, for
+  ids; a document that declares 1.5 or later), each with cases in both engines.
+- **Crates.** `atip` 0.3.1: in a document that declares 1.6, a name whose definitions differ in value name or value
+  type is not shared in the tree's `options` (a tree option is tool-wide; Annex S1 item 4 scopes the rest to a group).
+
 ## 1.6.0 (2026-11-13)
 
 A minor (15.1) from implementer feedback (D42-D44). Its two optional members and the scoped one-meaning rule bind only
