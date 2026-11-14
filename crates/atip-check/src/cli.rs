@@ -1001,7 +1001,7 @@ mod tests {
                 "--bin".into(),
                 "b".into(),
                 "--fixture".into(),
-                bad.clone(),
+                bad,
             ],
         ] {
             let failure = parse(&words).expect_err("not UTF-8");

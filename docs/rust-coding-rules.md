@@ -43,7 +43,7 @@ A common starting lint set against this code, and what is kept:
 | the rust lints and the restriction block (`allow_attributes`, `clone_on_ref_ptr`, `map_err_ignore`, `undocumented_unsafe_blocks`, …) | 0 | on (already) |
 | pedantic, selected (`cast_*`, `map_unwrap_or`, `manual_let_else`, `uninlined_format_args`, …) | 0 on 1.99.1 | on (already); see the bump below |
 | `unwrap_used` | 16, all in `#[cfg(test)]` modules | on, with `allow-unwrap-in-tests`: no `unwrap()` outside tests |
-| `redundant_clone` (nursery, performance) | 21 | on; fixed |
+| `redundant_clone` (nursery, performance) | 22 | on; fixed |
 | `cargo` group | 2 | on; `multiple_crate_versions` allowed (cargo-deny's `bans` denies duplicates, with each known one listed and explained in `deny.toml`), `redundant_feature_names` allowed (the published feature `test-support` keeps its name) |
 | the whole `pedantic` group | 277 `must_use_candidate`, 68 `too_many_lines`, 58 `missing_errors_doc`, … about 500 | off: the selected pedantic lints are on; the rest would be a sweep of documentation and attributes with no defect behind it |
 | `too_long_first_doc_paragraph` (nursery) | 102 | off: the crates' doc comments open with one full paragraph on purpose |
