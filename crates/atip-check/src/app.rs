@@ -10,6 +10,7 @@ use crate::cli::{self, CheckArgs, Command, Level, LevelSource};
 use crate::exec::{Call, RunError, Runner};
 use crate::fixture;
 use crate::output::{failure_line, failure_text, success_line, Code, Failure};
+use crate::platform;
 use crate::report::{Mode, Report};
 use crate::spec;
 
@@ -20,8 +21,8 @@ pub fn main(args: &[OsString]) -> ExitCode {
     std::panic::set_hook(Box::new(|_| {}));
     let outcome = std::panic::catch_unwind(|| execute(args))
         .unwrap_or_else(|payload| Err(internal(&payload)));
-    // Every call of the run is over: only now does a closed stdout end the process by signal.
-    restore_sigpipe();
+    // Every call of the run is over: only now does a closed stdout end the process by signal (spec 8.4).
+    platform::restore_sigpipe();
     match outcome {
         Ok(text) => {
             println!("{text}");
@@ -46,21 +47,6 @@ fn internal(payload: &Box<dyn std::any::Any + Send>) -> Failure {
         .unwrap_or_else(|| "a panic with no message".to_string());
     Failure::new(Code::Internal, format!("atip hit a bug: {text}"))
         .hint("Report it at https://github.com/journeyWorker/atip/issues with the command line.")
-}
-
-/// Rust starts with SIGPIPE ignored, so `println!` to a closed stdout panics (exit 101). `atip` restores the default
-/// action once the run is over and before it prints: a closed stdout ends it by the signal (spec 8.4), as `canon` does, and exit 101
-/// never appears (spec 8.6). During the run SIGPIPE stays ignored (`exec::Runner` makes sure of it): a document written to the
-/// stdin of a tool that has already exited is an `EPIPE` the checker ignores, not a signal that ends the checker.
-#[expect(
-    unsafe_code,
-    reason = "libc::signal is an unsafe FFI call with no safe std equivalent for restoring SIGPIPE"
-)]
-fn restore_sigpipe() {
-    // SAFETY: it only changes the process's SIGPIPE action, and is called after the last call of the run, when nothing writes to a pipe of a child.
-    unsafe {
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-    }
 }
 
 /// The text a successful run prints on stdout: the version, a help text, a `schema` answer, a guide, the report, or the success envelope.
@@ -237,8 +223,7 @@ fn check_binary_with(
     };
     let name = bin
         .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .map_or_default(|name| name.to_string_lossy().into_owned());
     let mut judged =
         run_checks(runner, &fixture, claim, &name, mutation, level, mode).map_err(from_run)?;
     if let Some(declared) = declared {
@@ -285,7 +270,7 @@ fn resolve_binary(bin: &OsStr) -> Result<PathBuf, String> {
     if !metadata.is_file() {
         return Err(format!("{} is not a file", path.display()));
     }
-    if std::os::unix::fs::PermissionsExt::mode(&metadata.permissions()) & 0o111 == 0 {
+    if !platform::is_executable(&metadata) {
         return Err(format!("{} is not executable", path.display()));
     }
     Ok(path)

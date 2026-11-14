@@ -886,18 +886,15 @@ impl Relations {
     /// The relations the `constraints` array of a command document states.
     pub fn from_json(rules: &Value) -> Relations {
         let strings = |value: &Value| -> Vec<String> {
-            value
-                .as_array()
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(|item| item.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default()
+            value.as_array().map_or_default(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str().map(str::to_string))
+                    .collect()
+            })
         };
         let mut found = Relations::default();
-        for rule in rules.as_array().map(Vec::as_slice).unwrap_or_default() {
+        for rule in rules.as_array().map_or_default(Vec::as_slice) {
             let names = strings(&rule["names"]);
             let then = strings(&rule["then"]);
             let unconditional = rule["if"].is_object() && rule["if"].get("in").is_none();
@@ -1543,7 +1540,7 @@ mod tests {
                 .expect("an option")
                 .comma_list
         );
-        let other = plain.clone().value_delimiter(';');
+        let other = plain.value_delimiter(';');
         assert!(matches!(
             option_doc("member select", &other, &[], &[]),
             Err(Problem::Delimiter { delimiter: ';', .. })

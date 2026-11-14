@@ -13,7 +13,7 @@
 //! `fake-tool/l1/patch.rs` for the operations and the `name=<text>` / `code=<text>` / `reason=<text>` selectors of
 //! array elements. The other violations are runtime toggles, described where they act in `fake-tool/l1/`.
 
-#![allow(dead_code, reason = "each integration test uses a part of this module")]
+#![expect(dead_code, reason = "each integration test uses a part of this module")]
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -459,15 +459,12 @@ fn published(config_path: &std::path::Path) -> Option<(Vec<Value>, Vec<String>)>
             continue;
         }
         let mut entry = json!({"code": code, "exit": row["exit"], "retryable": row["retryable"]});
-        let reasons: Vec<Value> = row["reasons"]
-            .as_array()
-            .map(|reasons| {
-                reasons
-                    .iter()
-                    .map(|reason| reason["reason"].clone())
-                    .collect()
-            })
-            .unwrap_or_default();
+        let reasons: Vec<Value> = row["reasons"].as_array().map_or_default(|reasons| {
+            reasons
+                .iter()
+                .map(|reason| reason["reason"].clone())
+                .collect()
+        });
         if !reasons.is_empty() {
             entry["reasons"] = json!(reasons);
         }

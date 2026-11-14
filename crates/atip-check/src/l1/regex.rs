@@ -341,7 +341,7 @@ impl Body {
             }
             other => self.fail(&format!(
                 "escape \\{} is not I-Regexp",
-                other.map(String::from).unwrap_or_default()
+                other.map_or_default(String::from)
             )),
         }
     }
@@ -386,7 +386,7 @@ impl Body {
                 self.i += 1;
             } else {
                 if !self.class_char()? {
-                    let c = self.at(0).map(String::from).unwrap_or_default();
+                    let c = self.at(0).map_or_default(String::from);
                     return self.fail(&format!("{c} in a character class"));
                 }
                 if self.at(0) == Some('-') && self.at(1) != Some(']') {

@@ -731,14 +731,12 @@ impl<'a> Judge<'a> {
                         }
                     }
                     PointerExpect::Required { pointer } => {
-                        let declared: Vec<&str> = doc
-                            .map(|doc| {
-                                doc.constraints
-                                    .iter()
-                                    .filter_map(|constraint| constraint.code.as_deref())
-                                    .collect()
-                            })
-                            .unwrap_or_default();
+                        let declared: Vec<&str> = doc.map_or_default(|doc| {
+                            doc.constraints
+                                .iter()
+                                .filter_map(|constraint| constraint.code.as_deref())
+                                .collect()
+                        });
                         let answered = code.is_some_and(|code| {
                             self.is_usage(Some(code), field) || declared.contains(&code)
                         });
@@ -1021,7 +1019,7 @@ impl<'a> Judge<'a> {
                         });
                     }
                 }
-                let problems = data.map(batch_report_problems).unwrap_or_default();
+                let problems = data.map_or_default(batch_report_problems);
                 c.holds_at(run.call, "batch-report-shape", problems.is_empty(), || {
                     format!(
                         "{}: {}: the report does not validate against batch-report.schema.json: {}",
@@ -1093,7 +1091,7 @@ impl<'a> Judge<'a> {
                 continue;
             }
             let data = document.and_then(|document| document.get("data"));
-            let problems = data.map(batch_report_problems).unwrap_or_default();
+            let problems = data.map_or_default(batch_report_problems);
             c.holds_at(run.call, "batch-report-shape", problems.is_empty(), || {
                 format!(
                     "{}: the report does not validate against batch-report.schema.json: {}",

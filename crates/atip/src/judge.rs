@@ -269,8 +269,7 @@ fn rule(
             let declared = siblings
                 .get("properties")
                 .and_then(Value::as_object)
-                .map(|members| members.keys().cloned().collect())
-                .unwrap_or_default();
+                .map_or_default(|members| members.keys().cloned().collect());
             Rule::AdditionalProperties(Box::new(Node::compile(value)?), declared)
         }
         "items" => match value {

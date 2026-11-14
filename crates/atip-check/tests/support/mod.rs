@@ -1,6 +1,6 @@
 //! Shared by the integration tests: the `atip` binary, the fake tool, fixtures, and the seeded violations.
 
-#![allow(dead_code, reason = "each integration test uses a part of this module")]
+#![expect(dead_code, reason = "each integration test uses a part of this module")]
 
 pub mod l1;
 pub mod l2;

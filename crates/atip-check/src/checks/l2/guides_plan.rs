@@ -79,8 +79,7 @@ impl Run<'_> {
             .commands
             .as_ref()
             .and_then(|commands| commands.get("skills show"))
-            .map(|entry| entry.ok.clone())
-            .unwrap_or_default();
+            .map_or_default(|entry| entry.ok.clone());
         for argv in listed {
             let call = self.invoke(Call::new(in_json_mode(&argv)).measured())?;
             out.skills.listed.push((argv.join(" "), call));
@@ -123,8 +122,7 @@ impl Run<'_> {
                 .flatten()
                 .zip(&calls.commands)
                 .find(|((id, _), _)| id.as_str() == doc.command)
-                .map(|(_, command)| command.refused.clone())
-                .unwrap_or_default();
+                .map_or_default(|(_, command)| command.refused.clone());
             runs.extend(refused.into_iter().filter(|index| {
                 first_document(&self.log[*index].stdout)
                     .is_some_and(|line| line.get("type").and_then(Value::as_str) == Some("start"))

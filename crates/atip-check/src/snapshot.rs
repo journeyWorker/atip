@@ -16,10 +16,11 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
+
+use crate::platform;
 
 /// One entry of a snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,11 +40,11 @@ type Stamp = (u64, Time);
 
 /// The status-change time of a file or directory.
 pub fn changed_at(metadata: &fs::Metadata) -> Time {
-    (metadata.ctime(), metadata.ctime_nsec())
+    platform::changed_at(metadata)
 }
 
 fn stamp_of(metadata: &fs::Metadata) -> Stamp {
-    (metadata.size(), (metadata.mtime(), metadata.mtime_nsec()))
+    (metadata.len(), platform::modified_at(metadata))
 }
 
 /// The snapshot of the template, with the size and modification time each of its files had then.
@@ -212,11 +213,11 @@ pub fn changed(before: &Snapshot, after: &Snapshot) -> Vec<String> {
 /// volume, any error) `clone` is cleared, so that the rest of the run does not ask again, and the tree is copied entry by
 /// entry, as on every other system. A link is never made: a tool that writes a file in place would write the template.
 pub fn copy_or_clone(from: &Path, to: &Path, clone: &mut bool) -> io::Result<()> {
-    #[cfg(target_os = "macos")]
     if *clone {
-        match clone_tree(from, to) {
-            Ok(()) => return Ok(()),
-            Err(error) => {
+        match platform::clone_tree(from, to) {
+            None => {}
+            Some(Ok(())) => return Ok(()),
+            Some(Err(error)) => {
                 *clone = false;
                 if error.kind() != io::ErrorKind::AlreadyExists {
                     // What a failed clone may have left is not the copy.
@@ -228,38 +229,7 @@ pub fn copy_or_clone(from: &Path, to: &Path, clone: &mut bool) -> io::Result<()>
             }
         }
     }
-    #[cfg(not(target_os = "macos"))]
-    let _ = clone;
     copy_tree(from, to)
-}
-
-/// `clonefile(2)` of the tree at `from` as `to`, links not followed and the files owned by this process, as a copy's are.
-#[cfg(target_os = "macos")]
-#[expect(
-    unsafe_code,
-    reason = "clonefile(2) is an FFI call with no std or nix equivalent"
-)]
-fn clone_tree(from: &Path, to: &Path) -> io::Result<()> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-    // <sys/clonefile.h>; the libc crate does not define them.
-    const CLONE_NOFOLLOW: u32 = 0x0001;
-    const CLONE_NOOWNERCOPY: u32 = 0x0002;
-    let from = CString::new(from.as_os_str().as_bytes())?;
-    let to = CString::new(to.as_os_str().as_bytes())?;
-    // SAFETY: both arguments are NUL-terminated strings that outlive the call, which only reads them.
-    let done = unsafe {
-        libc::clonefile(
-            from.as_ptr(),
-            to.as_ptr(),
-            CLONE_NOFOLLOW | CLONE_NOOWNERCOPY,
-        )
-    };
-    if done == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
 }
 
 /// Copies the tree at `from` to `to` (created), keeping links as links and permission bits.
@@ -270,7 +240,7 @@ pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
         let target = to.join(entry.file_name());
         let kind = entry.file_type()?;
         if kind.is_symlink() {
-            std::os::unix::fs::symlink(fs::read_link(entry.path())?, &target)?;
+            platform::symlink(&fs::read_link(entry.path())?, &target)?;
         } else if kind.is_dir() {
             copy_tree(&entry.path(), &target)?;
             fs::set_permissions(&target, fs::metadata(entry.path())?.permissions())?;

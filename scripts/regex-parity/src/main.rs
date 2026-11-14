@@ -65,9 +65,7 @@ fn main() {
             value,
             observed,
             case["rust"],
-            difference
-                .map(|p| format!("; difference: {p}"))
-                .unwrap_or_default()
+            difference.map_or_default(|p| format!("; difference: {p}"))
         );
     }
     println!("{} rust cases, {} failed", cases.len(), failed);

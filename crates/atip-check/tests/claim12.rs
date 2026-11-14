@@ -112,7 +112,7 @@ fn atip_check_100_a_minor_the_checker_does_not_know_is_refused_before_a_binary_r
     );
     assert!(!marker.exists());
     // A fixture that claims another minor is refused as a fixture.
-    let mut other = fixture.clone();
+    let mut other = fixture;
     other["contractVersion"] = json!("1.7");
     let output = harness.check(&other, true);
     assert_eq!(

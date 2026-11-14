@@ -1064,8 +1064,7 @@ fn rule_7(doc: &CommandDoc, domains: &DomainStates) -> Option<String> {
             let label = doc
                 .constraints
                 .get(index)
-                .map(super::model::Constraint::label)
-                .unwrap_or_default();
+                .map_or_default(super::model::Constraint::label);
             problems.push(format!(
                 "input.example violates constraint {index} ({label})"
             ));
@@ -1274,8 +1273,7 @@ fn cut_trie(doc: &CommandDoc, output: &Output, v11: bool) -> Members {
     let records = output
         .fields
         .as_ref()
-        .map(|fields| decode_pointer(&fields.records))
-        .unwrap_or_default();
+        .map_or_default(|fields| decode_pointer(&fields.records));
     records.into_iter().rev().fold(ancestors, |below, segment| {
         let mut spine = Members::new();
         spine.insert(segment, Trie::Branch(below));

@@ -372,8 +372,7 @@ fn cell(n: usize, k: usize) {
         || (tree.clone(), models(&clap, asked)),
         |(tree, models)| Described::of_models(MINOR, "L2", tree, models).expect("a model"),
     );
-    let partial =
-        Described::of_models(MINOR, "L2", tree.clone(), models(&clap, asked)).expect("a model");
+    let partial = Described::of_models(MINOR, "L2", tree, models(&clap, asked)).expect("a model");
     for (whole, part) in [
         (described.tree().to_line(), partial.tree().to_line()),
         (

@@ -1,0 +1,46 @@
+# cargo-deny (house Rust guide DEP-1). CI runs `cargo deny --locked check` (DEP-2); docs/rust-coding-rules.md records
+# the decisions. An exception names its crate, or its advisory id, with the reason.
+
+[graph]
+all-features = false
+
+[advisories]
+# RustSec advisories fail the check. An ignored one needs its id and a reason:
+#   ignore = [{ id = "RUSTSEC-YYYY-NNNN", reason = "why it does not apply, and until when" }]
+ignore = []
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "MIT",
+  "Unicode-3.0",
+]
+
+# One crate's extra license each, never a repo-wide widening. Both are OSI-approved permissive licenses.
+[[licenses.exceptions]]
+# Through jsonschema (referencing, fluent-uri): borrow-or-share is MIT No Attribution.
+crate = "borrow-or-share"
+allow = ["MIT-0"]
+
+[[licenses.exceptions]]
+# Through jsonschema (referencing, hashbrown): foldhash is zlib.
+crate = "foldhash"
+allow = ["Zlib"]
+
+[licenses.private]
+# Unpublished workspace crates (publish = false) are not license-checked.
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Workspace crates depend on each other by path.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

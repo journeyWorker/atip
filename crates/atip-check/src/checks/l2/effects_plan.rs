@@ -102,7 +102,7 @@ impl Run<'_> {
             });
         }
         let entry = commands.get(&doc.command);
-        let listed: Vec<Vec<String>> = entry.map(|entry| entry.ok.clone()).unwrap_or_default();
+        let listed: Vec<Vec<String>> = entry.map_or_default(|entry| entry.ok.clone());
         if doc.option("dry-run").is_some() {
             for argv in &listed {
                 if argv.iter().any(|word| word == "--dry-run") {
@@ -129,9 +129,7 @@ impl Run<'_> {
                 out.reads.push(ReadRun {
                     command: doc.command.clone(),
                     call,
-                    patterns: entry
-                        .map(|entry| entry.allowed_effects.clone())
-                        .unwrap_or_default(),
+                    patterns: entry.map_or_default(|entry| entry.allowed_effects.clone()),
                     has_note: note,
                 });
             }

@@ -223,7 +223,7 @@ fn output_of(raw: &Value) -> OutputDoc {
         fields: raw.get("fields").map(|fields| FieldsDoc {
             records: text_of(fields, "records").expect("records"),
             paths: strings(&fields["paths"]),
-            keep: fields.get("keep").map(strings).unwrap_or_default(),
+            keep: fields.get("keep").map_or_default(strings),
             default: fields.get("default").map(strings),
         }),
     }
@@ -293,7 +293,7 @@ fn command_of(raw: &Value, answer: &Value, tree_options: &[OptionDoc]) -> Comman
             None => option_of(listed),
         });
     }
-    let mut errors = raw.get("errors").map(strings).unwrap_or_default();
+    let mut errors = raw.get("errors").map_or_default(strings);
     errors.extend(
         implied_codes(input.as_ref(), &options)
             .into_iter()

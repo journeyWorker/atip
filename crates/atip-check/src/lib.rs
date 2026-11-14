@@ -18,9 +18,6 @@
 //!
 //! The crate lives in the atip repository next to the spec and its schemas, and depends on no tool's crate.
 
-#[cfg(not(unix))]
-compile_error!("atip check runs on macOS and Linux: it needs a pseudo-terminal and process groups");
-
 pub mod app;
 pub mod checks;
 pub mod claim;
@@ -31,6 +28,7 @@ pub mod guides;
 pub mod l1;
 pub mod l2;
 pub mod output;
+mod platform;
 pub mod report;
 pub mod schema;
 pub mod snapshot;

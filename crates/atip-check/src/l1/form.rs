@@ -641,7 +641,7 @@ mod tests {
                 "{edit}"
             );
         }
-        let mut bad = command.clone();
+        let mut bad = command;
         bad["outputs"][0]["kind"] = json!("report");
         bad["options"] = json!(["team", {"name": "limit", "valueType": "integer", "flagOnly": true, "required": false, "help": "h"}]);
         let view = command_view(&bad, &context).expect("view");

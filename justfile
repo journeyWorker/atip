@@ -24,10 +24,16 @@ test:
 test-all-seeds:
     ATIP_CHECK_ALL_SEEDS=1 cargo test -p atip-check --locked
 
-# Clippy over every target, warnings denied, and the visibility rule (no pub(super) / pub(in ..)).
+# Clippy over every target, warnings denied; the `atip` library alone, without its `validate` feature (the build a tool
+# that only describes itself links); and the visibility rule (no pub(super) / pub(in ..)). docs/rust-coding-rules.md.
 lint:
     cargo clippy --workspace --all-targets --locked -- -D warnings
+    cargo clippy -p atip --lib --locked -- -D warnings
     scripts/check_visibility.sh
+
+# Advisories, licenses, bans and sources of the dependency graph (deny.toml); needs cargo-deny.
+deny:
+    cargo deny --locked check
 
 # Format the sources.
 fmt:
@@ -75,5 +81,5 @@ deps-check:
 package *args:
     cargo package -p atip -p atip-check --locked {{ args }}
 
-# Everything CI does, except `package`, which CI runs on ubuntu only.
+# Everything CI does, except `package`, which CI runs on ubuntu only, and `deny`, a job of its own there.
 ci: validate fmt-check lint deps-check test

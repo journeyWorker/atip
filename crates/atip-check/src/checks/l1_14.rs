@@ -25,8 +25,7 @@ impl<'a> Judge<'a> {
     fn usage_codes(&self) -> Vec<String> {
         self.tool_errors
             .as_deref()
-            .map(view::usage_replacements)
-            .unwrap_or_default()
+            .map_or_default(view::usage_replacements)
     }
 
     /// `L1.code-names` (spec 7.2, Annex S2 rule 14): every code of the registry is a core code or follows `<SUBJECT>_<CONDITION>` with its condition's exit and retryability.
