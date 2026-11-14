@@ -433,6 +433,7 @@ fn args_for(harness: &Harness, fixture: &Value) -> CheckArgs {
         level: Level::L0,
         fixture: harness.write("fixture.json", fixture).into(),
         contract: None,
+        jobs: atip_check::cli::default_jobs(),
     }
 }
 

@@ -145,6 +145,7 @@ fn mutated(config: &Value, forced: &[&str], skipped: &[&str]) -> Report {
         level: Level::L2,
         fixture: harness.write("fixture.json", &fixture).into(),
         contract: None,
+        jobs: atip_check::cli::default_jobs(),
     };
     check_binary_mutated(&args, forced, skipped)
         .expect("a report")
@@ -369,6 +370,7 @@ fn atip_checkl2safety_03_every_condition_a_conforming_run_judges_has_a_seed_and_
         level: Level::L2,
         fixture: harness.write("fixture.json", &fixture).into(),
         contract: None,
+        jobs: atip_check::cli::default_jobs(),
     };
     let (report, judged) = check_binary_mutated(&args, &[], &[]).expect("a report");
     assert!(report.passed, "{}", report.text());

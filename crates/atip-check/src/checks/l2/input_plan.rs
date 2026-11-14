@@ -327,6 +327,7 @@ impl Run<'_> {
         let deadline = self.fixture.timeout;
         let mut call = Call::new(argv).on_terminal();
         call.limit = Some(deadline);
+        self.flush()?;
         let outcome = self.runner.run_on_terminal(&call, deadline)?;
         Ok(self.record(outcome))
     }
@@ -356,8 +357,11 @@ impl Run<'_> {
                 out.unlisted.push(doc.command.clone());
                 continue;
             }
-            let command = self.plan_input_command(calls, doc, claim, &declarers)?;
-            self.plan_document_numbers(&mut out, doc, &command)?;
+            let command = self.batch_for(doc, |this| {
+                let command = this.plan_input_command(calls, doc, claim, &declarers)?;
+                this.plan_document_numbers(&mut out, doc, &command)?;
+                Ok(command)
+            })?;
             out.commands.push(command);
         }
         Ok(out)

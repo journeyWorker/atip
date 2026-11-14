@@ -211,6 +211,35 @@ The classification is one table in the checker (`checks::INTERFACE`); a check mi
 until it is listed. L1.schemas and L1.help-json, which the checks for contract 1.4 add, are interface checks: they judge the document of one call
 (`schema --schemas --json`, `--help --json`).
 
+### 3.2 Calls alongside each other (`--jobs`)
+
+A deep run is mostly the checker waiting for the tool. `--jobs N` (a whole number, at least 1) lets up to N invocations run at once, each in a
+fresh copy of its own; `--jobs 1` runs them one after another. Without it N is half the processors the checker may use, at most 4 and at least 1:
+the invocations are separate processes doing their own work while the checker's threads wait for them, half the processors leaves the rest to the
+tool's own threads and to whatever else the machine runs, and past 4 the gain flattens, because what is left is the calls below that run alone. An
+interface run (§3.1) has one shared copy and runs its calls one after another whatever N is.
+
+Calls run alongside each other only where the plan made them independent: each in a fresh copy, none built from another one's answer. These are
+the calls that need nothing but the tool (`--version`, the unknown command, the bare call, the lists of codes), one `schema --error` and
+`schema --warning` per listed code, the probe and its variations, the documents of the commands and groups (`schema <path> --json`, the repeat,
+`--schemas`) and the calls of L1 built from them (`--help` of a command, the examples of read commands, the constraint, domain, number,
+comma-list, validator and check-order probes), and at L2 the calls of the `--input` rows of each command and the `--help`, `--dry-run` and
+read calls of L2.effects for each command. The rest runs alone, after everything planned before it has ended:
+
+- **What a plan reads first.** A call that is built from another one's answer (the documents from the tree, the codes from their lists) waits for it.
+- **Chains.** The calls that continue another call's sequence (§3: a page and the next, a `next` entry, a preview and its commit, the repeat of a
+  write, an asynchronous start and its wait, the requests of an operation key) run in order, after the call that started the sequence.
+- **Timing.** The runs on a terminal (L0.no-prompt, L2.input-tty), a call with a time limit of its own, the control run whose time sets the
+  terminal run's deadline, and the runs of `notRun` commands run alone, so that no other invocation slows them.
+- **Remote state.** When the fixture has a `probe`, the calls of a command that is not a `read` run one after another: such a call that does what it
+  should have refused could change the remote state while the probe after another call's refusal reads it (L0.refusal-effects). The calls of
+  `read` commands, which change nothing remote by the contract, still run alongside each other.
+
+The outcomes are logged in the order the plan made the calls, and each copy is numbered in that order, whichever call started first; the report of a
+run is the same whatever N is, but for what the tool prints that varies from one run to the next (times, ports, temporary paths). A tool that writes
+remote state on a refusal fails L0.refusal-effects whatever N is; with N above 1 the state its probe reports may differ, since the writes
+of refusals run at the same time can interleave.
+
 ## 4. The effects check
 
 The checker snapshots the invocation's directory and `HOME` (path, size, SHA-256 of every file) before and after

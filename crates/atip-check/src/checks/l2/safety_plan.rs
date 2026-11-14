@@ -432,6 +432,7 @@ impl Run<'_> {
             Call::new(with_key("chk-two", start_argv)),
             Call::new(with_key("chk-two", start_argv)),
         ];
+        self.flush()?;
         let (pair_sequence, outcomes) = self.runner.run_concurrently(&calls)?;
         let pair_state = self.runner.fingerprint(pair_sequence)?;
         let mut pair = [0, 0];

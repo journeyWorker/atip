@@ -73,56 +73,69 @@ impl Run<'_> {
                 ..doc.clone()
             })
             .collect();
+        let opened = self.open_batch();
         for doc in &docs {
             if self.not_run(&doc.command) {
                 continue;
             }
-            // A write the fixture does not list is never run, and its `--help` is a call of it.
-            if self.runnable(doc) {
-                let mut argv = doc.path.clone();
-                argv.push("--help".to_string());
-                let call = self.invoke(Call::new(argv).measured())?;
-                out.helps.push(EffectRun {
-                    label: format!("{} --help", doc.command),
+            self.batch_for(doc, |this| this.plan_effects_of(&mut out, doc, &commands))?;
+        }
+        self.close_batch(opened)?;
+        Ok(out)
+    }
+
+    /// The calls of `L2.effects` for `doc`: its `--help`, its `ok` invocations with `--dry-run`, and those of a `read`.
+    fn plan_effects_of(
+        &mut self,
+        out: &mut EffectsRun,
+        doc: &CommandDoc,
+        commands: &std::collections::BTreeMap<String, crate::fixture::CommandEntry>,
+    ) -> Result<(), RunError> {
+        // A write the fixture does not list is never run, and its `--help` is a call of it.
+        if self.runnable(doc) {
+            let mut argv = doc.path.clone();
+            argv.push("--help".to_string());
+            let call = self.invoke(Call::new(argv).measured())?;
+            out.helps.push(EffectRun {
+                label: format!("{} --help", doc.command),
+                call,
+            });
+        }
+        let entry = commands.get(&doc.command);
+        let listed: Vec<Vec<String>> = entry.map(|entry| entry.ok.clone()).unwrap_or_default();
+        if doc.option("dry-run").is_some() {
+            for argv in &listed {
+                if argv.iter().any(|word| word == "--dry-run") {
+                    continue;
+                }
+                let mut dry = in_json_mode(argv);
+                dry.push("--dry-run".to_string());
+                let call = self.invoke(Call::new(dry).measured())?;
+                out.dry_runs.push(EffectRun {
+                    label: format!("{} --dry-run", doc.command),
                     call,
                 });
             }
-            let entry = commands.get(&doc.command);
-            let listed: Vec<Vec<String>> = entry.map(|entry| entry.ok.clone()).unwrap_or_default();
-            if doc.option("dry-run").is_some() {
-                for argv in &listed {
-                    if argv.iter().any(|word| word == "--dry-run") {
-                        continue;
-                    }
-                    let mut dry = in_json_mode(argv);
-                    dry.push("--dry-run".to_string());
-                    let call = self.invoke(Call::new(dry).measured())?;
-                    out.dry_runs.push(EffectRun {
-                        label: format!("{} --dry-run", doc.command),
-                        call,
-                    });
-                }
-            }
-            // What `schema` changes is `L1.no-state`'s and what `skills show` changes is `L2.skills`': one owner for one pass condition.
-            if doc.effect == "read" && doc.command != "schema" && doc.command != "skills show" {
-                let note = doc
-                    .raw
-                    .get("effectNote")
-                    .and_then(serde_json::Value::as_str)
-                    .is_some_and(|note| !note.trim().is_empty());
-                for argv in &listed {
-                    let call = self.invoke(Call::new(in_json_mode(argv)).measured())?;
-                    out.reads.push(ReadRun {
-                        command: doc.command.clone(),
-                        call,
-                        patterns: entry
-                            .map(|entry| entry.allowed_effects.clone())
-                            .unwrap_or_default(),
-                        has_note: note,
-                    });
-                }
+        }
+        // What `schema` changes is `L1.no-state`'s and what `skills show` changes is `L2.skills`': one owner for one pass condition.
+        if doc.effect == "read" && doc.command != "schema" && doc.command != "skills show" {
+            let note = doc
+                .raw
+                .get("effectNote")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|note| !note.trim().is_empty());
+            for argv in &listed {
+                let call = self.invoke(Call::new(in_json_mode(argv)).measured())?;
+                out.reads.push(ReadRun {
+                    command: doc.command.clone(),
+                    call,
+                    patterns: entry
+                        .map(|entry| entry.allowed_effects.clone())
+                        .unwrap_or_default(),
+                    has_note: note,
+                });
             }
         }
-        Ok(out)
+        Ok(())
     }
 }

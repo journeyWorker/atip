@@ -17,8 +17,9 @@ use std::os::fd::AsFd;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -204,8 +205,10 @@ pub enum RunError {
 
 /// The binary under test and the template every invocation copies.
 ///
-/// A sequence that no later call continues is removed on a thread of its own as soon as the next sequence is made, while
-/// the calls go on; the ones a later call continues ([`Runner::keep`]) and the shared one stay until the runner is dropped.
+/// A fresh sequence that no later call continues is removed on a thread of its own once its call has ended and the plan
+/// has had the chance to keep it ([`Runner::keep`]): when the next call starts, or at once for the calls of
+/// [`Runner::run_many`], whose keeping is decided by the predicate it is given. The kept ones and the shared one stay
+/// until the runner is dropped.
 #[derive(Debug)]
 pub struct Runner {
     bin: PathBuf,
@@ -213,27 +216,36 @@ pub struct Runner {
     template_files: Template,
     fixture_env: Vec<(String, String)>,
     timeout: Duration,
-    /// Every sequence made so far: sequence `n` is at index `n - 1`.
-    sequences: Vec<Sequence>,
-    /// The last fresh sequence: removed when the next one is made, unless it is kept or shared.
-    last: Option<usize>,
-    /// Whether a sequence is made by cloning the template; cleared once a clone fails.
-    clone: bool,
+    /// The sequences, behind a lock: the calls of [`Runner::run_many`] make theirs on threads of their own.
+    sequences: Mutex<Sequences>,
     /// A file of the scratch space, touched to read the file system's clock when a sequence is made.
     clock: File,
+    /// How many calls of [`Runner::run_many`] may run at once; 1 until [`Runner::with_jobs`] says otherwise.
+    jobs: usize,
     /// The number of the one sequence every [`Runner::run_shared`] call runs in, once the first has made it.
     shared: Option<usize>,
     /// The probe command with `--json`: asked for the remote state after a refusal.
     probe: Option<Vec<String>>,
+    scratch: TempDir,
+}
+
+/// Every sequence made so far, and what removes the finished ones.
+#[derive(Debug)]
+struct Sequences {
+    /// Sequence `n` is at index `n - 1`; a number is given before its copy is made, in the order of the plan.
+    list: Vec<Sequence>,
+    /// Fresh sequences whose call has ended and that the plan may still keep: removed when the next call starts, unless kept.
+    finished: Vec<usize>,
+    /// Whether a sequence is made by cloning the template; cleared once a clone fails.
+    clone: bool,
     /// The thread that removes finished sequences, once there is one.
     remover: Option<Remover>,
-    scratch: TempDir,
 }
 
 /// One copy of the fixture state.
 #[derive(Debug, Clone, Copy)]
 struct Sequence {
-    /// When the copy of the template was made, on the file system's clock; `None` for an empty one.
+    /// When the copy of the template was made, on the file system's clock; `None` for an empty one (or one not made yet).
     made: Option<Time>,
     /// A later call continues it: it stays until the end.
     kept: bool,
@@ -251,7 +263,11 @@ struct Remover {
 impl Drop for Runner {
     /// What the remover was given is gone before the scratch space is removed: two removals of one tree at once can each fail on what the other took.
     fn drop(&mut self) {
-        if let Some(Remover { queue, thread }) = self.remover.take() {
+        let sequences = self
+            .sequences
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(Remover { queue, thread }) = sequences.remover.take() {
             drop(queue);
             let _removed = thread.join();
         }
@@ -283,16 +299,19 @@ impl Runner {
                 .map(|(name, value)| (name.clone(), value.clone()))
                 .collect(),
             timeout: fixture.timeout,
-            sequences: Vec::new(),
-            last: None,
-            clone: true,
+            sequences: Mutex::new(Sequences {
+                list: Vec::new(),
+                finished: Vec::new(),
+                clone: true,
+                remover: None,
+            }),
             clock,
+            jobs: 1,
             shared: None,
             probe: fixture.probe.clone().map(|mut words| {
                 words.push("--json".to_string());
                 words
             }),
-            remover: None,
             scratch,
         };
         for command in &fixture.prepare {
@@ -361,7 +380,8 @@ impl Runner {
     /// measured against it: only what changed since the copy was made is read.
     fn both(&self, number: usize) -> std::io::Result<Snapshot> {
         let root = self.sequence_dir(number);
-        let source = match self.sequences[number - 1].made {
+        let made = self.lock().list[number - 1].made;
+        let source = match made {
             Some(made) => Source::Copy {
                 template: &self.template_files,
                 made,
@@ -373,6 +393,12 @@ impl Runner {
             take(&root.join(part), label, source, &mut all)?;
         }
         Ok(all)
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Sequences> {
+        self.sequences
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     /// The data the probe reports in a copy nobody has touched, when it reports the same twice in two copies (a
@@ -404,31 +430,47 @@ impl Runner {
     /// The directory of sequence `number`, which a call is about to continue or measure: it must not have been removed.
     fn continued(&self, number: usize) -> PathBuf {
         assert!(
-            !self.sequences[number - 1].removed,
-            "sequence {number} was removed when the next one was made: a call that continues a sequence later needs `Runner::keep`"
+            !self.lock().list[number - 1].removed,
+            "sequence {number} was removed once its call had ended: a call that continues a sequence later needs `Runner::keep`"
         );
         self.sequence_dir(number)
     }
 
+    /// The same runner with up to `jobs` calls of [`Runner::run_many`] running at once (at least 1).
+    #[must_use]
+    pub fn with_jobs(mut self, jobs: usize) -> Self {
+        self.jobs = jobs.max(1);
+        self
+    }
+
+    /// How many calls of [`Runner::run_many`] may run at once.
+    pub fn jobs(&self) -> usize {
+        self.jobs
+    }
+
     /// Keeps sequence `number` until the runner is dropped: a later call continues it ([`Runner::run_after`], [`Runner::fingerprint`]).
     pub fn keep(&mut self, number: usize) {
+        let sequences = self
+            .sequences
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner);
         if let Some(sequence) = number
             .checked_sub(1)
-            .and_then(|index| self.sequences.get_mut(index))
+            .and_then(|index| sequences.list.get_mut(index))
         {
             sequence.kept = true;
         }
     }
 
     /// Hands sequence `number` to the remover, unless it is kept or shared.
-    fn release(&mut self, number: usize) {
-        let sequence = &mut self.sequences[number - 1];
-        if sequence.kept || self.shared == Some(number) {
+    fn release(&self, sequences: &mut Sequences, number: usize) {
+        let sequence = &mut sequences.list[number - 1];
+        if sequence.kept || sequence.removed || self.shared == Some(number) {
             return;
         }
         sequence.removed = true;
         let dir = self.sequence_dir(number);
-        let remover = self.remover.get_or_insert_with(|| {
+        let remover = sequences.remover.get_or_insert_with(|| {
             let (queue, dirs) = mpsc::channel::<PathBuf>();
             let thread = thread::spawn(move || {
                 for dir in dirs {
@@ -442,48 +484,66 @@ impl Runner {
         let _sent = remover.queue.send(dir);
     }
 
-    /// The file system's clock now: the status-change time of the clock file, just touched.
+    /// Removes the finished sequences the plan did not keep: a new call is starting, so none of them is continued any more.
+    fn settle(&self) {
+        let mut sequences = self.lock();
+        for number in std::mem::take(&mut sequences.finished) {
+            self.release(&mut sequences, number);
+        }
+    }
+
+    /// Gives the next `count` sequence numbers, in order; their copies are made by [`Runner::make`].
+    fn reserve(&self, count: usize) -> usize {
+        let mut sequences = self.lock();
+        let first = sequences.list.len() + 1;
+        sequences.list.extend(std::iter::repeat_n(
+            Sequence {
+                made: None,
+                kept: false,
+                removed: false,
+            },
+            count,
+        ));
+        first
+    }
+
+    /// The file system's clock now: the status-change time of the clock file, just touched. When two threads touch it at
+    /// once, either reads the later touch: still a moment before the call that the copy is made for starts.
     fn now_on_disk(&self) -> std::io::Result<Time> {
         self.clock.set_modified(SystemTime::now())?;
         Ok(changed_at(&self.clock.metadata()?))
     }
 
-    /// A fresh copy of the template as the next sequence's directory, or an empty one for a call in the empty state. The
-    /// sequence made before it is finished: it is removed unless a later call continues it.
-    fn sequence(&mut self, empty: bool) -> Result<(usize, PathBuf), RunError> {
-        if let Some(previous) = self.last.take() {
-            self.release(previous);
-        }
-        let number = self.sequences.len() + 1;
+    /// Makes the directory of the reserved sequence `number`: a fresh copy of the template, or an empty one for a call in the empty state.
+    fn make(&self, number: usize, empty: bool) -> Result<PathBuf, RunError> {
         let sequence = self.sequence_dir(number);
         let scratch = |error: std::io::Error| RunError::Scratch(error.to_string());
         if empty {
             for part in ["work", "home"] {
                 std::fs::create_dir_all(sequence.join(part)).map_err(scratch)?;
             }
-        } else {
-            std::fs::create_dir(&sequence).map_err(scratch)?;
-            for part in ["work", "home"] {
-                copy_or_clone(
-                    &self.template.join(part),
-                    &sequence.join(part),
-                    &mut self.clone,
-                )
-                .map_err(scratch)?;
-            }
+            return Ok(sequence);
         }
-        let made = if empty {
-            None
-        } else {
-            Some(self.now_on_disk().map_err(scratch)?)
-        };
-        self.sequences.push(Sequence {
-            made,
-            kept: false,
-            removed: false,
-        });
-        self.last = Some(number);
-        Ok((number, sequence))
+        std::fs::create_dir(&sequence).map_err(scratch)?;
+        let mut clone = self.lock().clone;
+        for part in ["work", "home"] {
+            copy_or_clone(&self.template.join(part), &sequence.join(part), &mut clone)
+                .map_err(scratch)?;
+        }
+        let made = self.now_on_disk().map_err(scratch)?;
+        let mut sequences = self.lock();
+        sequences.clone &= clone;
+        sequences.list[number - 1].made = Some(made);
+        Ok(sequence)
+    }
+
+    /// A fresh copy of the template as the next sequence's directory, or an empty one for a call in the empty state; it is
+    /// finished once its call has ended ([`Runner::settle`]).
+    fn sequence(&mut self, empty: bool) -> Result<(usize, PathBuf), RunError> {
+        self.settle();
+        let number = self.reserve(1);
+        self.lock().finished.push(number);
+        Ok((number, self.make(number, empty)?))
     }
 
     fn run_plain(&mut self, call: &Call) -> Result<Outcome, RunError> {
@@ -522,8 +582,16 @@ impl Runner {
 
     /// Runs `call` once in its own fresh copy of the template (an empty one for a call in the empty state).
     pub fn run(&mut self, call: &Call) -> Result<Outcome, RunError> {
+        self.settle();
+        let number = self.reserve(1);
+        self.lock().finished.push(number);
+        self.run_fresh(call, number)
+    }
+
+    /// Runs `call` in the reserved sequence `number`, made for it now.
+    fn run_fresh(&self, call: &Call, number: usize) -> Result<Outcome, RunError> {
         let fresh = call.empty || call.without_setup;
-        let (number, sequence) = self.sequence(fresh)?;
+        let sequence = self.make(number, fresh)?;
         let mut outcome = (if call.served {
             self.execute_served(call, &sequence)
         } else {
@@ -539,6 +607,63 @@ impl Runner {
         };
         self.after_call(&mut outcome, number, before)?;
         Ok(outcome)
+    }
+
+    /// Runs each of `calls` as [`Runner::run`] does, in its own fresh copy, at most [`Runner::jobs`] at a time, and returns their
+    /// outcomes in the order of `calls`. The sequences are numbered in that order too, whichever call starts first, so the copies
+    /// have the paths a run one call at a time gives them. A sequence whose outcome `kept` does not keep is removed as soon as its
+    /// call has ended. With one job the calls run one after another on this thread.
+    pub fn run_many(
+        &mut self,
+        calls: &[Call],
+        kept: fn(&Outcome) -> bool,
+    ) -> Result<Vec<Outcome>, RunError> {
+        let jobs = self.jobs;
+        self.settle();
+        let first = self.reserve(calls.len());
+        let runner = &*self;
+        let run_one = |at: usize, call: &Call| {
+            let number = first + at;
+            let result = runner.run_fresh(call, number);
+            if result.as_ref().is_ok_and(|outcome| !kept(outcome)) {
+                runner.release(&mut runner.lock(), number);
+            }
+            result
+        };
+        if jobs <= 1 || calls.len() <= 1 {
+            return calls
+                .iter()
+                .enumerate()
+                .map(|(at, call)| run_one(at, call))
+                .collect();
+        }
+        let next = AtomicUsize::new(0);
+        let slots: Vec<Mutex<Option<Result<Outcome, RunError>>>> =
+            calls.iter().map(|_| Mutex::new(None)).collect();
+        thread::scope(|scope| {
+            for _ in 0..jobs.min(calls.len()) {
+                scope.spawn(|| loop {
+                    let at = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(call) = calls.get(at) else {
+                        break;
+                    };
+                    let result = run_one(at, call);
+                    *slots[at].lock().unwrap_or_else(PoisonError::into_inner) = Some(result);
+                });
+            }
+        });
+        slots
+            .into_iter()
+            .map(|slot| {
+                slot.into_inner()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .unwrap_or_else(|| {
+                        Err(RunError::Spawn(
+                            "an invocation thread ended before its call".to_string(),
+                        ))
+                    })
+            })
+            .collect()
     }
 
     /// Runs `call` in the one copy of the template that every `run_shared` call of this runner shares, made at the first one: the

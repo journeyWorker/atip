@@ -939,6 +939,7 @@ fn atip_checkl1_28_a_check_forced_to_pass_makes_its_seeded_case_fail_and_every_c
         level: Level::L1,
         fixture: harness.write("fixture.json", &fixture).into(),
         contract: None,
+        jobs: atip_check::cli::default_jobs(),
     };
     let (report, judged) = check_binary_mutated(&args, &[], &[]).expect("a report");
     assert!(report.passed, "{}", report.text());
@@ -1011,6 +1012,7 @@ fn atip_checkl1_28_a_check_forced_to_pass_makes_its_seeded_case_fail_and_every_c
                         },
                         fixture: harness.write("fixture.json", &fixture).into(),
                         contract: None,
+                        jobs: atip_check::cli::default_jobs(),
                     };
                     let owner = owner_of(&case);
                     if first && (all_seeds() || FORCED_BY_DEFAULT.contains(&owner.as_str())) {
