@@ -3,7 +3,7 @@
 `atip check`: the conformance checker of [ATIP](https://github.com/journeyWorker/atip) (`atip/1`), the Agent Terminal
 Invocation Protocol. It runs a built binary and checks the contract from outside: argv in; stdout, stderr, exit status
 and file-system changes out. What it reports is evidence for or against a conformance claim, never the definition of
-one.
+one. `atip` itself is an ATIP 1.6 L1 tool: `atip schema --json` describes its commands, options and error codes.
 
 ```sh
 bunx @journeykit/atip-check check --bin target/release/<tool> --fixture atip.fixture.json --level L2

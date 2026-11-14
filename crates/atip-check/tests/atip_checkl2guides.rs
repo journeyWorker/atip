@@ -253,28 +253,11 @@ fn atip_checkl2guides_12_a_server_command_is_left_out_of_the_l2_rows_and_a_searc
 #[test]
 fn atip_checkl2guides_14_the_checker_itself_passes() {
     let harness = Harness::new();
-    let fixture = harness.path("fixture-copy.json");
-    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("atip.fixture.json");
-    std::fs::copy(&source, &fixture).expect("copy the fixture");
     let work = harness.path("cwd");
     std::fs::create_dir_all(&work).expect("cwd");
-    std::fs::copy(&source, work.join("atip.fixture.json")).expect("copy next to the invocations");
     let tmp = harness.path("tmp");
     std::fs::create_dir_all(&tmp).expect("tmp");
-    let output = support::atip_in(
-        &work,
-        &tmp,
-        &[
-            "check",
-            "--bin",
-            support::ATIP,
-            "--level",
-            "L0",
-            "--fixture",
-            fixture.to_str().expect("utf8"),
-            "--json",
-        ],
-    );
+    let output = support::atip_self_check(&work, &tmp, &["--level", "L0", "--json"], true);
     assert_eq!(
         (output.code, output.envelope()["data"]["passed"].as_bool()),
         (Some(0), Some(true)),

@@ -11,16 +11,53 @@
           "--json"
         ]
       ],
+      "ok": [
+        [
+          "check",
+          "--bin",
+          "atip",
+          "--fixture",
+          "atip.fixture.json",
+          "--level",
+          "L0",
+          "--json"
+        ]
+      ],
       "refused": [
         [
           "check",
           "--json"
         ]
       ]
+    },
+    "schema": {
+      "ok": [
+        [
+          "schema",
+          "--json"
+        ]
+      ],
+      "refused": [
+        [
+          "schema",
+          "nosuch-xyz",
+          "--json"
+        ]
+      ]
     }
   },
-  "contractVersion": "1.4",
+  "contractVersion": "1.6",
+  "env": {
+    "TMPDIR": "."
+  },
   "globalOptions": [],
+  "prepare": [
+    [
+      "sh",
+      "-c",
+      "printf '%s\\n' '{\"commands\":{\"check\":{\"missingValue\":[[\"check\",\"--level\",\"L0\",\"--fixture\",\"atip.fixture.json\",\"--json\"]]}},\"contractVersion\":\"1.6\",\"globalOptions\":[],\"probe\":\"check\",\"registry\":\"from-schema\"}' > atip.fixture.json"
+    ]
+  ],
   "probe": "check",
   "registry": [
     {
@@ -54,6 +91,16 @@
       "code": "LEVEL_FAILED",
       "exit": 1,
       "retryable": false
+    },
+    {
+      "code": "SCRATCH_FAILED",
+      "exit": 1,
+      "retryable": true
+    },
+    {
+      "code": "SCRATCH_UNAVAILABLE",
+      "exit": 2,
+      "retryable": true
     },
     {
       "code": "UNKNOWN_COMMAND",

@@ -2,8 +2,8 @@
 //!
 //! The checker feeds argv to the binary and reads its stdout, stderr, exit
 //! status and the files it changes. It knows nothing of the tool's source or
-//! of the framework the tool is built with. Its own output follows the
-//! contract at L0, so it is checked by itself.
+//! of the framework the tool is built with. Its own command line follows the
+//! contract at L1, so it is checked by itself.
 //!
 //! - [`checks`]: the 28 L0 checks of the contract's minor (approaches/checker.md 6).
 //! - [`claim`]: the contract minor a tool claims and what a document of that minor may carry.
@@ -13,6 +13,7 @@
 //! - [`snapshot`]: the files under a directory, before and after.
 //! - [`report`]: one entry per check, and whether the level is met.
 //! - [`cli`], [`output`], [`app`]: the command line, what it prints, and the run.
+//! - [`spec`]: `atip schema`, the self-description of `atip` itself, projected from the clap tree of [`cli`].
 //!
 //! The crate lives in the atip repository next to the spec and its schemas, and depends on no tool's crate.
 
@@ -31,3 +32,4 @@ pub mod output;
 pub mod report;
 pub mod schema;
 pub mod snapshot;
+pub mod spec;

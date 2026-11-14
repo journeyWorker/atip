@@ -597,15 +597,24 @@ fn atip_check_deep_19_the_command_line_has_deep_and_says_what_it_is_in_help() {
         "{}",
         help.stdout
     );
-    assert!(
+    // clap aligns the help column; the words, not the spaces, are the help's.
+    let line_of = |option: &str| {
         help.stdout
-            .contains("--jobs <JOBS>      How many invocations of a deep run may run at once"),
+            .lines()
+            .find(|line| line.trim_start().starts_with(option))
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    assert!(
+        line_of("--jobs <JOBS>")
+            .starts_with("--jobs <JOBS> How many invocations of a deep run may run at once"),
         "{}",
         help.stdout
     );
     assert!(
-        help.stdout
-            .contains("--deep             Run every check of the level"),
+        line_of("--deep").starts_with("--deep Run every check of the level"),
         "{}",
         help.stdout
     );

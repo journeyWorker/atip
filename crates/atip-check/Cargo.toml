@@ -1,6 +1,6 @@
 [package]
 name = "atip-check"
-version = "0.3.3"
+version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -43,6 +43,10 @@ test-support = []
 [dependencies]
 # The checker validates every document it reads against the contract's schemas, so it needs the validators of `atip`.
 atip = { workspace = true, features = ["validate"] }
+# The command line (`check`, `schema`): the clap tree the `atip` crate projects onto `atip schema`'s documents.
+clap = { workspace = true }
+# The JSON Schema of the check report, which `atip schema check --schemas` serves.
+schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

@@ -98,15 +98,17 @@ dependencies = [
 
 [[package]]
 name = "atip-check"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "atip",
  "atip-check",
+ "clap",
  "jsonschema",
  "libc",
  "nix",
  "regex",
  "regress",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
