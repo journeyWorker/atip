@@ -176,9 +176,7 @@ pub(crate) fn refusal_text(document: Option<&Value>, exit: Exit) -> String {
             format!(
                 "failed with {}{} (exit {})",
                 code.unwrap_or("no code"),
-                field
-                    .map(|field| format!(" on {field}"))
-                    .unwrap_or_default(),
+                field.map_or_default(|field| format!(" on {field}")),
                 exit_text(exit)
             )
         }
@@ -1040,8 +1038,7 @@ impl<'a> Judge<'a> {
                 .commands
                 .iter()
                 .find(|entry| entry.command == *id)
-                .map(|entry| entry.path.clone())
-                .unwrap_or_default();
+                .map_or_default(|entry| entry.path.clone());
             let mut wanted: Vec<String> = tree
                 .children(&path)
                 .iter()
@@ -1052,13 +1049,12 @@ impl<'a> Judge<'a> {
                 .envelope(*index)
                 .and_then(|document| document.pointer("/error/expected"))
                 .and_then(Value::as_array)
-                .map(|list| {
+                .map_or_default(|list| {
                     list.iter()
                         .filter_map(Value::as_str)
                         .map(str::to_string)
                         .collect()
-                })
-                .unwrap_or_default();
+                });
             expected.sort_unstable();
             c.holds_at(
                 *index,
@@ -1682,8 +1678,7 @@ impl<'a> Judge<'a> {
                     .commands
                     .as_ref()
                     .and_then(|commands| commands.get(&doc.command))
-                    .map(|entry| entry.ok.clone())
-                    .unwrap_or_default()
+                    .map_or_default(|entry| entry.ok.clone())
                 {
                     if let Ok(parsed) = invocation::parse(doc, &super::in_json_mode(&argv)) {
                         if let Some(value) = super::l1_plan::given_value(doc, &parsed, arg) {
@@ -1925,16 +1920,16 @@ impl<'a> Judge<'a> {
                 continue;
             };
             for entry in entries {
-                let argv: Vec<String> = entry
-                    .get("argv")
-                    .and_then(Value::as_array)
-                    .map(|argv| {
-                        argv.iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_string)
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let argv: Vec<String> =
+                    entry
+                        .get("argv")
+                        .and_then(Value::as_array)
+                        .map_or_default(|argv| {
+                            argv.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect()
+                        });
                 if argv.is_empty() {
                     continue;
                 }
@@ -2414,13 +2409,12 @@ impl<'a> Judge<'a> {
             let mut stated: Vec<String> = projected
                 .pointer("/meta/fields")
                 .and_then(Value::as_array)
-                .map(|list| {
+                .map_or_default(|list| {
                     list.iter()
                         .filter_map(Value::as_str)
                         .map(str::to_string)
                         .collect()
-                })
-                .unwrap_or_default();
+                });
             stated.sort();
             c.holds_at(run.projected, "meta-fields", stated == kept, || {
                 format!(

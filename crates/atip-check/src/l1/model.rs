@@ -50,13 +50,12 @@ pub(crate) fn words(value: &Value, key: &str) -> Vec<String> {
     value
         .get(key)
         .and_then(Value::as_array)
-        .map(|list| {
+        .map_or_default(|list| {
             list.iter()
                 .filter_map(Value::as_str)
                 .map(str::to_string)
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// One operand or option of a command (spec 10.6, 10.7).
@@ -169,8 +168,7 @@ impl Constraint {
                 let when = self
                     .if_in
                     .as_ref()
-                    .map(|values| format!(" in {}", Value::Array(values.clone())))
-                    .unwrap_or_default();
+                    .map_or_default(|values| format!(" in {}", Value::Array(values.clone())));
                 format!("{rule} {name}{when} -> [{}]", self.then.join(", "))
             }
             (None, rule) => format!("{rule} [{}]", self.names.join(", ")),
@@ -461,8 +459,7 @@ impl Tree {
             commands: data
                 .get("commands")
                 .and_then(Value::as_array)
-                .map(|list| list.iter().map(TreeEntry::parse).collect())
-                .unwrap_or_default(),
+                .map_or_default(|list| list.iter().map(TreeEntry::parse).collect()),
         })
     }
 
@@ -497,8 +494,7 @@ impl GroupDoc {
                 commands: data
                     .get("commands")
                     .and_then(Value::as_array)
-                    .map(|list| list.iter().map(TreeEntry::parse).collect())
-                    .unwrap_or_default(),
+                    .map_or_default(|list| list.iter().map(TreeEntry::parse).collect()),
             }
         })
     }

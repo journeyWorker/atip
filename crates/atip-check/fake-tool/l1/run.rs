@@ -249,8 +249,7 @@ fn schema(tool: &Tool, args: &[String]) -> ExitCode {
     let alias = std::env::args().next().unwrap_or_default();
     let alias = std::path::Path::new(&alias)
         .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .map_or_default(|name| name.to_string_lossy().into_owned());
     if alias.contains("needs-config") && std::env::var_os("FAKE_ATIP_CONFIG").is_none() {
         return tool.refuse(
             "USAGE",
@@ -754,16 +753,13 @@ fn projection(
 ) -> Result<(Vec<String>, Vec<String>), ExitCode> {
     let fields = &doc["outputs"][0]["fields"];
     let strings = |value: &Value| -> Vec<String> {
-        value
-            .as_array()
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(ToString::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
+        value.as_array().map_or_default(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect()
+        })
     };
     let declared = strings(&fields["paths"]);
     let keep = strings(&fields["keep"]);
@@ -847,7 +843,7 @@ fn list(tool: &Tool, args: &[String], parsed: &Parsed) -> ExitCode {
         let env = if tool.flag("cursorIgnoresEnv") || parsed.has("team") {
             String::new()
         } else {
-            env_team.clone().unwrap_or_default()
+            env_team.unwrap_or_default()
         };
         let kinds: Vec<&str> = parsed
             .values("kind")
@@ -988,14 +984,13 @@ fn search(tool: &Tool, parsed: &Parsed) -> ExitCode {
     let env_tags: Vec<String> = std::env::var("FAKE_TAG")
         .ok()
         .filter(|_| tool.is_1_6() && !parsed.has("tag"))
-        .map(|text| {
+        .map_or_default(|text| {
             if tool.flag("commaListEnvUnsplit") {
                 vec![text]
             } else {
                 text.split(',').map(str::to_string).collect()
             }
-        })
-        .unwrap_or_default();
+        });
     let tags: Vec<&str> = parsed
         .values("tag")
         .iter()
@@ -1100,16 +1095,13 @@ fn tag_item(tool: &Tool, parsed: &Parsed) -> Result<Value, ItemError> {
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_else(|| json!({"member": id, "tags": []}));
-    let mut tags: Vec<String> = before["tags"]
-        .as_array()
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToString::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
+    let mut tags: Vec<String> = before["tags"].as_array().map_or_default(|items| {
+        items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(ToString::to_string)
+            .collect()
+    });
     tags.extend(
         parsed
             .values("tag")

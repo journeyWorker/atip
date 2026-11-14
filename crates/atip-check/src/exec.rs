@@ -13,8 +13,6 @@
 
 use std::fs::File;
 use std::io::{PipeWriter, Read};
-use std::os::fd::AsFd;
-use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,11 +21,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime};
 
-use nix::sys::signal::{killpg, Signal};
-use nix::unistd::Pid;
 use tempfile::TempDir;
 
 use crate::fixture::Fixture;
+use crate::platform;
 use crate::snapshot::{changed, changed_at, copy_or_clone, take, Snapshot, Source, Template, Time};
 
 /// How long a `notRun` command has to end after SIGTERM before it gets SIGKILL.
@@ -277,7 +274,7 @@ impl Drop for Runner {
 impl Runner {
     /// Builds the template by running the fixture's `setup` once.
     pub fn new(bin: &Path, fixture: &Fixture) -> Result<Self, RunError> {
-        ignore_sigpipe();
+        platform::ignore_sigpipe();
         // A relative TMPDIR is taken from the working directory once, here: the copies, their `HOME` and the working directory of
         // every invocation are then absolute paths, whatever directory a call runs in.
         let base = std::path::absolute(std::env::temp_dir())
@@ -778,7 +775,7 @@ impl Runner {
             .env_clear()
             .env(
                 "PATH",
-                std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin".into()),
+                std::env::var_os("PATH").unwrap_or_else(|| platform::FALLBACK_PATH.into()),
             )
             .env("HOME", root.join("home"))
             .env("LANG", "C.UTF-8")
@@ -794,8 +791,8 @@ impl Runner {
             } else {
                 Stdio::null()
             })
-            .stderr(Stdio::piped())
-            .process_group(0);
+            .stderr(Stdio::piped());
+        platform::in_own_group(&mut command);
         command
     }
 
@@ -807,7 +804,7 @@ impl Runner {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let mut ended: Option<PipeWriter> = None;
         let stdout_terminal = if call.pty {
-            let pty = raw_terminal()?;
+            let pty = platform::raw_terminal()?;
             let kept = pty.slave.try_clone()?;
             let (wake, ring) = std::io::pipe()?;
             ended = Some(ring);
@@ -841,7 +838,7 @@ impl Runner {
             .map_or_else(|| thread::spawn(Vec::new), reader);
         let exit = wait(&mut child, &mut events, call.limit.unwrap_or(self.timeout))?;
         // Whatever the tool left running in its group must not hold the output open.
-        kill_group(&child);
+        platform::kill_group(&child);
         drop(ended);
         // The tool is gone, so the writer ends (`EPIPE` at the latest): nothing of this call writes to a pipe once it returns.
         if let Some(writer) = writer {
@@ -933,32 +930,25 @@ impl Runner {
                 exit = exit_of(child.wait()?);
                 ended_alone = true;
             } else {
-                let group = i32::try_from(child.id()).ok().map(Pid::from_raw);
-                if let Some(group) = group {
-                    // ESRCH is the usual answer for a group that is already gone.
-                    let _gone = killpg(group, Signal::SIGTERM);
-                }
+                platform::terminate_group(&child);
                 if !events.exit_within(SERVED_GRACE) {
-                    kill_group(&child);
+                    platform::kill_group(&child);
                     child.kill().unwrap_or_default();
                 }
                 exit = exit_of(child.wait()?);
                 served = true;
             }
         } else if !ended_alone {
-            kill_group(&child);
+            platform::kill_group(&child);
             child.kill().unwrap_or_default();
             child.wait()?;
         }
         // Whatever the tool left running in its group must not hold the output open.
-        kill_group(&child);
+        platform::kill_group(&child);
         if let Some(reading) = reading {
             let _joined = reading.join();
         }
-        let mut stdout = printed
-            .lock()
-            .map(|bytes| bytes.clone())
-            .unwrap_or_default();
+        let mut stdout = printed.lock().map_or_default(|bytes| bytes.clone());
         if let Some(at) = first_document_end(&stdout) {
             // Up to the end of the first document and the newline that closes its line; what a process printed after it while it was being ended is not read.
             let line_end = if stdout.get(at) == Some(&b'\n') {
@@ -994,8 +984,7 @@ impl Runner {
     ) -> std::io::Result<Outcome> {
         let started = Instant::now();
         let mut command = self.command(call, root);
-        let pty = canonical_terminal()?;
-        let end_of_file = pty.end_of_file;
+        let (pty, end_of_file) = platform::canonical_terminal()?;
         let kept = pty.slave.try_clone()?;
         command.stdin(Stdio::from(pty.slave.try_clone()?));
         command.stdout(Stdio::from(pty.slave));
@@ -1022,7 +1011,7 @@ impl Runner {
         let exit = if events.exit_within(deadline.saturating_sub(started.elapsed())) {
             exit_of(child.wait()?)
         } else {
-            let output = buffer.lock().map(|bytes| bytes.clone()).unwrap_or_default();
+            let output = buffer.lock().map_or_default(|bytes| bytes.clone());
             std::io::Write::write_all(&mut writer, &[end_of_file])?;
             let grace = Instant::now();
             let mut reacted = false;
@@ -1049,17 +1038,17 @@ impl Runner {
             match ended_by {
                 Some(exit) => exit,
                 None => {
-                    kill_group(&child);
+                    platform::kill_group(&child);
                     child.kill().unwrap_or_default();
                     child.wait()?;
                     Exit::TimedOut
                 }
             }
         };
-        kill_group(&child);
+        platform::kill_group(&child);
         drop(ring);
         stdout.join().unwrap_or_default();
-        let output = buffer.lock().map(|bytes| bytes.clone()).unwrap_or_default();
+        let output = buffer.lock().map_or_default(|bytes| bytes.clone());
         Ok(Outcome {
             call: call.clone(),
             exit,
@@ -1076,62 +1065,19 @@ impl Runner {
     }
 }
 
-/// A pseudo-terminal in raw mode: no line translation (`\n` stays `\n`), no echo.
-fn raw_terminal() -> std::io::Result<nix::pty::OpenptyResult> {
-    let pty = nix::pty::openpty(None, None).map_err(std::io::Error::from)?;
-    let mut settings = nix::sys::termios::tcgetattr(&pty.slave).map_err(std::io::Error::from)?;
-    nix::sys::termios::cfmakeraw(&mut settings);
-    nix::sys::termios::tcsetattr(&pty.slave, nix::sys::termios::SetArg::TCSANOW, &settings)
-        .map_err(std::io::Error::from)?;
-    Ok(pty)
-}
-
-/// A pseudo-terminal as an interactive session has it: input in canonical mode (`ICANON`) with echo off, so that the
-/// end-of-file character written at the start of a line makes a reader's `read` return 0; output untranslated
-/// (`OPOST` off, so a `\n` the tool writes arrives as `\n`, not `\r\n`).
-struct CanonicalTerminal {
-    master: std::os::fd::OwnedFd,
-    slave: std::os::fd::OwnedFd,
-    end_of_file: u8,
-}
-
-fn canonical_terminal() -> std::io::Result<CanonicalTerminal> {
-    use nix::sys::termios::{
-        tcgetattr, tcsetattr, InputFlags, LocalFlags, OutputFlags, SetArg, SpecialCharacterIndices,
-    };
-    let pty = nix::pty::openpty(None, None).map_err(std::io::Error::from)?;
-    let mut settings = tcgetattr(&pty.slave).map_err(std::io::Error::from)?;
-    settings.local_flags.insert(LocalFlags::ICANON);
-    settings
-        .local_flags
-        .remove(LocalFlags::ECHO | LocalFlags::ECHOE | LocalFlags::ECHOK | LocalFlags::ECHONL);
-    settings.output_flags.remove(OutputFlags::OPOST);
-    settings
-        .input_flags
-        .remove(InputFlags::ICRNL | InputFlags::INLCR | InputFlags::IGNCR);
-    tcsetattr(&pty.slave, SetArg::TCSANOW, &settings).map_err(std::io::Error::from)?;
-    let end_of_file = settings.control_chars[SpecialCharacterIndices::VEOF as usize];
-    Ok(CanonicalTerminal {
-        master: pty.master,
-        slave: pty.slave,
-        end_of_file,
-    })
-}
-
 /// Reads a terminal's master end to its end of file, into `buffer` as it goes, telling `printed` of each read.
 ///
 /// While the process runs, and until nothing more is waiting after it ended (the writing end of the pipe `wake` reads
 /// from is closed), `slave` stays open here: closing the last slave end before the master has been read can throw
 /// unread output away, so the master never reports a hang-up early. Then `slave` is closed and the read goes on to EOF
 /// (the hang-up error), so nothing the process wrote is cut.
-fn terminal_reader(
+fn terminal_reader<S: Send + 'static>(
     mut master: std::fs::File,
-    slave: std::os::fd::OwnedFd,
+    slave: S,
     wake: std::io::PipeReader,
     buffer: Arc<Mutex<Vec<u8>>>,
     printed: Option<Sender<Event>>,
 ) -> JoinHandle<Vec<u8>> {
-    use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
     let push = move |buffer: &Arc<Mutex<Vec<u8>>>, bytes: &[u8]| {
         if let Ok(mut all) = buffer.lock() {
             all.extend_from_slice(bytes);
@@ -1140,24 +1086,8 @@ fn terminal_reader(
     thread::spawn(move || {
         let mut chunk = [0u8; 8192];
         let mut ended = false;
-        loop {
-            let mut fds = [
-                PollFd::new(master.as_fd(), PollFlags::POLLIN),
-                PollFd::new(wake.as_fd(), PollFlags::POLLIN),
-            ];
-            // Once the process has ended, only what is already waiting is read.
-            let timeout = if ended {
-                PollTimeout::ZERO
-            } else {
-                PollTimeout::NONE
-            };
-            match poll(&mut fds, timeout) {
-                Ok(_) => {}
-                Err(nix::errno::Errno::EINTR) => continue,
-                Err(_) => break,
-            }
-            let ready = |fd: &PollFd<'_>| fd.revents().is_some_and(|events| !events.is_empty());
-            let (waiting, woken) = (ready(&fds[0]), ready(&fds[1]));
+        // Once the process has ended, only what is already waiting is read.
+        while let Ok((waiting, woken)) = platform::readable(&master, &wake, !ended) {
             if waiting {
                 match master.read(&mut chunk) {
                     Ok(read) if read > 0 => {
@@ -1181,7 +1111,7 @@ fn terminal_reader(
             }
             push(&buffer, &chunk[..read]);
         }
-        buffer.lock().map(|all| all.clone()).unwrap_or_default()
+        buffer.lock().map_or_default(|all| all.clone())
     })
 }
 
@@ -1199,20 +1129,6 @@ fn reader<R: Read + Send + 'static>(mut source: R) -> JoinHandle<Vec<u8>> {
     })
 }
 
-/// A document is written to the stdin of a tool that may have exited already (it refused the call without reading it): the write must fail with
-/// `EPIPE`, not end the checker by SIGPIPE. Rust starts a process with SIGPIPE ignored, and a runner makes sure it still is, whoever restored the
-/// default before (`app::main` does, once the run is over, so that a closed stdout ends `atip` by the signal).
-#[expect(
-    unsafe_code,
-    reason = "libc::signal is an unsafe FFI call with no safe std equivalent for ignoring SIGPIPE"
-)]
-fn ignore_sigpipe() {
-    // SAFETY: it only changes the process's SIGPIPE action, to the one Rust starts every process with.
-    unsafe {
-        libc::signal(libc::SIGPIPE, libc::SIG_IGN);
-    }
-}
-
 /// Starts `command`, trying again while the kernel says the executable is busy. On Linux an exec fails with ETXTBSY ("Text file busy") while any
 /// process holds the file open for writing, and a process that forked while another thread was writing the file (a build, a test that copies the
 /// binary, `cp` itself) holds its copy of that descriptor until it execs, a moment later. The condition ends by itself; a binary that stays busy is
@@ -1227,13 +1143,6 @@ fn spawn(command: &mut Command) -> std::io::Result<Child> {
             }
             other => return other,
         }
-    }
-}
-
-fn kill_group(child: &Child) {
-    if let Ok(pid) = i32::try_from(child.id()) {
-        // ESRCH is the usual answer: the group is already gone.
-        let _gone = killpg(Pid::from_raw(pid), Signal::SIGKILL);
     }
 }
 
@@ -1260,7 +1169,7 @@ impl Events {
         let watcher = sender.clone();
         let pid = child.id();
         thread::spawn(move || {
-            wait_for_exit(pid);
+            platform::wait_for_exit(pid);
             let _told = watcher.send(Event::Exited);
         });
         Self {
@@ -1306,43 +1215,19 @@ impl Events {
     }
 }
 
-/// Returns once the child `pid` has exited, leaving it to be reaped by its [`Child`] (or at once, when it has been reaped).
-#[expect(
-    unsafe_code,
-    reason = "waitid(2) with WNOWAIT has no std equivalent, nor a nix one on macOS"
-)]
-fn wait_for_exit(pid: u32) {
-    loop {
-        // SAFETY: `siginfo_t` is plain data, for which all zeroes is a valid value.
-        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
-        // SAFETY: waitid only writes to `info`, which outlives the call.
-        let done = unsafe {
-            libc::waitid(
-                libc::P_PID,
-                libc::id_t::from(pid),
-                &raw mut info,
-                libc::WEXITED | libc::WNOWAIT,
-            )
-        };
-        if done == 0 || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
-            return;
-        }
-    }
-}
-
 /// Waits for the child to exit within `limit`; past it, the child and its group are killed.
 fn wait(child: &mut Child, events: &mut Events, limit: Duration) -> std::io::Result<Exit> {
     if events.exit_within(limit) {
         return Ok(exit_of(child.wait()?));
     }
-    kill_group(child);
+    platform::kill_group(child);
     child.kill().unwrap_or_default();
     child.wait()?;
     Ok(Exit::TimedOut)
 }
 
 fn exit_of(status: ExitStatus) -> Exit {
-    match (status.code(), status.signal()) {
+    match (status.code(), platform::signal_of(status)) {
         (Some(code), _) => Exit::Code(code),
         (None, Some(signal)) => Exit::Signal(signal),
         (None, None) => Exit::Code(-1),
@@ -1358,13 +1243,11 @@ fn resolves_to(program: &str, directory: &Path, bin: &Path) -> bool {
     let candidates: Vec<PathBuf> = if program.contains('/') {
         vec![directory.join(program)]
     } else {
-        std::env::var_os("PATH")
-            .map(|path| {
-                std::env::split_paths(&path)
-                    .map(|dir| dir.join(program))
-                    .collect()
-            })
-            .unwrap_or_default()
+        std::env::var_os("PATH").map_or_default(|path| {
+            std::env::split_paths(&path)
+                .map(|dir| dir.join(program))
+                .collect()
+        })
     };
     candidates.iter().any(|candidate| {
         candidate

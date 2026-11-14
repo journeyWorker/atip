@@ -471,22 +471,18 @@ impl<'a> Judge<'a> {
         let mut c = self.check("L2.destructive-half");
         let mut judged = false;
         for run in self.destructive_runs(&mut c) {
-            let declared: Vec<&str> = self
-                .docs()
-                .command(&run.command)
-                .map(|doc| {
-                    doc.constraints
-                        .iter()
-                        .filter(|constraint| {
-                            matches!(
-                                constraint.rule.as_str(),
-                                "requires" | "forbids" | "atLeastOne" | "exactlyOne"
-                            )
-                        })
-                        .filter_map(|constraint| constraint.code.as_deref())
-                        .collect()
-                })
-                .unwrap_or_default();
+            let declared: Vec<&str> = self.docs().command(&run.command).map_or_default(|doc| {
+                doc.constraints
+                    .iter()
+                    .filter(|constraint| {
+                        matches!(
+                            constraint.rule.as_str(),
+                            "requires" | "forbids" | "atLeastOne" | "exactlyOne"
+                        )
+                    })
+                    .filter_map(|constraint| constraint.code.as_deref())
+                    .collect()
+            });
             for (label, call) in &run.halves {
                 judged = true;
                 c.own(*call);

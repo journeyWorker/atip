@@ -884,6 +884,7 @@ impl Relations {
     }
 
     /// The relations the `constraints` array of a command document states.
+    #[expect(clippy::map_unwrap_or, reason = "MSRV 1.99: map_or_default is 1.100")]
     pub fn from_json(rules: &Value) -> Relations {
         let strings = |value: &Value| -> Vec<String> {
             value
@@ -1543,7 +1544,7 @@ mod tests {
                 .expect("an option")
                 .comma_list
         );
-        let other = plain.clone().value_delimiter(';');
+        let other = plain.value_delimiter(';');
         assert!(matches!(
             option_doc("member select", &other, &[], &[]),
             Err(Problem::Delimiter { delimiter: ';', .. })

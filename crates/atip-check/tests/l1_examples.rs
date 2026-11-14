@@ -803,8 +803,7 @@ fn atip_checkl1_27_contract_examples_every_report_example_is_judged_by_the_data_
             let expected: Vec<&str> = REPORTS
                 .iter()
                 .find(|(file, _)| *file == name)
-                .map(|(_, found)| found.to_vec())
-                .unwrap_or_default();
+                .map_or_default(|(_, found)| found.to_vec());
             assert_eq!(report_rejected_by(&report), expected, "{name}");
             judged += 1;
         }

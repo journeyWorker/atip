@@ -542,7 +542,7 @@ fn atip_check_97_the_example_syntax_check_still_judges_the_examples_of_a_not_run
         .find(|case| case.condition == "examples/grammar")
         .expect("the case");
     // The grammar case plants a malformed example in the documents of `member list`; `serve` is the command under `notRun`.
-    let mut config = case.config.clone();
+    let mut config = case.config;
     config["serveMode"] = json!("serve");
     config["dataPatch"] = json!({"serve": [{"op": "remove", "path": "/serving"}]});
     config["acceptDomain"] = json!({"serve": ["port"]});

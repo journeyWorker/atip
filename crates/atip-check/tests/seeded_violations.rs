@@ -576,7 +576,7 @@ fn atip_check_36_a_check_forced_to_always_pass_makes_its_seeded_violation_test_f
                 let (forced, _) =
                     check_binary_mutated(&args, &[owner.as_str()], &[]).expect("a report");
                 let verdict = case_verdict(&serde_json::to_value(&forced).expect("json"), &owner);
-                (owner.clone(), verdict)
+                (owner, verdict)
             })
         })
         .collect();

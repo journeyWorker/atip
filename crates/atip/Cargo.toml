@@ -2,6 +2,9 @@
 name = "atip"
 version = "0.3.2"
 edition.workspace = true
+# The library's own floor, below the workspace's toolchain (docs/rust-coding-rules.md): CI's `msrv` job builds and tests
+# it on this release.
+rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
 publish = true

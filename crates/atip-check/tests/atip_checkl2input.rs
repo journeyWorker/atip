@@ -247,7 +247,7 @@ fn covers_the_conditions(cases: Vec<Case>, checks: &[&str]) {
     assert!(report.passed, "{}", report.text());
     let l1_args = CheckArgs {
         level: Level::L1,
-        ..args.clone()
+        ..args
     };
     let (_, judged_l1) = check_binary_mutated(&l1_args, &[], &[]).expect("a report");
     let judged: BTreeSet<String> = judged

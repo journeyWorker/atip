@@ -344,8 +344,7 @@ pub fn records_schema<'a>(schemas: &'a Map<String, Value>, output: &Output) -> O
     let pointer = output
         .fields
         .as_ref()
-        .map(|fields| fields.records.as_str())
-        .unwrap_or_default();
+        .map_or_default(|fields| fields.records.as_str());
     for segment in decode_pointer(pointer) {
         let member = node
             .and_then(Value::as_object)
@@ -546,8 +545,7 @@ pub fn projected_validator(
     let pointer = output
         .fields
         .as_ref()
-        .map(|fields| fields.records.as_str())
-        .unwrap_or_default();
+        .map_or_default(|fields| fields.records.as_str());
     let segments = decode_pointer(pointer);
     if let Some(projected) = descend(&doc.schemas, doc.schemas.get(&name), &segments, &trie) {
         schemas.insert(name, projected);

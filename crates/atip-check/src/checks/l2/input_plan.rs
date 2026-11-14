@@ -307,7 +307,7 @@ impl Run<'_> {
             .iter()
             .zip(&calls.commands)
             .find(|((id, _), _)| id.as_str() == doc.command)
-            .map(|((_, entry), command)| {
+            .map_or_default(|((_, entry), command)| {
                 entry
                     .ok
                     .iter()
@@ -319,7 +319,6 @@ impl Run<'_> {
                     })
                     .collect()
             })
-            .unwrap_or_default()
     }
 
     /// Runs `argv` on a terminal as stdin and stdout, at the fixture's time limit: `L2.input-tty`.
@@ -392,8 +391,7 @@ impl Run<'_> {
         };
         let before: Vec<String> = bases
             .first()
-            .map(|(base, _)| base.before.clone())
-            .unwrap_or_default();
+            .map_or_default(|(base, _)| base.before.clone());
         self.plan_refusals(&mut command, doc, &before, claim)?;
         let tty = framing_argv(&before, &doc.path, "-");
         command.tty = Some(self.invoke_terminal(tty)?);
@@ -1102,7 +1100,7 @@ impl Run<'_> {
                         continue;
                     };
                     let args = invocation::args(doc, base);
-                    let mut operands: Vec<Value> = args.operands.clone();
+                    let mut operands: Vec<Value> = args.operands;
                     while operands.len() <= index {
                         let Some(filler) = doc
                             .operands
@@ -1169,8 +1167,7 @@ impl Run<'_> {
             .unwrap_or_default();
         let anchor_before: Vec<String> = bases
             .first()
-            .map(|(base, _)| base.before.clone())
-            .unwrap_or_default();
+            .map_or_default(|(base, _)| base.before.clone());
         let whole = Spec {
             operands: true,
             ..Spec::default()

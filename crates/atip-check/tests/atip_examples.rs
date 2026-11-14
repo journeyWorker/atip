@@ -376,15 +376,13 @@ fn draft_the_table() {
     }
     files.sort();
     for file in files {
-        let by: Vec<&str> = load(&file)
-            .map(|document| {
-                layers(&document)
-                    .into_iter()
-                    .filter(|(_, problems)| !problems.is_empty())
-                    .map(|(layer, _)| layer)
-                    .collect()
-            })
-            .unwrap_or_default();
+        let by: Vec<&str> = load(&file).map_or_default(|document| {
+            layers(&document)
+                .into_iter()
+                .filter(|(_, problems)| !problems.is_empty())
+                .map(|(layer, _)| layer)
+                .collect()
+        });
         println!("DRAFT {file} {}", by.join(","));
     }
 }
