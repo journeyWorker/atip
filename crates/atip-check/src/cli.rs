@@ -267,8 +267,15 @@ pub fn command() -> clap::Command {
     atip::project::point_help_at_schema(Cli::command(), HELP_POINTER)
 }
 
-/// Parses the arguments after the program name.
+/// Parses the arguments after the program name. Every argument is text: one that is not UTF-8 is refused with `USAGE`
+/// naming `ARGUMENT`, in the command its preceding words resolve to, before clap reads anything.
 pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
+    if let Some(at) = args.iter().position(|arg| arg.to_str().is_none()) {
+        let mut failure =
+            Failure::new(Code::Usage, "an argument is not valid UTF-8").field("ARGUMENT");
+        failure.command = path_id(&resolved_path(&args[..at]));
+        return Err(failure);
+    }
     let argv = std::iter::once(OsString::from(TOOL)).chain(args.iter().cloned());
     let matches = match command().try_get_matches_from(argv) {
         Ok(matches) => matches,
@@ -551,6 +558,14 @@ fn refusal(error: &clap::Error, args: &[OsString]) -> Failure {
                     failure.message = format!("the option {name} is required");
                 }
                 failure = failure.field(name);
+            }
+            // `--schemas` beside a registry option is a refusal of `--schemas` itself (spec 9.1.1), whichever of the two clap
+            // names first.
+            if error.kind() == ErrorKind::ArgumentConflict
+                && command == Some(CommandId::Schema.name())
+                && args.iter().any(|arg| arg == "--schemas")
+            {
+                failure = failure.field("--schemas");
             }
             if let Some(value) = one(ContextKind::InvalidValue) {
                 // clap reports an option with no value (`--bin --level`) as an empty value: only a value the caller sent, empty
@@ -944,7 +959,6 @@ mod tests {
         for (words, field) in [
             (&["schema", "--errors", "--error", "USAGE"][..], "--errors"),
             (&["schema", "check", "--errors"], "--errors"),
-            (&["schema", "--warnings", "--schemas"], "--warnings"),
             (&["schema", "--error"], "--error"),
         ] {
             let (code, given, command) = code(words);
@@ -954,6 +968,46 @@ mod tests {
                     .as_deref()
                     .is_some_and(|given| given.starts_with("--") || given == "PATH"),
                 "{words:?}: {given:?} (wanted something like {field})"
+            );
+        }
+        // `--schemas` with a registry option names `--schemas`, in either order (spec 9.1.1).
+        for words in [
+            &["schema", "check", "--schemas", "--errors"][..],
+            &["schema", "--errors", "--schemas"],
+            &["schema", "--warnings", "--schemas"],
+        ] {
+            assert_eq!(
+                code(words),
+                (Code::Usage, Some("--schemas".to_string()), Some("schema")),
+                "{words:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn atip_check_06_an_argument_that_is_not_utf8_is_refused_naming_argument() {
+        use std::os::unix::ffi::OsStringExt;
+        let bad = OsString::from_vec(vec![b'b', 0xff]);
+        for words in [
+            vec![
+                OsString::from("check"),
+                "--bin".into(),
+                bad.clone(),
+                "--fixture".into(),
+                "f".into(),
+            ],
+            vec![
+                OsString::from("check"),
+                "--bin".into(),
+                "b".into(),
+                "--fixture".into(),
+                bad.clone(),
+            ],
+        ] {
+            let failure = parse(&words).expect_err("not UTF-8");
+            assert_eq!(
+                (failure.code, failure.field.as_deref(), failure.command),
+                (Code::Usage, Some("ARGUMENT"), Some("check"))
             );
         }
     }

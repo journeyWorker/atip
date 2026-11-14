@@ -494,8 +494,8 @@ mod tests {
         assert_eq!(Code::ALL.len(), REGISTRY.len());
     }
 
-    /// ERR-3, ERR-5 of the house CLI guide: every code is a core code registered as the contract reserves it, or
-    /// `<SUBJECT>_<CONDITION>` with the condition's exit and retryability.
+    /// Every code is a core code registered as the contract reserves it, or `<SUBJECT>_<CONDITION>` with the condition's exit
+    /// and retryability (spec 7.2).
     #[test]
     fn atip_check_06_every_code_is_core_or_subject_and_condition_with_the_conditions_exit_and_retryability(
     ) {

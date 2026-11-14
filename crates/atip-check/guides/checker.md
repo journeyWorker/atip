@@ -54,7 +54,7 @@ The exit status is the verdict:
 | Exit | Meaning |
 |---|---|
 | 0 | every MUST check run passed (a failed SHOULD check is the warning `SHOULD_FAILED` in `meta.warnings`) |
-| 1 | `LEVEL_FAILED`: a MUST check failed or is unprovided; fix every such check in `data.checks` |
+| 1 | `LEVEL_FAILED`: a MUST check failed or is unprovided; fix every such check in `data.checks`. `SCRATCH_FAILED` (retryable): the scratch space failed once the checks ran. `INTERNAL`: a bug in `atip`; report it |
 | 2 | a refusal: `USAGE`, `BINARY_INVALID`, `FIXTURE_INVALID` (its `reason` says which part), `SCRATCH_UNAVAILABLE` |
 
 `SCRATCH_UNAVAILABLE` and `SCRATCH_FAILED` are retryable: free space under `TMPDIR`, or point `TMPDIR` at a writable
