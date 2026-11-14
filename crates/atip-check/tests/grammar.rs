@@ -1,16 +1,17 @@
-//! The house CLI guide's mechanical rules over `atip`'s own command line, read from the full-form documents of
-//! `atip_check::spec` (what `atip schema` projects from the clap tree) and from the sources: the verb set (CMD-1, CMD-2,
-//! CMD-11), option names and short options (OPT-1, OPT-4, OPT-5, OPT-6, OPT-9, OPT-10), the value-name vocabulary
-//! `docs/atip-vocabulary.tsv` both ways (OPT-12), the environment variables the code reads (ENV-2) and one printing site (SPEC-2).
+//! Mechanical rules over `atip`'s own command line, read from the full-form documents of `atip_check::spec` (what `atip
+//! schema` projects from the clap tree) and from the sources: a command's last word is a verb or the noun view `schema`
+//! and a group is a noun; option names are kebab-case with one meaning each and no short form but `-h`/`-V`; every value
+//! name comes from `docs/atip-vocabulary.tsv` and every row of it is used; the environment variables the code reads are
+//! the spec's; and one place prints.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use atip::doc::ValueType;
 
-/// The verbs the last word of a command may be (CMD-11).
+/// The verbs the last word of a command may be.
 const VERBS: [&str; 2] = ["check", "show"];
-/// The read-only noun views (CMD-3): `schema`, the self-description every atip tool has.
+/// The read-only noun views: `schema`, the self-description every atip tool has.
 const NOUN_VIEWS: [&str; 1] = ["schema"];
 /// The nouns a group may be: `skills`, the guides (spec 14).
 const NOUNS: [&str; 1] = ["skills"];
@@ -65,11 +66,11 @@ fn atip_check_grammar_01_command_words_are_verbs_or_noun_views_and_options_follo
                 .insert((option.value_name.clone(), option.value_type.as_str()));
         }
     }
-    // Every command sits in one group, the root: one name has one value name and one value type (OPT-1).
+    // Every command sits in one group, the root: one name has one value name and one value type (spec 9.6).
     for (name, uses) in &meanings {
         assert_eq!(uses.len(), 1, "--{name} has two meanings: {uses:?}");
     }
-    // No short option but clap's `-h` and the root's `-V` (OPT-10); the reserved names keep their meaning (OPT-4, OPT-5).
+    // No short option but clap's `-h` and the root's `-V`; the reserved names keep their meaning (spec 4.5).
     let mut root = atip_check::cli::command();
     root.build();
     let mut shorts = BTreeSet::new();
@@ -104,7 +105,7 @@ fn vocabulary() -> Vec<(String, String)> {
         .collect()
 }
 
-/// OPT-12: every placeholder comes from the vocabulary, every row is used, and the value names have one case.
+/// Every value name comes from the vocabulary, every row is used, and the value names have one case.
 #[test]
 fn atip_check_grammar_02_value_names_come_from_the_vocabulary_both_ways() {
     let rows = vocabulary();
@@ -150,7 +151,7 @@ fn sources() -> Vec<(PathBuf, String)> {
     out
 }
 
-/// ENV-2: the variables the sources read (by name, or `TMPDIR` through `std::env::temp_dir`) are the spec's, both ways.
+/// The variables the sources read (by name, or `TMPDIR` through `std::env::temp_dir`) are the spec's, both ways.
 #[test]
 fn atip_check_grammar_03_every_environment_variable_the_code_reads_is_in_the_spec() {
     let mut read = BTreeSet::new();
@@ -174,7 +175,7 @@ fn atip_check_grammar_03_every_environment_variable_the_code_reads_is_in_the_spe
     assert_eq!(read, listed);
 }
 
-/// SPEC-2: what `atip` prints goes through one place, `app::main`, which prints the envelope or the text it is handed.
+/// What `atip` prints goes through one place, `app::main`, which prints the envelope or the text it is handed.
 #[test]
 fn atip_check_grammar_04_only_the_entry_point_prints() {
     for (path, text) in sources() {

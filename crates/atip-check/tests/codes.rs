@@ -1,4 +1,4 @@
-//! Every code `atip` emits is registered, and every registered code is emitted (the house CLI guide's ERR-2 and ERR-12): one
+//! Every code `atip` emits is registered, and every registered code is emitted (spec 7.3, 10.5): one
 //! invocation of the built binary per code, the exit and `retryable` of each failure its row's, each command's failures listed
 //! in its document, and every code a document lists seen. `INTERNAL` (a bug) and `SCRATCH_FAILED` (the scratch space failing
 //! once the checks run) have no invocation that provokes them on demand; their witnesses are the unit tests of `app.rs`
@@ -133,7 +133,7 @@ fn atip_check_codes_01_every_emitted_code_is_registered_and_every_registered_cod
         assert_eq!(output.code, Some(i32::from(exit)), "{args:?}");
         assert_eq!(error["retryable"], retryable, "{args:?}");
         assert!(atip::envelope_problems(&document).is_empty(), "{args:?}");
-        // A hint is a runnable command line or prose, never a template (the house guide's JSON-10).
+        // A hint is a runnable command line or prose, never a template with placeholders (spec 7.1.2).
         if let Some(hint) = error["hint"].as_str() {
             assert!(!atip::has_placeholder(hint), "{args:?}: {hint}");
             if let Some(words) = hint.strip_prefix("atip ") {

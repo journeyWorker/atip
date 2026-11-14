@@ -1,4 +1,4 @@
-//! `docs/atip.cli.json`, the checked-in spec of `atip` (the house CLI guide's SPEC-1 and SPEC-3): generated from the clap tree and
+//! `docs/atip.cli.json`, the checked-in spec of `atip`, so a change to the surface shows in review: generated from the clap tree and
 //! the facts of `atip_check::spec`, byte for byte the committed file, and equal to what the built binary answers to `atip
 //! schema`. `ATIP_CHECK_BLESS_CLI_SPEC=1 cargo test -p atip-check --test cli_spec` rewrites the file.
 

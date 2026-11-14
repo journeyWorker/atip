@@ -32,6 +32,14 @@ No spec change; the spec stays 1.6.1. `atip` 0.3.2 is unchanged.
 - **Smaller changes.** `--jobs` takes 1 to 9007199254740991 (spec 9.7.5; it took any whole number). A relative `TMPDIR`,
   and a `--bin` found through a relative entry of `PATH`, are taken from the working directory once, when the run starts.
   The hints that named `atip --help` or a template now name a runnable `atip schema` call.
+- **What clap parses differently.** clap reads argv in order and checks each value as it reads it, so a few malformed
+  lines are answered differently (still exit 2, still a registered code):
+  - a `--level` or `--contract` value outside its domain is refused before a missing `--bin` or `--fixture` is reported;
+  - `--help` after an invalid value is refused with that value's `USAGE` instead of printing help;
+  - `atip -- check` is `USAGE` (an operand at the root), not a run of `check`;
+  - `--bin -x` reports `-x` as an unknown option instead of `--bin` as missing its value.
+
+  An argument that is not UTF-8 is refused with `USAGE`, `field: ARGUMENT`, as before.
 - **Generated spec.** `docs/atip.cli.json` holds the tree, every group and command document and schemas answer, the registries and
   the environment variables `atip` reads, generated from the code (`ATIP_CHECK_BLESS_CLI_SPEC=1 cargo test -p atip-check
   --test cli_spec` rewrites it) and equal to what `atip schema` answers; `docs/atip-vocabulary.tsv` is the vocabulary of

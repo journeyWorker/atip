@@ -26,7 +26,7 @@ use crate::output::{self, Code, Failure, DECLARED, DECLARED_MINOR, REGISTRY, TOO
 /// The level `atip` claims in its tree (spec 3.5).
 pub const LEVEL: &str = "L2";
 
-/// Every environment variable `atip` reads, with what it does (the house CLI guide's ENV-2; a test scans the sources).
+/// Every environment variable `atip` reads, with what it does: the spec lists them, and a test scans the sources.
 pub const ENVIRONMENT: [(&str, &str); 2] = [
     (
         "PATH",
