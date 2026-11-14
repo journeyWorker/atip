@@ -4,8 +4,14 @@ version = "0.3.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+publish = true
 description = "The atip/1 contract pieces a command-line tool shares, up to 1.6: the generic projection of a clap tree onto the self-description documents and their serializer for the minor a tool declares, the error value and its redaction, the error-code row type and the code-name convention, JSON-mode detection and the one-line envelope output, the shell quoting and splitting of next-step commands, and the contract's own JSON Schemas with a validator for envelopes."
+readme = "README.md"
+keywords = ["cli", "json", "clap", "agent", "contract"]
+categories = ["command-line-interface"]
+# The published crate: the sources and the schemas they embed. The tests read the repository around the crate
+# (`../../examples`, `../../schema`) and stay in the repository.
+include = ["/src/**", "/schema/*.json", "/README.md"]
 
 [lib]
 name = "atip"

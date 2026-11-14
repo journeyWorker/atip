@@ -1,9 +1,9 @@
-//! The contract's own JSON Schemas, embedded from the repository's `schema/` directory.
+//! The contract's own JSON Schemas, embedded at build time with `include_str!` (spec sections 6, 7.1 and 7.3).
 //!
-//! There is one copy of each schema, the file the spec publishes; this module reads it with `include_str!` at build time (spec
-//! sections 6, 7.1 and 7.3). With the feature `validate`, `envelope_problems` checks a document
-//! against them; a tool's debug build and its tests call it on every envelope
-//! they print, so a document that breaks the contract fails where it is made.
+//! The files the spec publishes are the repository's `schema/`; the crate embeds its copy in `crates/atip/schema/`, so
+//! that the published crate carries them. The test `schema_copy` fails when the two differ in any byte or file. With the
+//! feature `validate`, `envelope_problems` checks a document against them; a tool's debug build and its tests call it on
+//! every envelope they print, so a document that breaks the contract fails where it is made.
 
 #[cfg(feature = "validate")]
 use std::sync::LazyLock;
@@ -14,25 +14,25 @@ use jsonschema::{Registry, Resource, Validator};
 use serde_json::Value;
 
 /// `schema/envelope.schema.json`: the one document `--json` prints.
-pub const ENVELOPE_SCHEMA: &str = include_str!("../../../schema/envelope.schema.json");
+pub const ENVELOPE_SCHEMA: &str = include_str!("../schema/envelope.schema.json");
 /// `schema/error.schema.json`: the `error` member of a failure envelope.
-pub const ERROR_SCHEMA: &str = include_str!("../../../schema/error.schema.json");
+pub const ERROR_SCHEMA: &str = include_str!("../schema/error.schema.json");
 /// `schema/registry-entry.schema.json`: one row of a tool's error registry.
-pub const REGISTRY_ENTRY_SCHEMA: &str = include_str!("../../../schema/registry-entry.schema.json");
+pub const REGISTRY_ENTRY_SCHEMA: &str = include_str!("../schema/registry-entry.schema.json");
 /// `schema/warning-entry.schema.json`: one row of a tool's warning registry (since 1.1).
-pub const WARNING_ENTRY_SCHEMA: &str = include_str!("../../../schema/warning-entry.schema.json");
+pub const WARNING_ENTRY_SCHEMA: &str = include_str!("../schema/warning-entry.schema.json");
 /// `schema/stream-line.schema.json`: one line of a stream (since 1.0).
-pub const STREAM_LINE_SCHEMA: &str = include_str!("../../../schema/stream-line.schema.json");
+pub const STREAM_LINE_SCHEMA: &str = include_str!("../schema/stream-line.schema.json");
 
 /// `schema/schema-doc.schema.json`: a `schema --json` answer (since 1.0; spec 10).
-pub const SCHEMA_DOC_SCHEMA: &str = include_str!("../../../schema/schema-doc.schema.json");
+pub const SCHEMA_DOC_SCHEMA: &str = include_str!("../schema/schema-doc.schema.json");
 /// `schema/input-document.schema.json`: what every `--input` value parses to (spec 11.4-11.6).
-pub const INPUT_DOCUMENT_SCHEMA: &str = include_str!("../../../schema/input-document.schema.json");
+pub const INPUT_DOCUMENT_SCHEMA: &str = include_str!("../schema/input-document.schema.json");
 /// `schema/batch-report.schema.json`: the shape every batch output's `data` shares (spec 11.11).
-pub const BATCH_REPORT_SCHEMA: &str = include_str!("../../../schema/batch-report.schema.json");
+pub const BATCH_REPORT_SCHEMA: &str = include_str!("../schema/batch-report.schema.json");
 
 /// `schema/guide.schema.json`: the `data` of `skills show --json` (spec 14.3; since 1.2).
-pub const GUIDE_SCHEMA: &str = include_str!("../../../schema/guide.schema.json");
+pub const GUIDE_SCHEMA: &str = include_str!("../schema/guide.schema.json");
 
 /// `meta.contract`: the contract every document follows.
 pub const CONTRACT: &str = "atip/1";

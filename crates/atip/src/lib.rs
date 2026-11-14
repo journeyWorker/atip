@@ -10,7 +10,7 @@
 //!   error-code row type [`CodeInfo`] and the exit values [`EXIT_FAILED`] and
 //!   [`EXIT_REFUSED`]. A tool owns its table of rows; the crate owns the shape.
 //! - [`schema`]: the contract's envelope, error and registry-entry JSON
-//!   Schemas, embedded from the repository's `schema/` directory, and, with the
+//!   Schemas, embedded from the crate's copy of the spec's `schema/` directory, and, with the
 //!   feature `validate`, the validators that use them (`envelope_problems`,
 //!   `registry_entry_problems`).
 //! - [`doc`]: the documents `schema --json` answers with (tree, group, command,

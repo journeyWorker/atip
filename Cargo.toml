@@ -1,8 +1,10 @@
 # The atip/1 contract's Rust pieces: `atip` (the shared crate a tool links), `atip-check` (the checker, `atip check`) and `atip-probe` (unpublished: proves the default features link no JSON Schema validator),
 # next to the spec and its schemas. `scripts/regex-parity` is the cross-engine pattern check of the spec.
 #
-# Releases are tagged per crate and independently of the spec: `atip-crate-v0.x.y` and `atip-check-v0.x.y`.
-# `atip::CONTRACT_VERSION` states the spec minor a crate supports.
+# Releases are tagged per crate and independently of the spec: `atip-crate-v0.x.y` publishes `atip` to crates.io
+# (.github/workflows/publish-crate.yml), `atip-check-v0.x.y` publishes `atip-check` to crates.io and the `atip` binary to
+# npm as `@journeykit/atip` (.github/workflows/publish-check.yml). Only those two crates are published (`publish = true`);
+# the workspace default is `publish = false`. `atip::CONTRACT_VERSION` states the spec minor a crate supports.
 [workspace]
 resolver = "2"
 members = [
@@ -19,8 +21,9 @@ repository = "https://github.com/journeyWorker/atip"
 publish = false
 
 [workspace.dependencies]
-# Internal crates (the checker builds against the shared crate of the same checkout)
-atip = { path = "crates/atip" }
+# Internal crates. The checker builds against the shared crate of the same checkout; its published manifest depends on
+# `atip` by this version, so a checker release needs that `atip` release on crates.io first.
+atip = { path = "crates/atip", version = "0.3.1" }
 
 # CLI
 clap = { version = "4.5", features = ["derive", "env"] }

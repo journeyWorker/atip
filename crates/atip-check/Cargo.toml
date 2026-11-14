@@ -1,11 +1,17 @@
 [package]
 name = "atip-check"
-version = "0.3.0"
+version = "0.3.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-publish.workspace = true
+publish = true
 description = "atip check: runs a built binary and checks the atip/1 contract from outside (argv in; stdout, stderr, exit status and file-system changes out). It knows nothing about the tool's source or framework, and it follows the contract itself."
+readme = "README.md"
+keywords = ["cli", "conformance", "checker", "json", "agent"]
+categories = ["command-line-utilities", "development-tools::testing"]
+# The published crate: the library and the `atip` binary. The fake tool, its fixtures and the tests are the checker's own
+# test subject and stay in the repository.
+include = ["/src/**", "/README.md"]
 autobins = false
 
 [lib]
