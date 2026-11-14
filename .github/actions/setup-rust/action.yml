@@ -1,8 +1,14 @@
 name: Set up Rust
 description: >-
   Installs the toolchain pinned in rust-toolchain.toml with rustup (never a floating `stable`), installing rustup
-  itself first on a runner image without it, logs `rustc --version`, and fails when that version differs from the
-  pinned channel.
+  itself first on a runner image without it, optionally adds one compilation target, logs `rustc --version`, and fails
+  when that version differs from the pinned channel.
+
+inputs:
+  target:
+    description: A compilation target to add to the pinned toolchain (a release matrix row's own triple).
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -23,6 +29,16 @@ runs:
         set -euo pipefail
         export PATH="$HOME/.cargo/bin:$PATH"
         rustup toolchain install
+
+    - name: Add the target
+      if: inputs.target != ''
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+      run: |
+        set -euo pipefail
+        export PATH="$HOME/.cargo/bin:$PATH"
+        rustup target add "$TARGET"
 
     - name: Check rustc is the pinned version
       shell: bash

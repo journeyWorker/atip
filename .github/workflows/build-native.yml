@@ -1,16 +1,19 @@
 name: Build native
 
-# The `atip` binary (crate atip-check) for each platform the npm packages ship, built natively on a runner of that
-# platform (no cross-compilation). Each row stages the binary into its npm package directory, runs it through the npm
-# launcher (`npm/atip-check/bin.js`: the version it prints and an exit status it passes on), and uploads it with its SHA-256.
+# The `atip` binary (crate atip-check) for each platform the npm packages ship, built on a runner of that platform's
+# architecture (no cross-compilation). Each row stages the binary into its npm package directory, runs it through the
+# npm launcher (`npm/atip-check/bin.js`: the version it prints and an exit status it passes on), and uploads it with its
+# SHA-256.
 #
 # publish-check.yml calls this workflow (`workflow_call`) and publishes what it uploads, so the release builds exactly
 # these rows; there is no second copy of the matrix to drift. A pull request that changes the build inputs, the npm
 # packages or the workflows runs it too, so a platform that stops building shows before a release tag does (ci.yml
 # already tests the code on ubuntu x64 and macOS arm64).
 #
-# The checker is unix-only (a pseudo-terminal, process groups): no Windows row. The Linux binaries link the glibc of
-# their runner image, so they are built on Ubuntu 22.04 (glibc 2.35) to run on that and every later glibc.
+# The checker is unix-only (a pseudo-terminal, process groups): no Windows row. The Linux binaries are static (the
+# `*-unknown-linux-musl` targets, musl linked in), so they run on any Linux of their architecture, whatever its libc
+# and version; the row fails when the binary it built is not static. No dependency of the checker compiles C, so the
+# musl targets need nothing beyond rustup's target.
 
 on:
   workflow_call:
@@ -41,39 +44,45 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - host: macos-15
+          - host: macos-26
             platform: darwin-arm64
-          - host: ubuntu-22.04
+            target: aarch64-apple-darwin
+          - host: ubuntu-26.04
             platform: linux-x64
-          - host: ubuntu-22.04-arm
+            target: x86_64-unknown-linux-musl
+          - host: ubuntu-26.04-arm
             platform: linux-arm64
+            target: aarch64-unknown-linux-musl
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust
         uses: ./.github/actions/setup-rust
+        with:
+          target: ${{ matrix.target }}
 
       - name: Cache cargo
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: atip-release-${{ matrix.platform }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          key: atip-release-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
       - name: Build the atip binary
-        run: cargo build --locked --release -p atip-check
+        run: cargo build --locked --release -p atip-check --target ${{ matrix.target }}
 
       - name: Strip and stage into npm/atip-check-${{ matrix.platform }}
         env:
           PLATFORM: ${{ matrix.platform }}
+          TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          strip target/release/atip
+          strip "target/$TARGET/release/atip"
           mkdir -p "npm/atip-check-$PLATFORM/bin"
-          cp target/release/atip "npm/atip-check-$PLATFORM/bin/atip"
+          cp "target/$TARGET/release/atip" "npm/atip-check-$PLATFORM/bin/atip"
           chmod +x "npm/atip-check-$PLATFORM/bin/atip"
           cd "npm/atip-check-$PLATFORM/bin"
           if [ "$RUNNER_OS" = "macOS" ]; then
@@ -83,8 +92,32 @@ jobs:
           fi
           cat atip.sha256
 
+      # Static: no program interpreter (PT_INTERP) and no shared library it needs (DT_NEEDED). musl's default is a
+      # static PIE, which `file` reports as "static-pie linked" and glibc's `ldd` as "statically linked".
+      - name: Verify the Linux binary is static
+        if: runner.os == 'Linux'
+        env:
+          BIN: npm/atip-check-${{ matrix.platform }}/bin/atip
+        run: |
+          set -euo pipefail
+          file "$BIN"
+          ldd "$BIN" || true
+          # Read each table whole first: `readelf | grep -q` under pipefail can fail on readelf's SIGPIPE.
+          headers=$(readelf --program-headers --wide "$BIN")
+          dynamic=$(readelf --dynamic --wide "$BIN")
+          if grep -q 'INTERP' <<<"$headers"; then
+            echo "::error::$BIN has a program interpreter: it is dynamically linked" >&2
+            exit 1
+          fi
+          if grep -q '(NEEDED)' <<<"$dynamic"; then
+            echo "::error::$BIN needs shared libraries:" >&2
+            grep '(NEEDED)' <<<"$dynamic" >&2
+            exit 1
+          fi
+          echo "$BIN is static: no program interpreter, no shared library needed."
+
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
 
@@ -107,8 +140,9 @@ jobs:
           fi
           echo "$got; an unknown command exits 2 through the launcher"
 
+      # Two files, so the artifact is a zip (upload-artifact v7 uploads unzipped only with `archive: false` and one file).
       - name: Upload the binary
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: atip-check-${{ matrix.platform }}
           path: |

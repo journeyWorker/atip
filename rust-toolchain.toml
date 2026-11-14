@@ -8,7 +8,7 @@
 # `[workspace.lints]` and `clippy.toml`): a new toolchain adds lints and would
 # turn a clean tree red with no code change.
 #
-# No `targets` here: each release matrix row builds natively for its runner.
+# No `targets` here: each release matrix row adds its own target (setup-rust's `target` input).
 [toolchain]
 channel = "1.99.1"
 profile = "minimal"

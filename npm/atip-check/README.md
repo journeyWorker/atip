@@ -10,9 +10,10 @@ bunx @journeykit/atip-check check --bin target/release/<tool> --fixture atip.fix
 bun add -g @journeykit/atip-check     # or npm install -g; then: atip check ...
 ```
 
-The package's command is `atip`. It installs a prebuilt binary for macOS arm64, Linux x64 or Linux arm64 (glibc 2.35
-or later) as an optional dependency, and `atip` runs it with your arguments and exit status. On another unix, build it
-from source with `cargo install atip-check`. Its version is the version of the Rust crate
+The package's command is `atip`. It installs a prebuilt binary for macOS arm64, Linux x64 or Linux arm64 as an
+optional dependency, and `atip` runs it with your arguments and exit status. The Linux binaries are static (musl):
+no glibc requirement, any distribution. On another unix, build it from source with `cargo install atip-check`. Its
+version is the version of the Rust crate
 [`atip-check`](https://crates.io/crates/atip-check).
 
 The checks, their strengths and the fixture format are in
