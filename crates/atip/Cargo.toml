@@ -1,6 +1,6 @@
 [package]
 name = "atip"
-version = "0.3.1"
+version = "0.3.2"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -44,6 +44,8 @@ validate = ["dep:jsonschema"]
 [dev-dependencies]
 # The crate's own `validate` feature, for its tests (`cargo test -p atip` tests the validators too).
 atip = { path = ".", features = ["validate"] }
+# The synthetic tree of `examples/describe_bench.rs` names its options at run time.
+clap = { workspace = true, features = ["string"] }
 
 [lints]
 workspace = true

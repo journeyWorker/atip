@@ -19,7 +19,7 @@ use atip::doc::{
     CommandDoc, ConditionDoc, ConstraintDoc, Effect, EntryKind, FieldsDoc, Idempotency, InputDoc,
     OperandDoc, OptionDoc, OutputDoc, OutputKind, RuleKind, TreeEntry, ValidatorDoc, ValueType,
 };
-use atip::{schema_doc_problems, Described, Minor};
+use atip::{schema_doc_problems, Described, Minor, Model, Surface};
 
 fn examples() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")
@@ -399,9 +399,13 @@ fn file_of(command: &str) -> String {
     command.replace(' ', "-")
 }
 
-/// The model of acme, and the example documents of every command by name. `schema` is the tool's own command, which the
-/// examples list in the tree and do not describe: its document is the model's to supply.
-fn acme() -> (Described, Vec<TreeEntry>, Vec<(String, Value, Value)>) {
+/// The example documents of every command by name: its command document and its schemas answer.
+type Examples = Vec<(String, Value, Value)>;
+
+/// The model of acme (every command's document, in tree order), and the example documents of every command by name.
+/// `schema` is the tool's own command, which the examples list in the tree and do not describe: its document is the
+/// model's to supply.
+fn acme_model() -> (Vec<TreeEntry>, Vec<CommandDoc>, Examples) {
     let tree = data("schema-tree-acme.json");
     let (entries, tree_options) = tree_of(&tree);
     let mut commands = Vec::new();
@@ -425,6 +429,12 @@ fn acme() -> (Described, Vec<TreeEntry>, Vec<(String, Value, Value)>) {
     });
     let answer = json!({ "schemas": { "SchemaReport": { "type": "object" } } });
     commands.push(command_of(&own, &answer, &tree_options));
+    (entries, commands, examples)
+}
+
+/// The model of acme written for 1.4, its tree, and the example documents of every command by name.
+fn acme() -> (Described, Vec<TreeEntry>, Examples) {
+    let (entries, commands, examples) = acme_model();
     let described = Described::new(Minor::V1_4, "L1", entries.clone(), commands)
         .expect("the acme model can be written");
     (described, entries, examples)
@@ -557,6 +567,62 @@ fn atip_crate14_17_what_is_printed_is_compact_one_line_json_in_the_order_of_the_
         .starts_with(
             r#"{"kind":"schemas","command":"member tag","schemas":{"BatchMemberTagReport":"#
         ));
+}
+
+#[test]
+fn atip_crate_one_document_and_the_surfaces_of_the_others_answer_as_the_whole_model() {
+    // A tool that answers one call builds the document asked for and the surface of every other command: the tree, the
+    // groups, that command's document and its schemas answer are the whole model's, byte for byte.
+    let (entries, commands, _) = acme_model();
+    let whole =
+        Described::new(Minor::V1_4, "L1", entries.clone(), commands.clone()).expect("a model");
+    let surfaces = || {
+        commands
+            .iter()
+            .map(|command| Model::Surface(Surface::of(command)))
+    };
+    let bare = Described::of_models(Minor::V1_4, "L1", entries.clone(), surfaces().collect())
+        .expect("a model of surfaces");
+    assert_eq!(bare.tree().to_line(), whole.tree().to_line());
+    assert_eq!(
+        bare.group("member").map(|group| group.to_line()),
+        whole.group("member").map(|group| group.to_line())
+    );
+    assert!(bare.command("member list").is_none() && bare.schemas("member list").is_none());
+    for (at, asked) in commands.iter().enumerate() {
+        let models = commands
+            .iter()
+            .enumerate()
+            .map(|(place, command)| {
+                if place == at {
+                    Model::Document(Box::new(command.clone()))
+                } else {
+                    Model::Surface(Surface::of(command))
+                }
+            })
+            .collect();
+        let one =
+            Described::of_models(Minor::V1_4, "L1", entries.clone(), models).expect("a model");
+        let name = asked.command.as_str();
+        assert_eq!(one.tree().to_line(), whole.tree().to_line(), "{name}");
+        assert_eq!(
+            one.command(name).map(|document| document.to_line()),
+            whole.command(name).map(|document| document.to_line()),
+            "{name}"
+        );
+        assert_eq!(
+            one.schemas(name).map(|document| document.to_line()),
+            whole.schemas(name).map(|document| document.to_line()),
+            "{name}"
+        );
+    }
+    // A command of the tree with neither a document nor a surface is refused as before.
+    let missing = Described::of_models(Minor::V1_4, "L1", entries, surfaces().skip(1).collect())
+        .expect_err("a command without a model");
+    assert!(
+        matches!(missing, atip::describe::Error::NoCommandDocument(_)),
+        "{missing}"
+    );
 }
 
 #[test]

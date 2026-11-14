@@ -15,6 +15,12 @@
 //! the order of the form, so [`crate::line`] prints compact JSON with the members where the spec lists them); [`Document::to_value`]
 //! is the same as a [`serde_json::Value`] for a test.
 //!
+//! **One answer, one document.** The shared options of the tree are a function of every command's options, and of nothing
+//! else of a command; a command document and a schemas answer need only that command's document beyond them. A tool that
+//! answers one call builds the document asked for and only the [`Surface`] of each other command, and hands them to
+//! [`Described::of_models`]: its answers are the ones [`Described::new`] writes from every document, and the call no longer
+//! costs the outputs, schemas and checks of the whole tree.
+//!
 //! **The 1.4 form** is owned here and nowhere else (`approaches/implementation.md` §8; no command writes an omission by hand):
 //!
 //! - *Defaults are left out* (spec 9.5; Annex S2 rule 17): `required`, `repeatable`, `variadic`, `flagOnly` and `async` false; a
@@ -49,7 +55,7 @@
 //! The model is checked when it is built ([`Error`]); the answers never fail. A tool still registers every code and enforces
 //! every option; only the document leaves out what it implies.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 
 use serde::ser::{SerializeMap, Serializer};
@@ -594,15 +600,100 @@ impl Document<'_> {
 
 // ------------------------------------------------------------------ the model
 
-/// What a 1.4 document does with a model: the shared options, and what each command does with each of its options.
+/// What a 1.4 document does with a model: the shared options, and what each command document does with each of its options.
 #[derive(Debug)]
 struct Layout {
-    /// The shared options, in the order of their first appearance: the command and the option's place in it.
-    shared: Vec<(usize, usize)>,
-    /// Per command, per option of the model.
+    /// The shared options, in the order of their first appearance.
+    shared: Vec<OptionDoc>,
+    /// Per command document, per option of its model.
     slots: Vec<Vec<Slot>>,
-    /// Per command: the names of the schemas its refs reach.
+    /// Per command document: the names of the schemas its refs reach.
     reached: Vec<BTreeSet<String>>,
+}
+
+/// What the 1.4 layout reads of a command whose document a tool does not build for an answer ([`Model::Surface`]): its options
+/// in the full form, exactly as its document lists them, and whether that document has `input` and an output with `fields`
+/// (which make `--input` and `--fields` implied). The shared options of the tree are a function of every command's options,
+/// so these are what a tool still projects for every command; the rest of a document (outputs and their schemas, constraints,
+/// examples) is needed only for the command answered.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Surface {
+    pub command: String,
+    pub options: Vec<OptionDoc>,
+    /// The document has `input`.
+    pub input: bool,
+    /// An output of the document declares `fields`.
+    pub fields: bool,
+}
+
+impl Surface {
+    /// The surface of a built document.
+    pub fn of(document: &CommandDoc) -> Surface {
+        Surface {
+            command: document.command.clone(),
+            options: document.options.clone(),
+            input: document.input.is_some(),
+            fields: has_fields(document),
+        }
+    }
+}
+
+/// One command of a model given to [`Described::of_models`]: its whole document, or only its [`Surface`].
+#[derive(Debug, Clone)]
+pub enum Model {
+    /// The whole document: [`Described::command`] and [`Described::schemas`] answer for the command.
+    Document(Box<CommandDoc>),
+    /// What the shared options need: the tree and the groups are whole, and the command answers for the command are `None`.
+    Surface(Surface),
+}
+
+/// Where a command of the model is: a document of [`Described::commands`], or a surface.
+#[derive(Debug)]
+enum Source {
+    Document(usize),
+    Surface(Surface),
+}
+
+/// One command of the model as the layout reads it, whichever its [`Source`].
+#[derive(Debug, Clone, Copy)]
+struct Item<'a> {
+    command: &'a str,
+    options: &'a [OptionDoc],
+    input: bool,
+    fields: bool,
+    document: Option<&'a CommandDoc>,
+}
+
+impl<'a> Item<'a> {
+    fn of(source: &'a Source, commands: &'a [CommandDoc]) -> Item<'a> {
+        match source {
+            Source::Document(at) => {
+                let document = &commands[*at];
+                Item {
+                    command: &document.command,
+                    options: &document.options,
+                    input: document.input.is_some(),
+                    fields: has_fields(document),
+                    document: Some(document),
+                }
+            }
+            Source::Surface(surface) => Item {
+                command: &surface.command,
+                options: &surface.options,
+                input: surface.input,
+                fields: surface.fields,
+                document: None,
+            },
+        }
+    }
+}
+
+/// Whether an output of `document` declares `fields`.
+fn has_fields(document: &CommandDoc) -> bool {
+    document
+        .outputs
+        .iter()
+        .any(|output| output.fields.is_some())
 }
 
 /// A tool's self-description: the model and the minor it is written for.
@@ -636,6 +727,48 @@ impl Described {
         entries: Vec<TreeEntry>,
         commands: Vec<CommandDoc>,
     ) -> Result<Self, Error> {
+        let sources = (0..commands.len()).map(Source::Document).collect();
+        Self::assemble(minor, level.into(), entries, commands, sources)
+    }
+
+    /// The self-description of a tool from a model whose commands are whole documents or only their [`Surface`], in the
+    /// order [`Described::new`] would take their documents: what a tool builds to answer one call without building every
+    /// document. The tree and the groups need only surfaces; `schema <COMMAND>` and `schema <COMMAND> --schemas` need the
+    /// document of that command and the surfaces of the others. Each answer is the one [`Described::new`] writes from the whole
+    /// documents, byte for byte, as long as each surface is [`Surface::of`] its document: a tool holds that with a test that
+    /// builds both. The checks of [`Described::new`] run on what the model holds; a surface's schemas and validators are not
+    /// there to check.
+    pub fn of_models(
+        minor: Minor,
+        level: impl Into<String>,
+        entries: Vec<TreeEntry>,
+        models: Vec<Model>,
+    ) -> Result<Self, Error> {
+        let mut commands = Vec::new();
+        let sources = models
+            .into_iter()
+            .map(|model| match model {
+                Model::Document(document) => {
+                    commands.push(*document);
+                    Source::Document(commands.len() - 1)
+                }
+                Model::Surface(surface) => Source::Surface(surface),
+            })
+            .collect();
+        Self::assemble(minor, level.into(), entries, commands, sources)
+    }
+
+    fn assemble(
+        minor: Minor,
+        level: String,
+        entries: Vec<TreeEntry>,
+        commands: Vec<CommandDoc>,
+        sources: Vec<Source>,
+    ) -> Result<Self, Error> {
+        let items: Vec<Item<'_>> = sources
+            .iter()
+            .map(|source| Item::of(source, &commands))
+            .collect();
         let mut seen = BTreeSet::new();
         for entry in &entries {
             if !seen.insert(entry.command.as_str()) {
@@ -643,9 +776,9 @@ impl Described {
             }
         }
         let mut documented = BTreeSet::new();
-        for command in &commands {
-            if !documented.insert(command.command.as_str()) {
-                return Err(Error::DuplicateCommand(command.command.clone()));
+        for item in &items {
+            if !documented.insert(item.command) {
+                return Err(Error::DuplicateCommand(item.command.to_string()));
             }
         }
         if let Some(entry) = entries.iter().find(|entry| {
@@ -654,15 +787,14 @@ impl Described {
             return Err(Error::NoCommandDocument(entry.command.clone()));
         }
         if !minor.at_least(COMMA_LIST_SINCE) {
-            if let Some((command, option)) = commands.iter().find_map(|command| {
-                command
-                    .options
+            if let Some((item, option)) = items.iter().find_map(|item| {
+                item.options
                     .iter()
                     .find(|option| option.comma_list)
-                    .map(|option| (command, option))
+                    .map(|option| (item, option))
             }) {
                 return Err(Error::CommaListBeforeMinor {
-                    command: command.command.clone(),
+                    command: item.command.to_string(),
                     option: option.name.clone(),
                     minor,
                 });
@@ -670,11 +802,11 @@ impl Described {
         }
         let layout = minor
             .at_least(Minor::V1_4)
-            .then(|| Layout::of(&commands, minor))
+            .then(|| Layout::of(&items, minor))
             .transpose()?;
         Ok(Described {
             minor,
-            level: level.into(),
+            level,
             tree_extensions: BTreeMap::new(),
             path_shape: Vec::new(),
             group_extensions: BTreeMap::new(),
@@ -776,11 +908,7 @@ impl Described {
                 kind: "tree",
                 level: &self.level,
                 path_shape: &self.path_shape,
-                options: layout
-                    .shared
-                    .iter()
-                    .map(|&(command, option)| OptionView(&self.commands[command].options[option]))
-                    .collect(),
+                options: layout.shared.iter().map(OptionView).collect(),
                 commands: self.entries.iter().map(EntryView).collect(),
                 extensions: &self.tree_extensions,
             }),
@@ -921,22 +1049,23 @@ impl Described {
     }
 }
 
-/// An option definition that is not a reserved name, by its serialization: where it first stood and on how many commands.
+/// An option definition that is not a reserved name, by its serialization: where it first stood (the command of the model
+/// and the option's place in it) and on how many commands.
 #[derive(Debug)]
 struct Definition {
     first: (usize, usize),
     commands: usize,
 }
 
-/// What `command`'s document does with `option` before the shared options are known, or why it cannot say it.
-fn slot_of(command: &CommandDoc, option: &OptionDoc) -> Result<Slot, Error> {
+/// What `item`'s document does with `option` before the shared options are known, or why it cannot say it.
+fn slot_of(item: &Item<'_>, option: &OptionDoc) -> Result<Slot, Error> {
     let implied = match option.name.as_str() {
         "json" => true,
-        "input" => command.input.is_some(),
-        "fields" => command.outputs.iter().any(|output| output.fields.is_some()),
+        "input" => item.input,
+        "fields" => item.fields,
         _ => false,
     };
-    let refused = || (command.command.clone(), option.name.clone());
+    let refused = || (item.command.to_string(), option.name.clone());
     if !implied && matches!(option.name.as_str(), "input" | "fields") {
         let (command, option) = refused();
         return Err(Error::OptionWithoutFeature { command, option });
@@ -955,10 +1084,10 @@ fn slot_of(command: &CommandDoc, option: &OptionDoc) -> Result<Slot, Error> {
 }
 
 /// An option listed in full has a `help`, which an object must carry.
-fn own_has_help(command: &CommandDoc, option: &OptionDoc) -> Result<(), Error> {
+fn own_has_help(command: &str, option: &OptionDoc) -> Result<(), Error> {
     if option.help.trim().is_empty() {
         return Err(Error::OptionWithoutHelp {
-            command: command.command.clone(),
+            command: command.to_string(),
             option: option.name.clone(),
         });
     }
@@ -966,43 +1095,56 @@ fn own_has_help(command: &CommandDoc, option: &OptionDoc) -> Result<(), Error> {
 }
 
 impl Layout {
-    fn of(commands: &[CommandDoc], minor: Minor) -> Result<Layout, Error> {
-        let mut reached = Vec::with_capacity(commands.len());
-        let mut slots: Vec<Vec<Slot>> = Vec::with_capacity(commands.len());
+    /// The layout of the commands `items`, in the model's order. Every command's options take part (the shared options are a
+    /// function of all of them); the slots and the reached schemas are kept for the documents only.
+    fn of(items: &[Item<'_>], minor: Minor) -> Result<Layout, Error> {
+        let documents = items.iter().filter(|item| item.document.is_some()).count();
+        let mut reached = Vec::with_capacity(documents);
+        let mut slots: Vec<Vec<Slot>> = Vec::with_capacity(items.len());
         let mut definitions: Vec<Definition> = Vec::new();
-        let mut index: HashMap<String, usize> = HashMap::new();
+        // A definition by its serialization. The key is written into one buffer and copied only for a new definition: a
+        // shared option is met once per command.
+        let mut index: HashMap<Vec<u8>, usize> = HashMap::new();
+        let mut key = Vec::new();
         // Per command, per option: the definition of an option that is its own, so far.
-        let mut definition_of: Vec<Vec<Option<usize>>> = Vec::with_capacity(commands.len());
-        for (at, command) in commands.iter().enumerate() {
-            reached.push(reached_schemas(command)?);
-            let mut row = Vec::with_capacity(command.options.len());
-            let mut known = Vec::with_capacity(command.options.len());
-            for (place, option) in command.options.iter().enumerate() {
-                if command.options[..place]
-                    .iter()
-                    .any(|earlier| earlier.name == option.name)
-                {
+        let mut definition_of: Vec<Vec<Option<usize>>> = Vec::with_capacity(items.len());
+        // The option names of the command at hand, for the duplicate check.
+        let mut names: HashSet<&str> = HashSet::new();
+        for (at, item) in items.iter().enumerate() {
+            if let Some(document) = item.document {
+                reached.push(reached_schemas(document)?);
+            }
+            let mut row = Vec::with_capacity(item.options.len());
+            let mut known = Vec::with_capacity(item.options.len());
+            names.clear();
+            for (place, option) in item.options.iter().enumerate() {
+                if !names.insert(option.name.as_str()) {
                     return Err(Error::DuplicateOption {
-                        command: command.command.clone(),
+                        command: item.command.to_string(),
                         option: option.name.clone(),
                     });
                 }
-                let slot = slot_of(command, option)?;
+                let slot = slot_of(item, option)?;
                 if slot == Slot::Own {
-                    own_has_help(command, option)?;
+                    own_has_help(item.command, option)?;
                 }
                 row.push(slot);
                 known.push((slot == Slot::Own).then(|| {
-                    let key =
-                        serde_json::to_string(&OptionView(option)).expect("an option serializes");
-                    let next = definitions.len();
-                    let found = *index.entry(key).or_insert(next);
-                    if found == next {
-                        definitions.push(Definition {
-                            first: (at, place),
-                            commands: 0,
-                        });
-                    }
+                    key.clear();
+                    serde_json::to_writer(&mut key, &OptionView(option))
+                        .expect("an option serializes");
+                    let found = match index.get(key.as_slice()) {
+                        Some(&found) => found,
+                        None => {
+                            let next = definitions.len();
+                            index.insert(key.clone(), next);
+                            definitions.push(Definition {
+                                first: (at, place),
+                                commands: 0,
+                            });
+                            next
+                        }
+                    };
                     definitions[found].commands += 1;
                     found
                 }));
@@ -1010,7 +1152,7 @@ impl Layout {
             slots.push(row);
             definition_of.push(known);
         }
-        let option_at = |(command, option): (usize, usize)| &commands[command].options[option];
+        let option_at = |(item, option): (usize, usize)| &items[item].options[option];
         // From 1.6 a name means one thing within a group only (Annex S1 item 4), and a shared option is tool-wide: a name
         // whose own definitions differ in value name or value type is never shared, so each group keeps its meaning.
         let mut meaning_of: HashMap<&str, (Option<&str>, ValueType)> = HashMap::new();
@@ -1052,14 +1194,14 @@ impl Layout {
             .iter()
             .map(|&known| option_at(definitions[known].first).name.as_str())
             .collect();
-        for (at, command) in commands.iter().enumerate() {
-            for (place, option) in command.options.iter().enumerate() {
+        for (at, item) in items.iter().enumerate() {
+            for (place, option) in item.options.iter().enumerate() {
                 let slot = &mut slots[at][place];
                 match definition_of[at][place] {
                     Some(known) if chosen.contains(&known) => *slot = Slot::Name,
                     // A name that resolves to a tree option is that option: the reserved one, in full, is the command's own.
                     None if *slot == Slot::Name && tree_names.contains(option.name.as_str()) => {
-                        own_has_help(command, option)?;
+                        own_has_help(item.command, option)?;
                         *slot = Slot::Own;
                     }
                     _ => {}
@@ -1069,9 +1211,13 @@ impl Layout {
         Ok(Layout {
             shared: chosen
                 .iter()
-                .map(|&known| definitions[known].first)
+                .map(|&known| option_at(definitions[known].first).clone())
                 .collect(),
-            slots,
+            slots: items
+                .iter()
+                .zip(slots)
+                .filter_map(|(item, row)| item.document.is_some().then_some(row))
+                .collect(),
             reached,
         })
     }

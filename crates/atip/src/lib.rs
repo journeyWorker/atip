@@ -80,7 +80,7 @@ pub mod shell;
 pub use argv::{argv_wants_json, json_mode, set_json_mode, wants_json};
 pub use condition::{code_name_problem, Condition};
 pub use cursor::{next_page_argv, Binding, CursorInvalid, Cursors, CURSOR_INVALID_REASONS};
-pub use describe::{Described, Document};
+pub use describe::{Described, Document, Model, Surface};
 pub use envelope::{line, print_line};
 pub use error::{
     count_with_exit, find_code, find_warning, reason_of_code, reasons_with_exit, redact, with_row,

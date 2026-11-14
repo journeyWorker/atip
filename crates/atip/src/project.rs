@@ -750,6 +750,56 @@ fn rewrite_refs(value: &mut Value, names: &BTreeMap<String, String>) {
     }
 }
 
+/// Whether `existing` equals `body` as [`rewrite_refs`] renames it with `names`, and, with `top`, without the `$id` and the
+/// `$schema` of its outermost object.
+fn same_renamed(
+    existing: &Value,
+    body: &Value,
+    names: &BTreeMap<String, String>,
+    top: bool,
+) -> bool {
+    match (existing, body) {
+        (Value::Object(held), Value::Object(members)) => {
+            let dropped = |key: &str| top && (key == "$id" || key == "$schema");
+            let kept = members.keys().filter(|key| !dropped(key)).count();
+            held.len() == kept
+                && members
+                    .iter()
+                    .filter(|(key, _)| !dropped(key))
+                    .all(|(key, member)| {
+                        let Some(other) = held.get(key) else {
+                            return false;
+                        };
+                        match member {
+                            Value::String(target) if key == "$ref" => {
+                                match target.strip_prefix("#/$defs/") {
+                                    Some(def) => {
+                                        let renamed = names.get(def).map_or(def, String::as_str);
+                                        other
+                                            .as_str()
+                                            .and_then(|other| other.strip_prefix("#/schemas/"))
+                                            == Some(renamed)
+                                    }
+                                    None => other == member,
+                                }
+                            }
+                            // `rewrite_refs` leaves the value of a `$ref` that is not a string as it is.
+                            _ if key == "$ref" => other == member,
+                            _ => same_renamed(other, member, names, false),
+                        }
+                    })
+        }
+        (Value::Array(held), Value::Array(items)) => {
+            held.len() == items.len()
+                && held
+                    .iter()
+                    .zip(items)
+                    .all(|(other, item)| same_renamed(other, item, names, false))
+        }
+        _ => existing == body,
+    }
+}
+
 /// Adds the JSON Schema `schema` to `schemas` under `name` the way a command document carries it (spec 10.9.2,
 /// approaches/rust.md 5): its `$defs` become sibling members, every `#/$defs/<X>` becomes `#/schemas/<X>`, and no
 /// member keeps its own `$id` or `$schema`, which would make `#/schemas/..` resolve against that URN. A definition
@@ -772,22 +822,19 @@ pub fn add_schema(
     let mut names: BTreeMap<String, String> =
         defs.keys().map(|def| (def.clone(), def.clone())).collect();
     // A definition is shared only when it is equal to the one already there once its own references are renamed; a
-    // rename changes what other definitions refer to, so the decision repeats until nothing changes.
+    // rename changes what other definitions refer to, so the decision repeats until nothing changes. The comparison reads
+    // each definition as renamed without writing the renamed copy.
     for _ in 0..=defs.len() {
         let mut changed = false;
         for (def, body) in &defs {
-            let mut renamed = body.clone();
-            rewrite_refs(&mut renamed, &names);
-            if let Value::Object(map) = &mut renamed {
-                map.remove("$id");
-                map.remove("$schema");
+            if names[def] != *def {
+                continue;
             }
-            let current = names[def].clone();
-            let clash = schemas
-                .get(&current)
-                .is_some_and(|existing| *existing != renamed)
-                || (current == name);
-            if clash && current == *def {
+            let clash = def == name
+                || schemas
+                    .get(def)
+                    .is_some_and(|existing| !same_renamed(existing, body, &names, true));
+            if clash {
                 names.insert(def.clone(), format!("{name}{def}"));
                 changed = true;
             }
@@ -1307,6 +1354,28 @@ mod tests {
             add_schema(&mut schemas, "ARep", json!({})).is_err(),
             "a schema is added once"
         );
+    }
+
+    #[test]
+    fn a_definition_that_refers_to_a_renamed_one_is_renamed_too() {
+        let mut schemas = BTreeMap::new();
+        add_schema(&mut schemas, "ARep", json!({ "properties": { "a": { "$ref": "#/$defs/Item" } }, "$defs": { "Item": { "$ref": "#/$defs/Leaf" }, "Leaf": { "type": "string" } } })).expect("added");
+        // `Item` reads the same as the one held until `Leaf`, which differs, is renamed: the second pass renames `Item` too.
+        add_schema(&mut schemas, "DRep", json!({ "$id": "urn:d", "properties": { "d": { "$ref": "#/$defs/Item" } }, "$defs": { "Item": { "$ref": "#/$defs/Leaf" }, "Leaf": { "type": "integer" } } })).expect("kept apart");
+        assert_eq!(
+            schemas["DRep"]["properties"]["d"]["$ref"],
+            json!("#/schemas/DRepItem")
+        );
+        assert_eq!(schemas["DRepItem"], json!({ "$ref": "#/schemas/DRepLeaf" }));
+        assert_eq!(schemas["DRepLeaf"], json!({ "type": "integer" }));
+        assert_eq!(schemas["Item"], json!({ "$ref": "#/schemas/Leaf" }));
+        // The definitions equal to the ones held, once renamed, are shared.
+        add_schema(&mut schemas, "ERep", json!({ "properties": { "e": { "$ref": "#/$defs/Item" } }, "$defs": { "Item": { "$ref": "#/$defs/Leaf" }, "Leaf": { "type": "string" } } })).expect("shared");
+        assert_eq!(
+            schemas["ERep"]["properties"]["e"]["$ref"],
+            json!("#/schemas/Item")
+        );
+        assert!(!schemas.contains_key("ERepItem") && !schemas.contains_key("ERepLeaf"));
     }
 
     #[test]

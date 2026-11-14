@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Crates.** `atip` 0.3.2: the `schema` answers cost what they answer (rust-dev-guide PERF-6). `Described::of_models`
+  takes each command as its whole document or as its `Surface` (its options and whether it has `input` and an output
+  with `fields`, all the tree's shared options read), so a tool that answers one call builds one document; the answers
+  are the ones `Described::new` writes, byte for byte. A domain `pattern` is compiled once per process for
+  `domain::pattern_problem` and the judge of `domain::admits` (it was compiled on every check); `project::add_schema`
+  compares a definition with the one held without copying it on every pass; `Described::new` keys an option definition
+  without allocating for one it has seen. `examples/describe_bench.rs` is the size-axis benchmark (N commands × K
+  shared options).
+
 ## 1.6.1 (2026-11-14)
 
 A patch (15.1) from implementer feedback on 1.6. No rule changes; `meta.contractVersion` stays `"1.6"`.

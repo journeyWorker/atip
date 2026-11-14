@@ -17,6 +17,9 @@
 //! The I-Regexp scanner is a port of `iregexpProblem` in the contract's `scripts/check.ts`: the two must give the
 //! same answer, and the contract's `scripts/regex-cases.json` is the record both are held to.
 
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex, PoisonError};
+
 #[cfg(feature = "validate")]
 use jsonschema::Validator;
 use serde_json::{json, Map, Value};
@@ -309,9 +312,27 @@ pub fn pattern_problem(pattern: &str, minor: Minor) -> Option<String> {
     if let Some(problem) = iregexp_problem(body, minor) {
         return Some(problem);
     }
-    regex::Regex::new(pattern)
+    compiled(pattern)
         .err()
         .map(|error| format!("the Rust regex crate refuses it with its default limits: {error}"))
+}
+
+/// `pattern` compiled by the `regex` crate with its default limits, once per process: a tool's documents repeat one
+/// pattern on every argument of its kind (an id), and the checks of a document and the judge of a value each ask for it.
+/// The memo holds the distinct patterns a process met, which its documents bound; a [`regex::Regex`] clone shares the
+/// compiled program.
+pub(crate) fn compiled(pattern: &str) -> Result<regex::Regex, regex::Error> {
+    type Memo = Mutex<HashMap<String, Result<regex::Regex, regex::Error>>>;
+    static COMPILED: LazyLock<Memo> = LazyLock::new(Memo::default);
+    // An insert is the only write, so a panic elsewhere cannot leave the map half-written: a poisoned lock is still sound.
+    let memo = || COMPILED.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(known) = memo().get(pattern) {
+        return known.clone();
+    }
+    // Compiled outside the lock: two threads asking for one new pattern compile it twice, and agree.
+    let fresh = regex::Regex::new(pattern);
+    memo().insert(pattern.to_string(), fresh.clone());
+    fresh
 }
 
 /// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of spec 10.7.4, in a document

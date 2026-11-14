@@ -239,7 +239,7 @@ fn rule(
             }
         }
         "pattern" => match value {
-            Value::String(pattern) => match Regex::new(pattern) {
+            Value::String(pattern) => match crate::domain::compiled(pattern) {
                 Ok(compiled) => Rule::Pattern(compiled),
                 Err(error) => return invalid("pattern", &format!("does not compile: {error}")),
             },

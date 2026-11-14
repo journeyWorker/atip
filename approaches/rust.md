@@ -390,6 +390,15 @@ the name `Input` when the command has `input`, and `rejects`, one list per valid
 `--version --json` are refused with `USAGE`, `field` `--help` or `--version` (spec 4.4.1), after clap has resolved the
 path, so `tool bogus --help --json` is `UNKNOWN_COMMAND`; `schema` is the only JSON self-description.
 
+**One call, one document.** The shared options are a function of every command's options and of nothing else of a
+command, so a call that answers one command needs that command's document and only the options of the others. A tool
+that builds every document (with its report schemas from schemars and its checks) on each `schema` call pays for the
+whole tree; with `Described::of_models` it builds the document asked for and a `Surface` of each other command (its
+projected options, and whether it has `input` and an output with `fields`), and the answers are byte for byte those of
+`Described::new` over every document. A test that compares the two for every command keeps the surfaces true. A
+78-command tool measured 32 ms of CPU per `schema` call building every document (atip 0.3.2) and 11 ms with one;
+its `--version` costs 7 ms.
+
 ## 6. `--input` in Rust
 
 canon's approach, converting the document to argv and running clap, is kept for the one authoritative parse. What
