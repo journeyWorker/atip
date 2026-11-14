@@ -227,7 +227,9 @@ fn check_binary_with(
         }
         RunError::Scratch(reason) => scratch_failure(reason),
     };
-    let mut runner = Runner::new(&bin, &fixture).map_err(from_run)?;
+    let mut runner = Runner::new(&bin, &fixture)
+        .map_err(from_run)?
+        .with_jobs(args.jobs);
     let level = match source {
         LevelSource::Claimed => args.level,
         LevelSource::Tree => tree_level(&mut runner).map_err(from_run)?,

@@ -607,6 +607,7 @@ pub fn covers(cases: Vec<Case>, checks: &[&str], exempt: &[&str]) {
         level: Level::L2,
         fixture: harness.write("fixture.json", &fixture).into(),
         contract: None,
+        jobs: atip_check::cli::default_jobs(),
     };
     let (report, judged) = check_binary_mutated(&args, &[], &[]).expect("a report");
     assert!(report.passed, "{}", report.text());
@@ -671,6 +672,7 @@ pub fn covers(cases: Vec<Case>, checks: &[&str], exempt: &[&str]) {
                         level: Level::L2,
                         fixture: harness.write("fixture.json", &fixture).into(),
                         contract: None,
+                        jobs: atip_check::cli::default_jobs(),
                     };
                     let owner = owner_of(case.condition);
                     if first {
@@ -970,6 +972,7 @@ pub fn mutations_hold(
                     level,
                     fixture: harness.write("fixture.json", &fixture).into(),
                     contract: None,
+                    jobs: atip_check::cli::default_jobs(),
                 };
                 let seeds = group.conditions.join(", ");
                 let owners: Vec<&str> = group.owners.iter().map(String::as_str).collect();
@@ -1010,6 +1013,7 @@ pub fn covers_together(cases: Vec<Case>, checks: &[&str], exempt: &[&str]) -> Va
         level: Level::L2,
         fixture: harness.write("fixture.json", &fixture).into(),
         contract: None,
+        jobs: atip_check::cli::default_jobs(),
     };
     let (report, judged) = check_binary_mutated(&args, &[], &[]).expect("a report");
     assert!(report.passed, "{}", report.text());

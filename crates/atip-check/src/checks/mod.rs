@@ -440,16 +440,111 @@ struct Run<'a> {
     skipped: Vec<Skip>,
     /// An interface run: every call runs in the one shared copy of the fixture state, not in a copy of its own.
     shared: bool,
+    /// Inside [`Run::batch`]: the calls planned and not run yet, which [`Run::flush`] runs alongside each other.
+    queue: Option<Vec<Call>>,
+}
+
+/// Whether `call` may run alongside other calls: one in a fresh copy of its own that needs no particular timing. A run on a
+/// terminal, one with a time limit of its own and a `notRun` command run alone (approaches/checker.md 3.2).
+fn alongside(call: &Call) -> bool {
+    !call.served && !call.terminal && call.limit.is_none() && call.program.is_none()
 }
 
 impl Run<'_> {
+    /// Runs `call` in its own fresh copy (the shared one in an interface run) and logs it; returns its index in the log. Inside
+    /// [`Run::batch`] a call that may run alongside others is only planned: its index is known, its outcome is not, until
+    /// [`Run::flush`].
     fn invoke(&mut self, call: Call) -> Result<usize, RunError> {
+        if let Some(queue) = &mut self.queue {
+            if alongside(&call) {
+                queue.push(call);
+                return Ok(self.log.len() + queue.len() - 1);
+            }
+        }
+        self.flush()?;
         let outcome = if self.shared {
             self.runner.run_shared(&call)?
         } else {
             self.runner.run(&call)?
         };
         Ok(self.record(outcome))
+    }
+
+    /// Runs `plan` with the calls it invokes planned first and run alongside each other, up to `--jobs` at a time
+    /// ([`Runner::run_many`]); their outcomes are logged in the order they were planned, so the log, and the report, are the
+    /// ones of a run one call at a time. `plan` reads no outcome of a call it planned but through [`Run::settled`], and a call
+    /// that must run alone (a follow-up in another call's sequence, a terminal or timed run, a `notRun` command) first runs
+    /// what was planned before it. An interface run plans nothing: its calls share one copy.
+    fn batch<T>(
+        &mut self,
+        plan: impl FnOnce(&mut Self) -> Result<T, RunError>,
+    ) -> Result<T, RunError> {
+        let opened = self.open_batch();
+        let planned = plan(self);
+        let ran = self.close_batch(opened);
+        let planned = planned?;
+        ran?;
+        Ok(planned)
+    }
+
+    /// Starts planning calls as [`Run::batch`] does, for a stretch of a plan too long for a closure; whether this call
+    /// started it (a batch inside a batch is the outer one), for [`Run::close_batch`]. A failing call ends the run, so a
+    /// stretch that returns early with an error need not close it.
+    fn open_batch(&mut self) -> bool {
+        if self.shared || self.queue.is_some() {
+            return false;
+        }
+        self.queue = Some(Vec::new());
+        true
+    }
+
+    /// When `opened` (the batch [`Run::open_batch`] started): runs what is planned and stops planning. An inner batch leaves
+    /// its calls to the outer one.
+    fn close_batch(&mut self, opened: bool) -> Result<(), RunError> {
+        if !opened {
+            return Ok(());
+        }
+        let ran = self.flush();
+        self.queue = None;
+        ran
+    }
+
+    /// Like [`Run::batch`] for the calls of `doc`; but when the fixture has a probe and `doc` is not a `read` command, its
+    /// calls run one at a time: a call of a write that does what it should have refused could change the remote state while
+    /// the probe after another call's refusal reads it (`L0.refusal-effects`).
+    fn batch_for<T>(
+        &mut self,
+        doc: &crate::l1::model::CommandDoc,
+        plan: impl FnOnce(&mut Self) -> Result<T, RunError>,
+    ) -> Result<T, RunError> {
+        if doc.effect == "read" || self.fixture.probe.is_none() {
+            return self.batch(plan);
+        }
+        self.flush()?;
+        let queue = self.queue.take();
+        let planned = plan(self);
+        self.queue = queue;
+        planned
+    }
+
+    /// Runs the calls planned inside [`Run::batch`] so far and logs their outcomes in order.
+    fn flush(&mut self) -> Result<(), RunError> {
+        let Some(queue) = self.queue.as_mut().filter(|queue| !queue.is_empty()) else {
+            return Ok(());
+        };
+        let calls = std::mem::take(queue);
+        for outcome in self.runner.run_many(&calls, carries_next)? {
+            self.record(outcome);
+        }
+        Ok(())
+    }
+
+    /// The outcome of the call at `index`, running what is planned first when it is one of those calls.
+    fn settled(&mut self, index: usize) -> Result<&Outcome, RunError> {
+        if index >= self.log.len() {
+            self.flush()?;
+        }
+        Ok(&self.log[index])
     }
 
     /// Adds `outcome` to the log and returns its index. An answer with `next` entries keeps the sequence it ran in, which
@@ -489,33 +584,61 @@ impl Run<'_> {
     }
 
     fn invoke_all(&mut self) -> Result<Invocations, RunError> {
+        self.flush()?;
         let remote_baseline = self.runner.remote_baseline()?;
-        let version = self.invoke(Call::new(["--version"]))?;
-        let unknown_command = self.invoke(Call::new([NO_SUCH_COMMAND, "--json"]))?;
-        let unknown_command_text = self.invoke(Call::new([NO_SUCH_COMMAND]))?;
-        let bare = self.invoke(Call::new(["--json"]))?;
-        let schema_errors = self.invoke(Call::new(["schema", "--errors", "--json"]))?;
-        let error_codes = self.listed_codes(schema_errors, "errors");
-        let mut error_entries = Vec::new();
-        for code in &error_codes {
-            let index = self.invoke(Call::new(["schema", "--error", code, "--json"]))?;
-            error_entries.push((code.clone(), index));
-        }
-        let schema_warnings = self.invoke(Call::new(["schema", "--warnings", "--json"]))?;
-        let warning_codes = self.listed_codes(schema_warnings, "warnings");
-        let mut warning_entries = Vec::new();
-        let mut warning_only = Vec::new();
-        for code in &warning_codes {
-            let index = self.invoke(Call::new(["schema", "--warning", code, "--json"]))?;
-            warning_entries.push((code.clone(), index));
-            if !error_codes.contains(code) {
-                let index = self.invoke(Call::new(["schema", "--error", code, "--json"]))?;
-                warning_only.push((code.clone(), index));
+        // The calls that need nothing but the tool, then one `schema --error`/`--warning` per code the registry lists, in the
+        // order of a run one call at a time: a list of codes is read once it has run.
+        let (
+            version,
+            unknown_command,
+            unknown_command_text,
+            bare,
+            schema_errors,
+            error_entries,
+            schema_warnings,
+            warning_entries,
+            warning_only,
+        ) = self.batch(|run| {
+            let version = run.invoke(Call::new(["--version"]))?;
+            let unknown_command = run.invoke(Call::new([NO_SUCH_COMMAND, "--json"]))?;
+            let unknown_command_text = run.invoke(Call::new([NO_SUCH_COMMAND]))?;
+            let bare = run.invoke(Call::new(["--json"]))?;
+            let schema_errors = run.invoke(Call::new(["schema", "--errors", "--json"]))?;
+            run.settled(schema_errors)?;
+            let error_codes = run.listed_codes(schema_errors, "errors");
+            let mut error_entries = Vec::new();
+            for code in &error_codes {
+                let index = run.invoke(Call::new(["schema", "--error", code, "--json"]))?;
+                error_entries.push((code.clone(), index));
             }
-        }
+            let schema_warnings = run.invoke(Call::new(["schema", "--warnings", "--json"]))?;
+            run.settled(schema_warnings)?;
+            let warning_codes = run.listed_codes(schema_warnings, "warnings");
+            let mut warning_entries = Vec::new();
+            let mut warning_only = Vec::new();
+            for code in &warning_codes {
+                let index = run.invoke(Call::new(["schema", "--warning", code, "--json"]))?;
+                warning_entries.push((code.clone(), index));
+                if !error_codes.contains(code) {
+                    let index = run.invoke(Call::new(["schema", "--error", code, "--json"]))?;
+                    warning_only.push((code.clone(), index));
+                }
+            }
+            Ok((
+                version,
+                unknown_command,
+                unknown_command_text,
+                bare,
+                schema_errors,
+                error_entries,
+                schema_warnings,
+                warning_entries,
+                warning_only,
+            ))
+        })?;
         let probe = match self.fixture.probe.clone() {
             None => None,
-            Some(words) => Some(self.invoke_probe(&words)?),
+            Some(words) => Some(self.batch(|run| run.invoke_probe(&words))?),
         };
         let commands = self.invoke_commands()?;
         // A `notRun` command without an `ok` invocation has no run yet: at L1 its first example gives one.
@@ -800,6 +923,7 @@ impl Run<'_> {
         let deadline = (control_elapsed * 2 + Duration::from_secs(2)).min(self.fixture.timeout);
         let mut call = Call::new(in_json_mode(argv)).on_terminal();
         call.limit = Some(deadline);
+        self.flush()?;
         let outcome = self.runner.run_on_terminal(&call, deadline)?;
         Ok(self.record(outcome))
     }
@@ -948,6 +1072,7 @@ pub(crate) fn run_checks(
         served: Vec::new(),
         skipped: Vec::new(),
         shared: mode == Mode::Interface,
+        queue: None,
     };
     let Made {
         calls,
@@ -3726,6 +3851,103 @@ mod tests {
 
     fn words(items: &[&str]) -> Vec<String> {
         items.iter().map(|word| (*word).to_string()).collect()
+    }
+
+    /// The lines of the shared log the calls of [`atip_check_jobs_02_planned_calls_run_alongside_each_other_and_a_call_that_must_run_alone_overlaps_none`] write.
+    fn spans(log: &std::path::Path) -> Vec<(String, String)> {
+        std::fs::read_to_string(log)
+            .expect("log")
+            .lines()
+            .filter_map(|line| line.split_once(' '))
+            .map(|(event, label)| (event.to_string(), label.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn atip_check_jobs_02_planned_calls_run_alongside_each_other_and_a_call_that_must_run_alone_overlaps_none(
+    ) {
+        use std::time::Duration;
+
+        use crate::exec::{Call, Runner};
+        use crate::fixture::Fixture;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let log = dir.path().join("log");
+        let fixture = Fixture {
+            env: [("JOBS_LOG".to_string(), log.to_string_lossy().into_owned())].into(),
+            timeout: Duration::from_secs(20),
+            ..Fixture::empty()
+        };
+        let runner = Runner::new("/bin/sh".as_ref(), &fixture)
+            .expect("runner")
+            .with_jobs(4);
+        let mut run = super::Run {
+            runner,
+            fixture: &fixture,
+            log: Vec::new(),
+            served: Vec::new(),
+            skipped: Vec::new(),
+            shared: false,
+            queue: None,
+        };
+        // Each call notes when it starts and ends in one log outside the copies, and stays a moment in between.
+        let script = |label: &str| {
+            Call::new([
+                "-c".to_string(),
+                format!("echo start {label} >> \"$JOBS_LOG\"; sleep 0.4; echo end {label} >> \"$JOBS_LOG\"; echo {label}"),
+            ])
+        };
+        let indices = run
+            .batch(|run| {
+                let a = run.invoke(script("a"))?;
+                let b = run.invoke(script("b"))?;
+                let mut timed = script("timed");
+                timed.limit = Some(Duration::from_secs(10));
+                let timed = run.invoke(timed)?;
+                let c = run.invoke(script("c"))?;
+                let terminal = run.invoke_on_terminal(
+                    &["-c".to_string(), "echo start terminal >> \"$JOBS_LOG\"; sleep 0.4; echo end terminal >> \"$JOBS_LOG\"".to_string()],
+                    Duration::from_secs(4),
+                )?;
+                let d = run.invoke(script("d"))?;
+                let e = run.invoke(script("e"))?;
+                Ok([a, b, timed, c, terminal, d, e])
+            })
+            .expect("run");
+        assert_eq!(
+            indices,
+            [0, 1, 2, 3, 4, 5, 6],
+            "the log is in the order of the plan"
+        );
+        for (index, label) in [
+            (0, "a"),
+            (1, "b"),
+            (2, "timed"),
+            (3, "c"),
+            (5, "d"),
+            (6, "e"),
+        ] {
+            assert_eq!(run.log[index].stdout, format!("{label}\n").into_bytes());
+        }
+        let spans = spans(&log);
+        let at = |event: &str, label: &str| {
+            spans
+                .iter()
+                .position(|(seen, of)| seen == event && of == label)
+                .unwrap_or_else(|| panic!("{event} {label}: {spans:?}"))
+        };
+        // Planned calls ran alongside each other.
+        assert!(at("start", "b") < at("end", "a"), "{spans:?}");
+        assert!(at("start", "e") < at("end", "d"), "{spans:?}");
+        // A call with a time limit of its own and a run on a terminal run alone: after what was planned before them, before what comes after.
+        for alone in ["timed", "terminal"] {
+            let (start, end) = (at("start", alone), at("end", alone));
+            assert_eq!(end, start + 1, "nothing ran during {alone}: {spans:?}");
+        }
+        assert!(at("end", "b") < at("start", "timed") && at("end", "timed") < at("start", "c"));
+        assert!(
+            at("end", "c") < at("start", "terminal") && at("end", "terminal") < at("start", "d")
+        );
     }
 
     #[test]

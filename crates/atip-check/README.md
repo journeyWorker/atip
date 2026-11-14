@@ -24,7 +24,10 @@ atip check --bin target/release/<tool> --fixture atip.fixture.json --level L2 --
 
 `--level` is the claimed level (L0, L1, L2), `--fixture` the tool's fixture file (the state and invocations the stateful
 checks need), `--contract` the minor to judge by (`1.0` to `1.6`, default the fixture's `contractVersion`), and
-`--deep` runs every check of the level instead of the interface checks only. A run that does not meet the level exits 1
+`--deep` runs every check of the level instead of the interface checks only. `--jobs N` lets a deep run have up to N
+independent invocations running at once, each in its own copy of the state (default: half the processors, at most 4;
+`--jobs 1` runs one at a time); the calls that continue another call's state, the timed and terminal runs and the
+`notRun` commands still run alone, and the report is the same whatever N is. A run that does not meet the level exits 1
 with `LEVEL_FAILED`. The checks, their strengths and the fixture format are in
 [`approaches/checker.md`](https://github.com/journeyWorker/atip/blob/main/approaches/checker.md).
 

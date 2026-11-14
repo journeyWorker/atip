@@ -307,6 +307,7 @@ fn l1_report(config: &Value) -> (Value, bool, BTreeSet<String>) {
         level: Level::L1,
         fixture: harness.write("fixture.json", &fixture).into(),
         contract: None,
+        jobs: atip_check::cli::default_jobs(),
     };
     let (report, judged) = check_binary_mutated(&args, &[], &[]).expect("a report");
     (

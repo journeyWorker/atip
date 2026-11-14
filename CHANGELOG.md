@@ -1,5 +1,17 @@
 # Changelog
 
+## Crates 0.3.3 (2026-11-14)
+
+No spec change; the spec stays 1.6.1.
+
+- **`atip-check` 0.3.3:** `atip check --deep --jobs N` runs up to N independent invocations at once, each in a fresh copy
+  of its own (default: half the processors, at most 4; `--jobs 1` is one at a time). The calls that run alongside each
+  other are the ones a plan made independent: the per-code `schema --error`/`--warning` calls, the documents of the
+  commands, and the help, example, constraint, domain, number, comma-list, validator, check-order, `--input` and
+  effects probes built from them. Discovery, chains in one sequence, the terminal and timed runs, the `notRun` commands
+  and, when the fixture has a probe, the calls of commands that are not reads run alone. Outcomes are logged in the
+  order of the plan, so the report does not depend on N (approaches/checker.md 3.2).
+
 ## Crates 0.3.2 (2026-11-14)
 
 No spec change; the spec stays 1.6.1.

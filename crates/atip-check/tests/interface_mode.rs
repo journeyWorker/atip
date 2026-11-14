@@ -592,7 +592,17 @@ fn atip_check_deep_19_the_command_line_has_deep_and_says_what_it_is_in_help() {
     std::fs::create_dir_all(&tmp).expect("tmp");
     let help = atip_as_given(&cwd, &tmp, &["check", "--help"]);
     assert_eq!(help.code, Some(0));
-    assert!(help.stdout.contains("[--deep] [--json]"), "{}", help.stdout);
+    assert!(
+        help.stdout.contains("[--deep] [--jobs <JOBS>] [--json]"),
+        "{}",
+        help.stdout
+    );
+    assert!(
+        help.stdout
+            .contains("--jobs <JOBS>      How many invocations of a deep run may run at once"),
+        "{}",
+        help.stdout
+    );
     assert!(
         help.stdout
             .contains("--deep             Run every check of the level"),
@@ -606,7 +616,11 @@ fn atip_check_deep_19_the_command_line_has_deep_and_says_what_it_is_in_help() {
         help.stdout
     );
     let root = atip_as_given(&cwd, &tmp, &["--help"]);
-    assert!(root.stdout.contains("[--deep] [--json]"), "{}", root.stdout);
+    assert!(
+        root.stdout.contains("[--deep] [--jobs <JOBS>] [--json]"),
+        "{}",
+        root.stdout
+    );
     // `--deep` takes no value, and is not mistaken for another option.
     let fixture = harness.write("fixture.json", &harness.fixture(&json!({})));
     let fixture = fixture.to_str().expect("utf8");

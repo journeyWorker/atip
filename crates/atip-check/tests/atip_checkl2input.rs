@@ -241,6 +241,7 @@ fn covers_the_conditions(cases: Vec<Case>, checks: &[&str]) {
         level: Level::L2,
         fixture: harness.write("fixture.json", &fixture).into(),
         contract: None,
+        jobs: atip_check::cli::default_jobs(),
     };
     let (report, judged) = check_binary_mutated(&args, &[], &[]).expect("a report");
     assert!(report.passed, "{}", report.text());

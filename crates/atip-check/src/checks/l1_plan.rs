@@ -497,6 +497,8 @@ impl Run<'_> {
             tree: self.invoke(Call::new(["schema", "--json"]).measured())?,
             ..L1Run::default()
         };
+        // Until the paging: every call below runs in a fresh copy of its own and is read only through `settled`.
+        let opened = self.open_batch();
         run.tree_again = self.invoke(Call::new(["schema", "--json"]))?;
         run.empty = self.invoke(Call::new(["schema", "--json"]).in_empty_state())?;
         let entries = self.read_tree(&mut run)?;
@@ -514,7 +516,8 @@ impl Run<'_> {
         }
         let mut raw_groups: Vec<(String, Value)> = Vec::new();
         let mut raw_commands: Vec<(String, Value)> = Vec::new();
-        let mut raw_schemas: Vec<(String, Value)> = Vec::new();
+        // The `--schemas` answers are read after the loop, so that each runs alongside the next command's documents.
+        let mut answers: Vec<(String, usize)> = Vec::new();
         for entry in &entries {
             let words = entry.path.clone();
             let call = |extra: &[&str]| {
@@ -528,7 +531,7 @@ impl Run<'_> {
             };
             let index = self.invoke(call(&["--json"]).measured())?;
             let again = self.invoke(call(&["--json"]))?;
-            let data = ok_data(&self.log[index].stdout);
+            let data = ok_data(&self.settled(index)?.stdout);
             if entry.is_group() {
                 if let Some(data) = data {
                     raw_groups.push((entry.command.clone(), data));
@@ -546,9 +549,7 @@ impl Run<'_> {
                         id: entry.command.clone(),
                         call: answer,
                     });
-                    if let Some(data) = ok_data(&self.log[answer].stdout) {
-                        raw_schemas.push((entry.command.clone(), data));
-                    }
+                    answers.push((entry.command.clone(), answer));
                 }
             }
             run.doc_calls.push(DocCall {
@@ -557,6 +558,12 @@ impl Run<'_> {
                 call: index,
                 again,
             });
+        }
+        let mut raw_schemas: Vec<(String, Value)> = Vec::new();
+        for (id, answer) in answers {
+            if let Some(data) = ok_data(&self.settled(answer)?.stdout) {
+                raw_schemas.push((id, data));
+            }
         }
         let tree_data = ok_data(&self.log[run.tree].stdout);
         let group_answers: Vec<(&str, &Value)> = raw_groups
@@ -737,17 +744,21 @@ impl Run<'_> {
             if !self.runnable(doc) {
                 continue;
             }
-            let bases = self.bases(doc, &tool);
-            self.plan_constraints(&mut run, doc, &bases)?;
-            self.plan_domains(&mut run, doc, &bases)?;
-            if claim.at_least(Claim::V1_6) {
-                self.plan_comma_lists(&mut run, doc, &bases)?;
-            }
-            self.plan_validators(&mut run, doc, &tool)?;
-            if claim.at_least(Claim::V1_2) {
-                self.plan_order(&mut run, doc, &bases, &tool)?;
-            }
+            self.batch_for(doc, |this| {
+                let bases = this.bases(doc, &tool);
+                this.plan_constraints(&mut run, doc, &bases)?;
+                this.plan_domains(&mut run, doc, &bases)?;
+                if claim.at_least(Claim::V1_6) {
+                    this.plan_comma_lists(&mut run, doc, &bases)?;
+                }
+                this.plan_validators(&mut run, doc, &tool)?;
+                if claim.at_least(Claim::V1_2) {
+                    this.plan_order(&mut run, doc, &bases, &tool)?;
+                }
+                Ok(())
+            })?;
         }
+        self.close_batch(opened)?;
         run.unprobed_writes = docs
             .iter()
             .filter(|doc| !self.runnable(doc) && !self.not_run(&doc.command))
@@ -1762,6 +1773,7 @@ impl Run<'_> {
 
     /// Like [`Run::invoke`], in the sequence that `sequence` names.
     pub(crate) fn invoke_after(&mut self, sequence: usize, call: Call) -> Result<usize, RunError> {
+        self.flush()?;
         let outcome = self.runner.run_after(sequence, &call)?;
         Ok(self.record(outcome))
     }

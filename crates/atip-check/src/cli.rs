@@ -26,6 +26,18 @@ pub struct CheckArgs {
     pub fixture: OsString,
     /// The claimed minor from `--contract`; the fixture's `contractVersion` when absent.
     pub contract: Option<String>,
+    /// How many invocations a deep run may have running at once (`--jobs`, at least 1); [`default_jobs`] when absent.
+    pub jobs: usize,
+}
+
+/// The `--jobs` of a run that gives none: half the processors the checker may use, at most 4, at least 1.
+///
+/// The invocations run alongside each other are separate processes doing their own work, while the checker's threads
+/// mostly wait for them; half the processors leaves the rest to the tool's own threads and to whatever else the machine
+/// runs (a run is often one of many on a developer's machine or a shared CI runner). Beyond 4 the gain flattens: what
+/// is left is the calls that must run alone and the chains that run in order.
+pub fn default_jobs() -> usize {
+    std::thread::available_parallelism().map_or(1, |count| (count.get() / 2).clamp(1, 4))
 }
 
 /// Where the level of a run comes from.
@@ -50,12 +62,13 @@ pub enum Command {
 
 const COMMANDS: [&str; 1] = ["check"];
 const ROOT_OPTIONS: [&str; 3] = ["--json", "--version", "--help"];
-const CHECK_OPTIONS: [&str; 7] = [
+const CHECK_OPTIONS: [&str; 8] = [
     "--bin",
     "--level",
     "--fixture",
     "--contract",
     "--deep",
+    "--jobs",
     "--json",
     "--help",
 ];
@@ -63,7 +76,7 @@ const LEVELS: [&str; 3] = ["L0", "L1", "L2"];
 
 pub const ROOT_HELP: &str = "atip: run a built binary and check the atip/1 contract from outside
 
-Usage: atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--json]
+Usage: atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]
 
 Commands:
   check    Run the checks of a level against a binary
@@ -76,7 +89,7 @@ Run atip check --help for the options of check.";
 
 pub const CHECK_HELP: &str = "atip check: run the checks of a level against a built binary
 
-Usage: atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--json]
+Usage: atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]
 
 Options:
       --bin <BINARY>     The binary to check: a path, or a name found on PATH
@@ -85,6 +98,7 @@ Options:
       --contract <MAJOR.MINOR>
                          The contract minor the tool claims: 1.0, 1.1, 1.2, 1.3, 1.4, 1.5 or 1.6. Defaults to the fixture's contractVersion, and to 1.0. When it differs from the minor the fixture declares, it is not refused: the checks run by that minor's rules as a preview. The report says `declared X, checked as Y, not a level claim`, the verdict is `preview` (no level is met or failed), and the failed checks are listed; a failed or unprovided MUST check still exits 1 (LEVEL_FAILED), a preview that passes exits 0
       --deep             Run every check of the level, not only the interface checks (see Modes)
+      --jobs <JOBS>      How many invocations of a deep run may run at once, each in its own copy of the state: a whole number, at least 1 (1 runs them one after another). Defaults to half the processors, at most 4. Discovery, the calls that continue another call's state, the timed and terminal runs and the notRun commands run alone, and the report is the same whatever the number
       --json             Print one JSON envelope on stdout instead of text
   -h, --help             Print help
 
@@ -169,6 +183,7 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
     let mut level = None;
     let mut fixture = None;
     let mut contract = None;
+    let mut jobs = None;
     let mut help = false;
     let mut deep = false;
     let mut position = 0;
@@ -195,7 +210,7 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
                     .field(name)
                     .received(inline.unwrap_or_default()))
             }
-            "--bin" | "--level" | "--fixture" | "--contract" => {
+            "--bin" | "--level" | "--fixture" | "--contract" | "--jobs" => {
                 let value: OsString = match inline {
                     Some(value) => value.into(),
                     None => match args.get(position + 1) {
@@ -214,6 +229,7 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
                     "--bin" => &mut bin,
                     "--level" => &mut level,
                     "--contract" => &mut contract,
+                    "--jobs" => &mut jobs,
                     _ => &mut fixture,
                 };
                 if slot.replace(value).is_some() {
@@ -265,6 +281,22 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
             Some(given)
         }
     };
+    let jobs = match jobs {
+        None => default_jobs(),
+        Some(given) => {
+            let given = given.to_string_lossy();
+            match given.parse::<usize>() {
+                Ok(count) if count >= 1 && given.bytes().all(|byte| byte.is_ascii_digit()) => count,
+                _ => {
+                    return Err(usage(format!(
+                        "{given} is not a number of jobs: a whole number, at least 1"
+                    ))
+                    .field("--jobs")
+                    .received(given.as_ref()))
+                }
+            }
+        }
+    };
     let mode = if deep { Mode::Deep } else { Mode::Interface };
     Ok(Command::Check(
         CheckArgs {
@@ -272,6 +304,7 @@ fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
             level,
             fixture,
             contract,
+            jobs,
         },
         mode,
         source,
@@ -341,7 +374,7 @@ fn distance(a: &str, b: &str) -> usize {
 mod tests {
     use std::ffi::OsString;
 
-    use super::{distance, parse, CheckArgs, Command, Level, LevelSource};
+    use super::{default_jobs, distance, parse, CheckArgs, Command, Level, LevelSource};
     use crate::output::Code;
     use crate::report::Mode;
 
@@ -362,6 +395,7 @@ mod tests {
                 level: Level::L0,
                 fixture: "f.json".into(),
                 contract: None,
+                jobs: default_jobs(),
             },
             Mode::Interface,
             LevelSource::Claimed,
@@ -426,6 +460,47 @@ mod tests {
         assert_eq!(
             source(&["check", "--bin", "b", "--fixture", "f", "--level", "L1"]),
             LevelSource::Claimed
+        );
+    }
+
+    #[test]
+    fn atip_check_jobs_01_jobs_is_a_whole_number_of_at_least_one_and_defaults_to_half_the_processors_at_most_four(
+    ) {
+        let line = |extra: &[&str]| {
+            let mut words = vec!["check", "--bin", "b", "--fixture", "f", "--deep"];
+            words.extend(extra);
+            parse(&args(&words))
+        };
+        let jobs = |extra: &[&str]| match line(extra) {
+            Ok(Command::Check(args, _, _)) => args.jobs,
+            other => panic!("not a check: {other:?}"),
+        };
+        assert_eq!(jobs(&["--jobs", "1"]), 1);
+        assert_eq!(jobs(&["--jobs=3"]), 3);
+        let default = jobs(&[]);
+        assert!((1..=4).contains(&default), "{default}");
+        assert_eq!(default, default_jobs());
+        for bad in ["0", "-1", "+2", "two", "1.5", ""] {
+            let failure = line(&[&format!("--jobs={bad}")]).expect_err(bad);
+            assert_eq!(
+                (failure.code, failure.field.as_deref(), failure.command),
+                (Code::Usage, Some("--jobs"), Some("check")),
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            code(&[
+                "check",
+                "--bin",
+                "b",
+                "--fixture",
+                "f",
+                "--jobs",
+                "2",
+                "--jobs",
+                "3"
+            ]),
+            (Code::Usage, Some("--jobs".to_string()), Some("check"))
         );
     }
 
