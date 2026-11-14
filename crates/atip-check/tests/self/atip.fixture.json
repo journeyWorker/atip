@@ -44,6 +44,23 @@
           "--json"
         ]
       ]
+    },
+    "skills show": {
+      "ok": [
+        [
+          "skills",
+          "show",
+          "--json"
+        ]
+      ],
+      "refused": [
+        [
+          "skills",
+          "show",
+          "nosuch-xyz",
+          "--json"
+        ]
+      ]
     }
   },
   "contractVersion": "1.6",

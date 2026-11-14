@@ -88,9 +88,13 @@ fn atip_check_spec_11_the_binary_answers_what_the_spec_holds() {
         document["data"].clone()
     };
     assert_eq!(answer(&["schema", "--json"]), spec["tree"]);
-    assert_eq!(answer(&["schema", "--json"])["level"], "L1");
+    assert_eq!(answer(&["schema", "--json"])["level"], "L2");
+    for document in spec["groups"].as_array().expect("groups") {
+        let name = document["command"].as_str().expect("command");
+        assert_eq!(answer(&["schema", name, "--json"]), *document, "{name}");
+    }
     let commands = spec["commands"].as_array().expect("commands");
-    assert_eq!(commands.len(), 2);
+    assert_eq!(commands.len(), 3);
     for document in commands {
         let name = document["command"].as_str().expect("command");
         assert_eq!(answer(&["schema", name, "--json"]), *document, "{name}");

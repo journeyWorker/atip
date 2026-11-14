@@ -9,16 +9,16 @@ description = "atip check: runs a built binary and checks the atip/1 contract fr
 readme = "README.md"
 keywords = ["cli", "conformance", "checker", "json", "agent"]
 categories = ["command-line-utilities", "development-tools::testing"]
-# The published crate: the library and the `atip` binary. The fake tool, its fixtures and the tests are the checker's own
-# test subject and stay in the repository.
-include = ["/src/**", "/README.md"]
+# The published crate: the library, the `atip` binary and the guides it embeds (`atip skills show`). The fake tool, its
+# fixtures and the tests are the checker's own test subject and stay in the repository.
+include = ["/src/**", "/guides/**", "/README.md"]
 autobins = false
 
 [lib]
 name = "atip_check"
 path = "src/lib.rs"
 
-# The checker. Its bin is `atip`; `atip check` is its one command.
+# The checker. Its bin is `atip`; its commands are `check`, `schema` and `skills show`.
 [[bin]]
 name = "atip"
 path = "src/main.rs"

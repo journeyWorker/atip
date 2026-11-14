@@ -120,7 +120,7 @@ fn run_atip(command: &mut Command) -> Output {
     }
 }
 
-/// The fixture of `atip` itself, which CI's self-check runs at L1 (`tests/self/atip.fixture.json`).
+/// The fixture of `atip` itself, which CI's self-check runs at L2 (`tests/self/atip.fixture.json`).
 pub fn self_fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/self/atip.fixture.json")
 }

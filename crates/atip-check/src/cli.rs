@@ -81,25 +81,29 @@ pub enum Command {
     Check(CheckArgs, Mode, LevelSource),
     /// A `schema` answer.
     Schema(SchemaArgs),
+    /// `skills show`: the guide named, or the default one.
+    Skills(Option<String>),
 }
 
-/// The commands of `atip`, by id (spec 4.1): the command words of the tree, which every table keyed by command matches
+/// The commands of `atip`, by id (spec 4.1): the commands of the tree, which every table keyed by command matches
 /// exhaustively, so a command without its facts does not compile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandId {
     Check,
     Schema,
+    SkillsShow,
 }
 
 impl CommandId {
     /// Every command, in the order of the tree.
-    pub const ALL: [CommandId; 2] = [CommandId::Check, CommandId::Schema];
+    pub const ALL: [CommandId; 3] = [CommandId::Check, CommandId::Schema, CommandId::SkillsShow];
 
-    /// The command's id: its one word.
+    /// The command's id: its words, joined by one space.
     pub const fn name(self) -> &'static str {
         match self {
             CommandId::Check => "check",
             CommandId::Schema => "schema",
+            CommandId::SkillsShow => "skills show",
         }
     }
 
@@ -109,9 +113,20 @@ impl CommandId {
     }
 }
 
-/// The first line of every `--help`: where an agent reads the machine description (spec 4.4.2).
+/// The groups of `atip`: `skills`, which holds `skills show`.
+pub const GROUPS: [&str; 1] = ["skills"];
+
+/// The id of the command or group `path` names, as a string that lives as long as the program.
+fn path_id(path: &[String]) -> Option<&'static str> {
+    let joined = path.join(" ");
+    CommandId::named(&joined)
+        .map(CommandId::name)
+        .or_else(|| GROUPS.into_iter().find(|group| *group == joined))
+}
+
+/// The first line of every `--help`: where an agent reads the machine description and the guide (spec 4.4.2, 4.4.3).
 pub const HELP_POINTER: &str =
-    "Agents: `atip schema --json` describes every command, option and error code as JSON.";
+    "Agents: `atip schema --json` describes every command, option and error code as JSON; `atip skills show` is the guide.";
 
 /// The largest `--jobs`: the largest integer the contract carries (spec 9.7.5).
 const MAX_JOBS: u64 = 9_007_199_254_740_991;
@@ -119,6 +134,7 @@ const MAX_JOBS: u64 = 9_007_199_254_740_991;
 const CHECK_USAGE: &str = "atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]";
 const SCHEMA_USAGE: &str =
     "atip schema [PATH]... [--schemas | --errors | --error <CODE> | --warnings | --warning <CODE>] [--json]";
+const SKILLS_SHOW_USAGE: &str = "atip skills show [NAME] [--json]";
 
 const CHECK_AFTER_HELP: &str = "Fixture keys of L2:
   commands.<id>.preview        argv arrays that preview a destructive command (no --commit)
@@ -138,7 +154,10 @@ const SCHEMA_AFTER_HELP: &str =
     "Without --json the answer is the same JSON document, without its envelope.
 schema reads no file, no state and no environment variable, and writes nothing.";
 
-/// `atip`: one tree, `check` and `schema`, and the tool-wide `--json`.
+const SKILLS_SHOW_AFTER_HELP: &str = "Without --json the guide is printed as Markdown.
+The guides are built into the binary: skills show reads no file and no state, and writes nothing.";
+
+/// `atip`: one tree, `check`, `schema` and `skills show`, and the tool-wide `--json`.
 #[derive(Debug, Parser)]
 #[command(
     name = "atip",
@@ -146,7 +165,7 @@ schema reads no file, no state and no environment variable, and writes nothing."
     about = "Run a built binary and check the atip/1 contract from outside",
     disable_help_subcommand = true,
     color = clap::ColorChoice::Never,
-    override_usage = "atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]\n       atip schema [PATH]... [--schemas | --errors | --error <CODE> | --warnings | --warning <CODE>] [--json]"
+    override_usage = "atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]\n       atip schema [PATH]... [--schemas | --errors | --error <CODE> | --warnings | --warning <CODE>] [--json]\n       atip skills show [NAME] [--json]"
 )]
 struct Cli {
     /// Print one JSON envelope on stdout instead of text
@@ -164,6 +183,23 @@ enum Commands {
     /// Describe atip's commands, options and error codes as JSON
     #[command(override_usage = SCHEMA_USAGE, after_help = SCHEMA_AFTER_HELP)]
     Schema(SchemaOptions),
+    /// Read the guide built into atip
+    #[command(subcommand)]
+    Skills(SkillsCommands),
+}
+
+#[derive(Debug, Subcommand)]
+enum SkillsCommands {
+    /// Print a guide: the default one, or the one NAME names
+    #[command(override_usage = SKILLS_SHOW_USAGE, after_help = SKILLS_SHOW_AFTER_HELP)]
+    Show(SkillsShowOptions),
+}
+
+#[derive(Debug, Args)]
+struct SkillsShowOptions {
+    /// The guide to print; none for the default guide, which lists every guide
+    #[arg(value_name = "NAME", value_parser = PossibleValuesParser::new(crate::guides::names()))]
+    name: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -225,8 +261,8 @@ fn parse_jobs(text: &str) -> Result<u64, String> {
     }
 }
 
-/// The clap tree of `atip`, with the first line of every `--help` pointing at `atip schema --json` (spec 4.4.2). Not built:
-/// [`crate::spec`] builds it, so that the global `--json` reaches every command.
+/// The clap tree of `atip`, with the first line of every `--help` pointing at `atip schema --json` and `atip skills show`
+/// (spec 4.4.2, 4.4.3). Not built: [`crate::spec`] builds it, so that the global `--json` reaches every command.
 pub fn command() -> clap::Command {
     atip::project::point_help_at_schema(Cli::command(), HELP_POINTER)
 }
@@ -288,6 +324,7 @@ pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
             warnings: options.warnings,
             warning: options.warning,
         }),
+        Commands::Skills(SkillsCommands::Show(options)) => Command::Skills(options.name),
     })
 }
 
@@ -300,24 +337,42 @@ pub fn help_json_refusal(request: &atip::Request) -> Failure {
         Ok(atip::project::Resolved::Tree) => Vec::new(),
         Err(unknown) => unknown.resolved,
     };
-    let command = path
-        .first()
-        .and_then(|word| CommandId::named(word))
-        .map(CommandId::name);
-    Failure::from_cli(&request.refusal(&root, TOOL), command)
+    Failure::from_cli(&request.refusal(&root, TOOL), path_id(&path))
 }
 
-/// The command a failing `args` was in: its first word, when every argument before it is a root option that takes no value.
-/// clap reads argv in order and stops at the first argument it refuses, so a refusal before that word is the root's.
-fn resolved_command(args: &[OsString]) -> Option<&'static str> {
+/// The command or group a failing `args` was in: the words that resolve, when every argument before them is a root option
+/// that takes no value. clap reads argv in order and stops at the first argument it refuses, so a refusal before the first
+/// word is the root's.
+fn resolved_path(args: &[OsString]) -> Vec<String> {
+    let root = command();
+    let mut path: Vec<String> = Vec::new();
     for arg in args {
         match arg.to_str() {
             Some("--json" | "--help" | "-h" | "--version" | "-V") => {}
-            Some(word) => return CommandId::named(word).map(CommandId::name),
-            None => return None,
+            Some(word) if !word.starts_with('-') => {
+                path.push(word.to_string());
+                match atip::project::resolve(&root, &path) {
+                    Ok(atip::project::Resolved::Group(_)) => {}
+                    Ok(_) => return path,
+                    Err(_) => {
+                        path.pop();
+                        return path;
+                    }
+                }
+            }
+            _ => return path,
         }
     }
-    None
+    path
+}
+
+/// The clap node of the command or group `id` (the root for `None`) in the built tree `root`.
+fn node_of<'a>(root: &'a clap::Command, id: Option<&str>) -> Option<&'a clap::Command> {
+    let mut node = root;
+    for word in id.unwrap_or_default().split_whitespace() {
+        node = node.find_subcommand(word)?;
+    }
+    Some(node)
 }
 
 /// The argument name of clap's rendering of an argument: `--bin` of `--bin <BINARY>`, the value name `PATH` of an operand's
@@ -344,19 +399,18 @@ fn after_dashdash(args: &[OsString], word: &str) -> bool {
 fn long_options(id: Option<&str>) -> Vec<String> {
     let mut root = command();
     root.build();
-    let node = id
-        .and_then(|name| root.find_subcommand(name))
-        .unwrap_or(&root);
-    node.get_arguments()
-        .filter_map(|arg| arg.get_long().map(|long| format!("--{long}")))
-        .collect()
+    node_of(&root, id).map_or_else(Vec::new, |node| {
+        node.get_arguments()
+            .filter_map(|arg| arg.get_long().map(|long| format!("--{long}")))
+            .collect()
+    })
 }
 
 /// The first required option of the command `id` that `args` do not give (`--name` or `--name=value`), in declaration order.
 fn first_missing_required(id: &str, args: &[OsString]) -> Option<String> {
     let mut root = command();
     root.build();
-    let node = root.find_subcommand(id)?;
+    let node = node_of(&root, Some(id))?;
     let given = |long: &str| {
         args.iter().any(|arg| {
             arg.to_str().is_some_and(|arg| {
@@ -386,11 +440,24 @@ fn refusal(error: &clap::Error, args: &[OsString]) -> Failure {
         Some(ContextValue::String(value)) => vec![value.clone()],
         _ => Vec::new(),
     };
-    let command = resolved_command(args);
-    let words: Vec<String> = CommandId::ALL
-        .into_iter()
-        .map(|id| id.name().to_string())
-        .collect();
+    let path = resolved_path(args);
+    let command = path_id(&path);
+    // The words a command line may continue with where it stopped: the commands and groups below the path.
+    let mut root = self::command();
+    root.build();
+    let children: Vec<String> = node_of(&root, command)
+        .map(|node| {
+            atip::project::subcommands(node)
+                .into_iter()
+                .map(|sub| sub.get_name().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    let schema_hint = if path.is_empty() {
+        format!("{TOOL} schema --json")
+    } else {
+        format!("{TOOL} schema {} --json", path.join(" "))
+    };
     // clap checks each value as it reads it and the required options after, but a missing required argument comes before a value
     // outside its domain (spec 10.7 steps 2-6): a whole number refused by its parser (`--jobs=0`, the one option with a domain) beside
     // a missing option is answered for the option. A value of the wrong type is a parse failure and keeps its place.
@@ -419,24 +486,39 @@ fn refusal(error: &clap::Error, args: &[OsString]) -> Failure {
         ErrorKind::InvalidSubcommand => {
             let word = one(ContextKind::InvalidSubcommand).unwrap_or_default();
             // The nearest words as `atip schema` names them for an unknown path (`atip::project::resolve`), not clap's.
-            let suggestions = atip::project::resolve(&self::command(), std::slice::from_ref(&word))
+            let mut words = path.clone();
+            words.push(word.clone());
+            let suggestions = atip::project::resolve(&root, &words)
                 .err()
                 .map(|unknown| unknown.suggestions)
                 .unwrap_or_default();
-            return Failure::new(
+            let mut failure = Failure::new(
                 Code::UnknownCommand,
-                format!("{word} is not a command of atip"),
+                format!(
+                    "{word} is not a command of {}",
+                    command.map_or_else(|| TOOL.to_string(), |id| format!("{TOOL} {id}"))
+                ),
             )
             .field("command")
             .received(word)
-            .expected(words)
+            .expected(children)
             .suggestions(suggestions)
-            .hint("atip schema --json");
+            .hint(schema_hint);
+            failure.command = command;
+            return failure;
         }
         ErrorKind::MissingSubcommand | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-            return Failure::new(Code::CommandRequired, "atip was run without a command")
-                .expected(words)
-                .hint("atip schema --json");
+            let mut failure = Failure::new(
+                Code::CommandRequired,
+                match command {
+                    Some(group) => format!("{TOOL} {group} needs a command"),
+                    None => format!("{TOOL} was run without a command"),
+                },
+            )
+            .expected(children)
+            .hint(schema_hint);
+            failure.command = command;
+            return failure;
         }
         ErrorKind::UnknownArgument => {
             let given = one(ContextKind::InvalidArg).unwrap_or_default();
@@ -538,14 +620,76 @@ mod tests {
     }
 
     #[test]
-    fn atip_check_06_the_command_ids_are_the_words_of_the_clap_tree() {
-        let root = command();
-        let words: Vec<&str> = atip::project::subcommands(&root)
-            .into_iter()
-            .map(clap::Command::get_name)
+    fn atip_check_06_the_command_ids_and_groups_are_the_nodes_of_the_clap_tree() {
+        let mut root = command();
+        root.build();
+        let nodes = atip::project::nodes(&root);
+        let commands: Vec<&str> = nodes
+            .iter()
+            .filter(|node| !node.is_group)
+            .map(|node| node.command.as_str())
             .collect();
-        assert_eq!(words, CommandId::ALL.map(CommandId::name));
+        let groups: Vec<&str> = nodes
+            .iter()
+            .filter(|node| node.is_group)
+            .map(|node| node.command.as_str())
+            .collect();
+        assert_eq!(commands, CommandId::ALL.map(CommandId::name));
+        assert_eq!(groups, super::GROUPS);
         root.debug_assert();
+    }
+
+    /// L1.groups-not-runnable and the unknown word of a group (spec 4.1.2): the group's own words in `expected`.
+    #[test]
+    fn atip_check_guides_02_skills_is_a_group_and_show_takes_a_known_guide() {
+        let failure = parse(&args(&["skills", "--json"])).expect_err("a group");
+        assert_eq!(
+            (failure.code, failure.command, failure.expected.as_slice()),
+            (
+                Code::CommandRequired,
+                Some("skills"),
+                ["show".to_string()].as_slice()
+            )
+        );
+        let failure = parse(&args(&["--json", "skills", "shwo"])).expect_err("unknown");
+        assert_eq!(
+            (
+                failure.code,
+                failure.command,
+                failure.expected.as_slice(),
+                failure.suggestions.as_slice()
+            ),
+            (
+                Code::UnknownCommand,
+                Some("skills"),
+                ["show".to_string()].as_slice(),
+                ["show".to_string()].as_slice()
+            )
+        );
+        let failure =
+            parse(&args(&["skills", "show", "nosuch-xyz", "--json"])).expect_err("no guide");
+        assert_eq!(
+            (
+                failure.code,
+                failure.field.as_deref(),
+                failure.command,
+                failure.expected.as_slice()
+            ),
+            (
+                Code::Usage,
+                Some("NAME"),
+                Some("skills show"),
+                ["checker".to_string()].as_slice()
+            )
+        );
+        assert_eq!(
+            parse(&args(&["skills", "--json", "show", "checker"])).ok(),
+            Some(Command::Skills(Some("checker".to_string())))
+        );
+        assert_eq!(
+            parse(&args(&["skills", "show"])).ok(),
+            Some(Command::Skills(None))
+        );
     }
 
     #[test]
@@ -712,6 +856,8 @@ mod tests {
             &["--help"],
             &["check", "--help"],
             &["schema", "-h"],
+            &["skills", "--help"],
+            &["skills", "show", "-h"],
         ] {
             match parse(&args(help)) {
                 Ok(Command::Text(text)) => {
@@ -724,7 +870,12 @@ mod tests {
         assert_eq!(
             (failure.expected.as_slice(), failure.suggestions.as_slice()),
             (
-                ["check".to_string(), "schema".to_string()].as_slice(),
+                [
+                    "check".to_string(),
+                    "schema".to_string(),
+                    "skills".to_string()
+                ]
+                .as_slice(),
                 ["check".to_string()].as_slice()
             )
         );

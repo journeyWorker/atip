@@ -431,7 +431,10 @@ fn atip_check_06_a_malformed_atip_command_line_is_refused_naming_the_argument_at
         );
     }
     let unknown = atip_in(&cwd, &tmp, &["nosuch-xyz", "--json"]).envelope();
-    assert_eq!(unknown["error"]["expected"], json!(["check", "schema"]));
+    assert_eq!(
+        unknown["error"]["expected"],
+        json!(["check", "schema", "skills"])
+    );
     // Text mode: nothing on stdout, the error form on stderr; `--json` after `--` is an operand, not a mode.
     for args in [
         &["nosuch-xyz"][..],

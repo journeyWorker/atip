@@ -24,6 +24,7 @@ cargo install atip-check --version 0.3.1 --locked   # then: atip check ...
 ```
 atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]
 atip schema [PATH]... [--schemas | --errors | --error <CODE> | --warnings | --warning <CODE>] [--json]
+atip skills show [NAME] [--json]
 atip check --bin target/release/canon --level L2 --fixture checker-fixture.json
 ```
 
@@ -45,16 +46,19 @@ atip check --bin target/release/canon --level L2 --fixture checker-fixture.json
   this pass as that minor", never on a level claim, which only a run at the declared minor makes (issue #11, resolved by #13). A minor the checker does
   not know is still refused with `USAGE`.
 - `--jobs` is how many invocations of a deep run may run at once (§3.2).
-- Its own command line follows the contract it checks: `atip` is an ATIP 1.6 L1 tool (since `atip-check` 0.4.0). Its
+- Its own command line follows the contract it checks: `atip` is an ATIP 1.6 L2 tool (since `atip-check` 0.4.0). Its
   envelopes declare `contractVersion` `1.6`; text by default, `--json` for an envelope whose `data` lists every check;
-  `atip schema` answers the tree (`level` `L1`), the documents of `check` and `schema` and their `--schemas` answers, and
-  the error and warning registries, projected from its clap tree by the crate `atip` (`Described::of_models`: a call builds
-  the one document it answers); the first line of `--help` points at `atip schema --json`, and `--help --json` and
+  `atip schema` answers the tree (`level` `L2`), the group `skills`, the documents of `check`, `schema` and `skills show`
+  and their `--schemas` answers, and the error and warning registries, projected from its clap tree by the crate `atip`
+  (`Described::of_models`: a call builds the one document it answers); `atip skills show [NAME] [--json]` prints the guide
+  built into the binary (one guide, `checker`). Every command is a `read` (`check` with an `effectNote`: it makes and
+  removes scratch copies under `TMPDIR`), so `--input`, the destructive exchange, long-running work and streams do not
+  apply. The first line of `--help` points at `atip schema --json` and `atip skills show`, and `--help --json` and
   `--version --json` refuse. Its codes are `USAGE`, `UNKNOWN_COMMAND`, `COMMAND_REQUIRED`, `INTERNAL`, `BINARY_INVALID`,
   `FIXTURE_INVALID` (with the reasons `NOT_JSON`, `PREPARE_FAILED`, `SETUP_FAILED`, `UNREADABLE`, `WRONG_SHAPE`),
   `LEVEL_FAILED`, `SCRATCH_UNAVAILABLE` (the scratch space under `TMPDIR` cannot be used before the checks run; exit 2,
   retryable) and `SCRATCH_FAILED` (it fails once they run; exit 1, retryable); its warning is `SHOULD_FAILED`. The repository's
-  CI runs `atip check --bin atip --fixture crates/atip-check/tests/self/atip.fixture.json --level L1 --deep --contract 1.6`
+  CI runs `atip check --bin atip --fixture crates/atip-check/tests/self/atip.fixture.json --level L2 --deep --contract 1.6`
   with the release binary first on `PATH`; that fixture's `ok` call of `check` checks `atip` itself at L0 in the default mode.
   `docs/atip.cli.json` is its generated spec.
 

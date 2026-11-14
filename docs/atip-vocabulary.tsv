@@ -5,5 +5,6 @@ error	CODE	a code of atip's error registry
 fixture	FILE	the fixture file of the tool under test
 jobs	JOBS	how many invocations of a deep run run at once
 level	LEVEL	a conformance level of the contract
+name	NAME	the name of a guide built into atip
 path	PATH	the words of a command path of atip's tree
 warning	CODE	a code of atip's warning registry

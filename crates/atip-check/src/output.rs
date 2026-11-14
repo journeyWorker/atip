@@ -400,13 +400,14 @@ pub fn success_line(data: &Value, advisories: usize) -> String {
     })
 }
 
-/// The success envelope of a `schema` answer: one compact line whose `data` is `document` (spec 9.1.2).
-pub fn schema_line<D: Serialize>(document: &D) -> String {
+/// The success envelope of an answer of `command` (`schema`, spec 9.1.2; `skills show`, spec 14.1): one compact line whose
+/// `data` is `document`.
+pub fn answer_line<D: Serialize>(command: crate::cli::CommandId, document: &D) -> String {
     atip::line(&Envelope {
         ok: true,
         data: Some(document),
         error: None,
-        meta: meta(Some("schema"), Vec::new()),
+        meta: meta(Some(command.name()), Vec::new()),
     })
 }
 
@@ -465,7 +466,7 @@ pub fn failure_text(failure: &Failure) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        failure_line, failure_text, schema_line, success_line, Code, Failure, REGISTRY, WARNINGS,
+        answer_line, failure_line, failure_text, success_line, Code, Failure, REGISTRY, WARNINGS,
     };
 
     #[test]
@@ -548,8 +549,20 @@ mod tests {
         // A failure of `schema` has the version of what `schema` answers: the declared minor (spec 6.11, 9.1.2).
         let schema = failure_line(&Failure::new(Code::UnknownCommand, "m").in_command("schema"));
         assert!(schema.contains(r#""schemaVersion":"1.6""#), "{schema}");
-        assert!(schema_line(&serde_json::json!({"kind": "tree"}))
-            .contains(r#""command":"schema","contract":"atip/1","contractVersion":"1.6","schemaVersion":"1.6""#));
+        let schema_answer = answer_line(
+            crate::cli::CommandId::Schema,
+            &serde_json::json!({"kind": "tree"}),
+        );
+        assert!(
+            schema_answer.contains(r#""command":"schema","contract":"atip/1","contractVersion":"1.6","schemaVersion":"1.6""#),
+            "{schema_answer}"
+        );
+        let guide = answer_line(crate::cli::CommandId::SkillsShow, &serde_json::json!({}));
+        assert!(
+            guide.contains(r#""command":"skills show""#)
+                && guide.contains(r#""schemaVersion":"1.0""#),
+            "{guide}"
+        );
     }
 
     #[test]

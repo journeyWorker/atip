@@ -8,10 +8,12 @@ use std::path::{Path, PathBuf};
 
 use atip::doc::ValueType;
 
-/// The verbs `atip`'s command words may be (CMD-11).
-const VERBS: [&str; 1] = ["check"];
+/// The verbs the last word of a command may be (CMD-11).
+const VERBS: [&str; 2] = ["check", "show"];
 /// The read-only noun views (CMD-3): `schema`, the self-description every atip tool has.
 const NOUN_VIEWS: [&str; 1] = ["schema"];
+/// The nouns a group may be: `skills`, the guides (spec 14).
+const NOUNS: [&str; 1] = ["skills"];
 
 fn is_kebab(word: &str) -> bool {
     let mut parts = word.split('-');
@@ -33,12 +35,17 @@ fn atip_check_grammar_01_command_words_are_verbs_or_noun_views_and_options_follo
     let documents = atip_check::spec::documents().expect("the documents build");
     let mut meanings: BTreeMap<String, BTreeSet<(Option<String>, &str)>> = BTreeMap::new();
     for document in &documents {
-        for word in document.command.split(' ') {
+        let words: Vec<&str> = document.command.split(' ').collect();
+        for word in &words {
             assert!(is_kebab(word), "{word}");
-            assert!(
-                VERBS.contains(&word) || NOUN_VIEWS.contains(&word),
-                "`{word}` is neither a verb of atip nor a noun view"
-            );
+        }
+        let (last, groups) = words.split_last().expect("a word");
+        assert!(
+            VERBS.contains(last) || NOUN_VIEWS.contains(last),
+            "`{last}` is neither a verb of atip nor a noun view"
+        );
+        for group in groups {
+            assert!(NOUNS.contains(group), "`{group}` is not a noun of atip");
         }
         for option in &document.options {
             assert!(is_kebab(&option.name), "--{}", option.name);

@@ -1,12 +1,12 @@
-//! The checker follows the contract it checks: `atip check` passes on `atip`, which claims ATIP 1.6 at L1.
+//! The checker follows the contract it checks: `atip check` passes on `atip`, which claims ATIP 1.6 at L2.
 //!
 //! The fixture is `tests/self/atip.fixture.json`, generated from the code here, and a test fails when the two differ
 //! (`ATIP_CHECK_BLESS_FIXTURE=1 cargo test -p atip-check --test self_check` rewrites it). It claims the checker's own minor, its
 //! `probe` is `check`, its `registry` and `warnings` are the checker's own ([`atip_check::output::REGISTRY`] and
 //! [`atip_check::output::WARNINGS`]), and its calls are cheap and stateless: the `ok` call of `check` checks `atip` itself (the
 //! one on `PATH`) at L0 in the default mode, against a small fixture its `prepare` step writes into the template, with the
-//! scratch copies of that inner run under the copy it runs in (`TMPDIR` `.`). CI runs the whole of L1 (`--deep`) on the
-//! release binary; the tests here run the interface checks of L1 and the whole of L0.
+//! scratch copies of that inner run under the copy it runs in (`TMPDIR` `.`). CI runs the whole of L2 (`--deep`) on the
+//! release binary; the tests here run the interface checks of L2 and the whole of L0.
 
 mod support;
 
@@ -63,6 +63,10 @@ fn generated() -> Value {
             "schema": {
                 "ok": [["schema", "--json"]],
                 "refused": [["schema", "nosuch-xyz", "--json"]]
+            },
+            "skills show": {
+                "ok": [["skills", "show", "--json"]],
+                "refused": [["skills", "show", "nosuch-xyz", "--json"]]
             }
         }
     })
@@ -79,22 +83,22 @@ fn atip_check_37_the_committed_fixture_of_atip_is_generated_from_its_registry() 
 }
 
 #[test]
-fn atip_check_37_atip_passes_the_interface_checks_of_l1_on_itself() {
+fn atip_check_37_atip_passes_the_interface_checks_of_l2_on_itself() {
     let harness = Harness::new();
     let (cwd, tmp) = (harness.path("cwd"), harness.path("tmp"));
     std::fs::create_dir_all(&cwd).expect("cwd");
     std::fs::create_dir_all(&tmp).expect("tmp");
-    let text = atip_self_check(&cwd, &tmp, &["--level", "L1"], false);
+    let text = atip_self_check(&cwd, &tmp, &["--level", "L2"], false);
     assert_eq!(text.code, Some(0), "{}{}", text.stdout, text.stderr);
     let summary = text.stdout.lines().last().expect("summary");
     assert!(
-        summary.starts_with("L1 interface checks passed (--deep for the rest): ")
+        summary.starts_with("L2 interface checks passed (--deep for the rest): ")
             && summary.contains(" 0 MUST failed, 0 MUST unprovided,")
             && summary.ends_with(" 0 SHOULD advisories"),
         "{}",
         text.stdout
     );
-    let output = atip_self_check(&cwd, &tmp, &["--level", "L1", "--json"], false);
+    let output = atip_self_check(&cwd, &tmp, &["--level", "L2", "--json"], false);
     assert_eq!(output.code, Some(0), "{}", output.stdout);
     let document = output.envelope();
     assert_eq!(document["data"]["passed"], true);

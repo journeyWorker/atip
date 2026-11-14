@@ -24,7 +24,7 @@ use crate::cli::{self, CommandId, SchemaArgs};
 use crate::output::{self, Code, Failure, DECLARED, DECLARED_MINOR, REGISTRY, TOOL, WARNINGS};
 
 /// The level `atip` claims in its tree (spec 3.5).
-pub const LEVEL: &str = "L1";
+pub const LEVEL: &str = "L2";
 
 /// Every environment variable `atip` reads, with what it does (the house CLI guide's ENV-2; a test scans the sources).
 pub const ENVIRONMENT: [(&str, &str); 2] = [
@@ -96,6 +96,18 @@ fn facts(id: CommandId) -> Facts {
             default_notes: &[],
             domains: Vec::new(),
         },
+        CommandId::SkillsShow => Facts {
+            effect: Effect::Read,
+            effect_note: None,
+            errors: &[],
+            examples: &[
+                "atip skills show --json",
+                "atip skills show checker --json",
+            ],
+            validators: &[],
+            default_notes: &[],
+            domains: Vec::new(),
+        },
     }
 }
 
@@ -113,14 +125,26 @@ fn output_of(id: CommandId) -> Result<(&'static str, Value), String> {
             Ok(("CheckReport", schema))
         }
         CommandId::Schema => Ok(("SchemaAnswer", answer_schema())),
+        CommandId::SkillsShow => {
+            // The contract's own schema of a guide (spec 14.1), without the members that name it as a document of its own.
+            let mut schema: Value = serde_json::from_str(atip::schema::GUIDE_SCHEMA)
+                .map_err(|error| format!("the guide schema: {error}"))?;
+            if let Some(members) = schema.as_object_mut() {
+                members.remove("$schema");
+                members.remove("$id");
+            }
+            Ok(("Guide", schema))
+        }
     }
 }
 
-/// The `schemaVersion` of the output of `id`: the report's for `check`, the declared minor for `schema` (spec 9.1.2).
+/// The `schemaVersion` of the output of `id`: the report's for `check`, the declared minor for `schema` (spec 9.1.2), and
+/// `1.0` for a guide.
 pub const fn output_version(id: CommandId) -> &'static str {
     match id {
         CommandId::Check => output::SCHEMA_VERSION,
         CommandId::Schema => DECLARED_MINOR,
+        CommandId::SkillsShow => output::SCHEMA_VERSION,
     }
 }
 
@@ -296,18 +320,28 @@ fn document_of(node: &Node<'_>, id: CommandId) -> Result<CommandDoc, String> {
     })
 }
 
-/// The tree entries, in the order of the clap tree.
+/// The tree entries, groups and commands, in the order of the clap tree.
 fn entries(nodes: &[Node<'_>]) -> Result<Vec<TreeEntry>, String> {
-    CommandId::ALL
-        .into_iter()
-        .map(|id| {
-            let node = node_of(nodes, id)?;
+    nodes
+        .iter()
+        .map(|node| {
+            let effect = if node.is_group {
+                None
+            } else {
+                let id = CommandId::named(&node.command)
+                    .ok_or_else(|| format!("`{}` has no facts", node.command))?;
+                Some(facts(id).effect)
+            };
             Ok(TreeEntry {
                 command: node.command.clone(),
                 path: node.path.clone(),
-                kind: EntryKind::Command,
+                kind: if node.is_group {
+                    EntryKind::Group
+                } else {
+                    EntryKind::Command
+                },
                 summary: project::summary(node).map_err(problem)?,
-                effect: Some(facts(id).effect),
+                effect,
                 extensions: BTreeMap::new(),
             })
         })
@@ -462,7 +496,7 @@ fn bug(problem: &str) -> Failure {
 /// The answer as `atip` prints it: the envelope in JSON mode, else the document alone on one line (spec 9.1.1).
 fn emit<D: Serialize>(document: &D, json: bool) -> String {
     if json {
-        output::schema_line(document)
+        output::answer_line(CommandId::Schema, document)
     } else {
         atip::line(document)
     }
@@ -603,12 +637,21 @@ pub fn answer(args: &SchemaArgs, json: bool) -> Result<String, Failure> {
     }
 }
 
-/// The whole spec of `atip`, as `docs/atip.cli.json` holds it: the answers of `schema` (the tree, every command document and
-/// every schemas answer), the error and warning registries, the environment variables it reads and the spellings it removed
-/// (none: `atip` has never removed one).
+/// The whole spec of `atip`, as `docs/atip.cli.json` holds it: the answers of `schema` (the tree, every group and command
+/// document and every schemas answer), the error and warning registries, the environment variables it reads and the
+/// spellings it removed (none: `atip` has never removed one).
 pub fn generate() -> Result<Value, String> {
     let described = described_whole()?;
     let documents = documents()?;
+    let mut groups = Vec::new();
+    for group in cli::GROUPS {
+        groups.push(
+            described
+                .group(group)
+                .ok_or_else(|| format!("{group} has no document"))?
+                .to_value(),
+        );
+    }
     let mut commands = Vec::new();
     let mut schemas = serde_json::Map::new();
     for document in &documents {
@@ -638,6 +681,7 @@ pub fn generate() -> Result<Value, String> {
         "contractVersion": DECLARED_MINOR,
         "level": LEVEL,
         "tree": described.tree().to_value(),
+        "groups": groups,
         "commands": commands,
         "schemas": schemas,
         "errors": error_rows(),

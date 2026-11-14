@@ -63,6 +63,17 @@ fn atip_check_codes_01_every_emitted_code_is_registered_and_every_registered_cod
             "USAGE",
         ),
         (vec!["schema", "--schemas", "--json"], &tmp, "USAGE"),
+        (vec!["skills", "--json"], &tmp, "COMMAND_REQUIRED"),
+        (
+            vec!["skills", "nosuch-xyz", "--json"],
+            &tmp,
+            "UNKNOWN_COMMAND",
+        ),
+        (
+            vec!["skills", "show", "nosuch-xyz", "--json"],
+            &tmp,
+            "USAGE",
+        ),
         (
             vec!["check", "--bin", no_binary, "--fixture", empty, "--json"],
             &tmp,

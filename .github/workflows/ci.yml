@@ -13,7 +13,7 @@ name: CI
 #                                            publish-crate.yml and publish-check.yml publish); it resolves against
 #                                            crates.io, which a local source replacement of crates.io breaks
 #
-# A second job checks the checker's own claim, ATIP 1.6 L1, with the release binary (`just self-check`): every check of L1
+# A second job checks the checker's own claim, ATIP 1.6 L2, with the release binary (`just self-check`): every check of L2
 # (`--deep`) against crates/atip-check/tests/self/atip.fixture.json, the binary's directory first on PATH, since that
 # fixture's `ok` call of `check` checks `atip` itself.
 #
@@ -83,7 +83,7 @@ jobs:
         run: cargo package -p atip -p atip-check --locked
 
   self-check:
-    name: atip check of atip (ATIP 1.6 L1)
+    name: atip check of atip (ATIP 1.6 L2)
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -104,7 +104,7 @@ jobs:
       - name: cargo build --release
         run: cargo build --release --locked -p atip-check --bin atip
 
-      - name: atip check --level L1 --deep --contract 1.6
+      - name: atip check --level L2 --deep --contract 1.6
         run: |
           PATH="$PWD/target/release:$PATH" atip check --bin atip \
-            --fixture crates/atip-check/tests/self/atip.fixture.json --level L1 --deep --contract 1.6
+            --fixture crates/atip-check/tests/self/atip.fixture.json --level L2 --deep --contract 1.6

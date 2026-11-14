@@ -69,12 +69,15 @@ atip = "0.3"
 
 ## The checker's own claim
 
-`atip` itself is **ATIP 1.6 L1**: every envelope declares `contractVersion` `1.6`, and `atip schema --json` answers the
-tree (`level` `L1`), each command's document and schemas, and the error and warning registries, projected from its clap
-tree by the crate `atip`. CI builds the release binary and checks the claim with it, every MUST of L1 included:
+`atip` itself is **ATIP 1.6 L2**: every envelope declares `contractVersion` `1.6`; `atip schema --json` answers the tree
+(`level` `L2`), each group and command document and its schemas, and the error and warning registries, projected from
+its clap tree by the crate `atip`; and `atip skills show [--json]` prints the guide built into the binary. `atip` has
+no `write`, `destructive`, `async` or stream command, so `--input`, the destructive exchange, long-running work and
+streams do not apply to it (spec 3.3, 10.1). CI builds the release binary and checks the claim with it, every MUST of
+L2 included:
 
 ```sh
-PATH="$PWD/target/release:$PATH" atip check --bin atip --fixture crates/atip-check/tests/self/atip.fixture.json --level L1 --deep --contract 1.6
+PATH="$PWD/target/release:$PATH" atip check --bin atip --fixture crates/atip-check/tests/self/atip.fixture.json --level L2 --deep --contract 1.6
 ```
 
 The fixture's `ok` call of `check` checks `atip` again, the one on `PATH`, at L0 in the default mode. `docs/atip.cli.json`
@@ -84,10 +87,11 @@ names. What changed in 0.4.0 for callers of `atip`:
 | 0.3.3 | 0.4.0 |
 |---|---|
 | no `schema` command | `atip schema [PATH]... [--schemas \| --errors \| --error <CODE> \| --warnings \| --warning <CODE>] [--json]` |
+| no guide | `atip skills show [NAME] [--json]` (the group `skills`; one guide, `checker`) |
 | `meta.contractVersion` `1.4` | `1.6` |
-| first line of `--help`: `atip: run a built binary and check the atip/1 contract from outside` | ``Agents: `atip schema --json` describes every command, option and error code as JSON.`` |
+| first line of `--help`: `atip: run a built binary and check the atip/1 contract from outside` | ``Agents: `atip schema --json` describes every command, option and error code as JSON; `atip skills show` is the guide.`` |
 | `--help --json`: `USAGE`, hint `atip --help` or `atip check --help` | `USAGE`, hint `atip schema --json` or `atip schema check --json` |
-| `UNKNOWN_COMMAND`, `COMMAND_REQUIRED`: `expected` `check` | `check`, `schema` |
+| `UNKNOWN_COMMAND`, `COMMAND_REQUIRED`: `expected` `check` | `check`, `schema`, `skills` |
 | `INTERNAL` (exit 1) for a scratch space that cannot be used | `SCRATCH_UNAVAILABLE` (exit 2, retryable) before the checks run, `SCRATCH_FAILED` (exit 1, retryable) after |
 | `--jobs`: any whole number from 1 | 1 to 9007199254740991 |
 

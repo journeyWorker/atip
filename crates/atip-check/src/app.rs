@@ -63,7 +63,7 @@ fn restore_sigpipe() {
     }
 }
 
-/// The text a successful run prints on stdout: the version, a help text, a `schema` answer, the report, or the success envelope.
+/// The text a successful run prints on stdout: the version, a help text, a `schema` answer, a guide, the report, or the success envelope.
 fn execute(args: &[OsString]) -> Result<String, Failure> {
     let json = atip::wants_json(args);
     // `--help` and `--version` print text for people; with `--json` they are refused after the path is resolved (spec 4.4.1), so
@@ -73,6 +73,7 @@ fn execute(args: &[OsString]) -> Result<String, Failure> {
     }
     match cli::parse(args)? {
         Command::Text(text) => Ok(text),
+        Command::Skills(name) => crate::guides::answer(name.as_deref(), json),
         Command::Schema(schema) => spec::answer(&schema, json),
         Command::Check(check, mode, source) => {
             let report = check_binary_at(&check, mode, source)?;

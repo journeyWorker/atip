@@ -168,6 +168,31 @@
           "description": "--schemas answers for one command: path names a command, not nothing (the tree)."
         }
       ]
+    },
+    {
+      "command": "skills show",
+      "effect": "read",
+      "examples": [
+        "atip skills show --json",
+        "atip skills show checker --json"
+      ],
+      "kind": "command",
+      "operands": [
+        {
+          "help": "The guide to print; none for the default guide, which lists every guide",
+          "name": "name",
+          "possibleValues": [
+            "checker"
+          ],
+          "valueType": "enum"
+        }
+      ],
+      "outputs": [
+        {
+          "schemaRef": "#/schemas/Guide"
+        }
+      ],
+      "summary": "Print a guide: the default one, or the one NAME names"
     }
   ],
   "contract": "atip/1",
@@ -274,7 +299,21 @@
       "retryable": false
     }
   ],
-  "level": "L1",
+  "groups": [
+    {
+      "command": "skills",
+      "commands": [
+        {
+          "command": "skills show",
+          "effect": "read",
+          "summary": "Print a guide: the default one, or the one NAME names"
+        }
+      ],
+      "kind": "group",
+      "summary": "Read the guide built into atip"
+    }
+  ],
+  "level": "L2",
   "removed": [],
   "schemas": {
     "check": {
@@ -653,6 +692,51 @@
           "title": "SchemaAnswer"
         }
       }
+    },
+    "skills show": {
+      "command": "skills show",
+      "kind": "schemas",
+      "schemas": {
+        "Guide": {
+          "additionalProperties": false,
+          "description": "The JSON representation of a guide printed by `<tool> skills show [NAME] --json` (spec 14.3).",
+          "patternProperties": {
+            "^x-[a-z][a-z0-9-]*$": true
+          },
+          "properties": {
+            "full": {
+              "description": "Whether --full material is included.",
+              "type": "boolean"
+            },
+            "guides": {
+              "description": "The name of every guide in this build, this one included.",
+              "items": {
+                "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "name": {
+              "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "text": {
+              "description": "The guide as Markdown.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "text",
+            "guides"
+          ],
+          "title": "atip/1 `skills show --json` data",
+          "type": "object"
+        }
+      }
     }
   },
   "tool": "atip",
@@ -667,10 +751,20 @@
         "command": "schema",
         "effect": "read",
         "summary": "Describe atip's commands, options and error codes as JSON"
+      },
+      {
+        "command": "skills",
+        "kind": "group",
+        "summary": "Read the guide built into atip"
+      },
+      {
+        "command": "skills show",
+        "effect": "read",
+        "summary": "Print a guide: the default one, or the one NAME names"
       }
     ],
     "kind": "tree",
-    "level": "L1"
+    "level": "L2"
   },
   "warnings": [
     {

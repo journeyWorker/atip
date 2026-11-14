@@ -4,20 +4,26 @@
 
 No spec change; the spec stays 1.6.1. `atip` 0.3.2 is unchanged.
 
-- **`atip-check` 0.4.0: the checker speaks ATIP 1.6 at L1.** The command line is clap's, projected by the `atip` crate:
-  `atip schema` answers the tree (`level` `L1`), each command's document (`schema check --json`), its schemas
-  (`--schemas`), the error and warning registries (`--errors`, `--error CODE`, `--warnings`, `--warning CODE`), and a call
-  builds the one document it answers (`Described::of_models`). Every envelope declares `contractVersion` `1.6` (it said
-  `1.4`). The first line of every `--help` points at `atip schema --json`, and `--help --json` and `--version --json` refuse
-  with the hint `atip schema <PATH> --json` and `atip --version`. `atip check` keeps its options, defaults and behaviour;
-  its help is rendered by clap with the same text. CI checks the claim with the release binary:
-  `atip check --bin atip --fixture crates/atip-check/tests/self/atip.fixture.json --level L1 --deep --contract 1.6` (the
-  fixture moved from `crates/atip-check/atip.fixture.json`).
+- **`atip-check` 0.4.0: the checker speaks ATIP 1.6 at L2.** The command line is clap's, projected by the `atip` crate:
+  `atip schema` answers the tree (`level` `L2`), the group `skills`, each command's document (`schema check --json`), its
+  schemas (`--schemas`), the error and warning registries (`--errors`, `--error CODE`, `--warnings`, `--warning CODE`),
+  and a call builds the one document it answers (`Described::of_models`). Every envelope declares `contractVersion` `1.6`
+  (it said `1.4`). The first line of every `--help` points at `atip schema --json` and `atip skills show`, and `--help
+  --json` and `--version --json` refuse with the hint `atip schema <PATH> --json` and `atip --version`. `atip check`
+  keeps its options, defaults and behaviour; its help is rendered by clap with the same text. CI checks the claim with
+  the release binary: `atip check --bin atip --fixture crates/atip-check/tests/self/atip.fixture.json --level L2 --deep
+  --contract 1.6` (the fixture moved from `crates/atip-check/atip.fixture.json`).
+- **`atip skills show [NAME] [--json]`** (spec 14): the guide for agents, built into the binary from
+  `crates/atip-check/guides/checker.md` (how to read the surface, run the checks, read the report and write a fixture).
+  Of the rest of L2, `atip` has no `write` or `destructive` command, no `async` command and no stream, so `--input`, the
+  destructive exchange, long-running work and streams do not apply (spec 3.3, 10.1: `--input` is MAY on a `read`);
+  `check` is a `read` whose `effectNote` names the scratch copies it makes and removes.
 - **Codes.** The registry follows the code-name convention, each own code built from its condition (`CodeInfo::of`). One
   rename: a scratch space that cannot be used was `INTERNAL`, which means a bug; it is now `SCRATCH_UNAVAILABLE` (exit 2,
   retryable) while the fixture state is built, before any check runs, and `SCRATCH_FAILED` (exit 1, retryable) once the
-  checks run. Every other code keeps its name, exit and retryability; `UNKNOWN_COMMAND` and `COMMAND_REQUIRED` list
-  `check` and `schema` in `expected`. A test proves the codes `atip` emits and the registry agree both ways.
+  checks run. Every other code keeps its name, exit and retryability; `UNKNOWN_COMMAND` and `COMMAND_REQUIRED` at the
+  root list `check`, `schema` and `skills` in `expected` (and `show` under `skills`). A test proves the codes `atip`
+  emits and the registry agree both ways.
 
   | 0.3.3 | 0.4.0 |
   |---|---|
@@ -26,7 +32,7 @@ No spec change; the spec stays 1.6.1. `atip` 0.3.2 is unchanged.
 - **Smaller changes.** `--jobs` takes 1 to 9007199254740991 (spec 9.7.5; it took any whole number). A relative `TMPDIR`,
   and a `--bin` found through a relative entry of `PATH`, are taken from the working directory once, when the run starts.
   The hints that named `atip --help` or a template now name a runnable `atip schema` call.
-- **Generated spec.** `docs/atip.cli.json` holds the tree, every command document and schemas answer, the registries and
+- **Generated spec.** `docs/atip.cli.json` holds the tree, every group and command document and schemas answer, the registries and
   the environment variables `atip` reads, generated from the code (`ATIP_CHECK_BLESS_CLI_SPEC=1 cargo test -p atip-check
   --test cli_spec` rewrites it) and equal to what `atip schema` answers; `docs/atip-vocabulary.tsv` is the vocabulary of
   its value names, tested both ways.

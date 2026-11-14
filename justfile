@@ -60,11 +60,11 @@ check-minor minor mode="":
     cp {{ target }}/debug/atip-fake-tool {{ target }}/debug/atip-fake-tool-claims{{ replace(minor, ".", "") }}
     {{ target }}/debug/atip check --bin {{ target }}/debug/atip-fake-tool-claims{{ replace(minor, ".", "") }} --level L0 --fixture crates/atip-check/fake-tool/fixture-{{ minor }}.json {{ mode }}
 
-# The checker's own claim, ATIP 1.6 L1, checked with the release binary as CI's self-check job does: every check of L1. The
+# The checker's own claim, ATIP 1.6 L2, checked with the release binary as CI's self-check job does: every check of L2. The
 # fixture's `ok` call of `check` checks `atip` itself, found on PATH.
 self-check:
     cargo build --release --locked -p atip-check --bin atip
-    PATH="$(cd {{ target }}/release && pwd):$PATH" atip check --bin atip --fixture crates/atip-check/tests/self/atip.fixture.json --level L1 --deep --contract 1.6
+    PATH="$(cd {{ target }}/release && pwd):$PATH" atip check --bin atip --fixture crates/atip-check/tests/self/atip.fixture.json --level L2 --deep --contract 1.6
 
 # `atip` with its default features, and the probe built on it, pull no `jsonschema` (`cargo tree`).
 deps-check:
