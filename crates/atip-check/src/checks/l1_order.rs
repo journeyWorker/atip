@@ -442,8 +442,8 @@ impl Run<'_> {
             run.orders.push(OrderRun {
                 command: doc.command.clone(),
                 pair,
-                earlier: earlier.label.clone(),
-                later: later.label.clone(),
+                earlier: earlier.label,
+                later: later.label,
                 call,
                 alone: alone_call,
             });

@@ -206,6 +206,7 @@ fn constraint_of(raw: &Value) -> ConstraintDoc {
     }
 }
 
+#[expect(clippy::map_unwrap_or, reason = "MSRV 1.99: map_or_default is 1.100")]
 fn output_of(raw: &Value) -> OutputDoc {
     OutputDoc {
         kind: match raw.get("kind").and_then(Value::as_str) {
@@ -293,6 +294,7 @@ fn command_of(raw: &Value, answer: &Value, tree_options: &[OptionDoc]) -> Comman
             None => option_of(listed),
         });
     }
+    #[expect(clippy::map_unwrap_or, reason = "MSRV 1.99: map_or_default is 1.100")]
     let mut errors = raw.get("errors").map(strings).unwrap_or_default();
     errors.extend(
         implied_codes(input.as_ref(), &options)

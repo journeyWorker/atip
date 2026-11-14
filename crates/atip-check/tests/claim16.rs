@@ -255,7 +255,7 @@ fn atip_check16_41_each_violation_of_a_1_6_row_fails_the_row_that_owns_it_and_no
 fn atip_check16_42_the_depth_problem_names_the_limit_and_a_path_shape_is_the_trees_to_judge() {
     let seeded = |claims: &str, extra: &Value| {
         let output = run(&config(claims, extra), true);
-        let depth = output.check("L1.depth").clone();
+        let depth = output.check("L1.depth");
         assert_eq!(depth["result"], "fail", "{}", output.stdout);
         // A SHOULD: the level is met.
         assert_eq!(output.code, Some(0), "{}", output.stdout);

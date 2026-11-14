@@ -1154,13 +1154,9 @@ pub(crate) fn run_checks(
                     entry.id,
                     "L1.constraints" | "L1.domains" | "L1.validators" | "L1.comma-list"
                 ) {
-                    l1.as_ref()
-                        .map(|l1| l1.unprobed_writes.clone())
-                        .unwrap_or_default()
+                    l1.as_ref().map_or_default(|l1| l1.unprobed_writes.clone())
                 } else {
-                    l2.as_ref()
-                        .map(|l2| l2::unlisted(entry.id, l2))
-                        .unwrap_or_default()
+                    l2.as_ref().map_or_default(|l2| l2::unlisted(entry.id, l2))
                 },
                 not_run: if entry.needs.contains(&Commands) || entry.id == "L1.next" {
                     fixture.not_run.clone()
@@ -3274,9 +3270,8 @@ impl<'a> Judge<'a> {
                 .and_then(|error| error.get("hint"))
                 .and_then(Value::as_str);
             let mut wanted: Vec<Vec<String>> = Vec::new();
-            let words: Vec<String> = command
-                .map(|command| command.split(' ').map(str::to_string).collect())
-                .unwrap_or_default();
+            let words: Vec<String> =
+                command.map_or_default(|command| command.split(' ').map(str::to_string).collect());
             let tool = &self.tool;
             let schema_form: Vec<String> = [tool.clone(), "schema".to_string()]
                 .into_iter()
@@ -3621,8 +3616,7 @@ fn data_keys(document: &Value) -> BTreeSet<&str> {
     document
         .get("data")
         .and_then(Value::as_object)
-        .map(|data| data.keys().map(String::as_str).collect())
-        .unwrap_or_default()
+        .map_or_default(|data| data.keys().map(String::as_str).collect())
 }
 
 /// An envelope as far as the checks need to know: an object with a boolean `ok` and an object `meta`. The schema judges the rest.

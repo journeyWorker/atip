@@ -452,14 +452,12 @@ fn refusal(error: &clap::Error, args: &[OsString]) -> Failure {
     // The words a command line may continue with where it stopped: the commands and groups below the path.
     let mut root = self::command();
     root.build();
-    let children: Vec<String> = node_of(&root, command)
-        .map(|node| {
-            atip::project::subcommands(node)
-                .into_iter()
-                .map(|sub| sub.get_name().to_string())
-                .collect()
-        })
-        .unwrap_or_default();
+    let children: Vec<String> = node_of(&root, command).map_or_default(|node| {
+        atip::project::subcommands(node)
+            .into_iter()
+            .map(|sub| sub.get_name().to_string())
+            .collect()
+    });
     let schema_hint = if path.is_empty() {
         format!("{TOOL} schema --json")
     } else {
@@ -497,8 +495,7 @@ fn refusal(error: &clap::Error, args: &[OsString]) -> Failure {
             words.push(word.clone());
             let suggestions = atip::project::resolve(&root, &words)
                 .err()
-                .map(|unknown| unknown.suggestions)
-                .unwrap_or_default();
+                .map_or_default(|unknown| unknown.suggestions);
             let mut failure = Failure::new(
                 Code::UnknownCommand,
                 format!(
@@ -1004,7 +1001,7 @@ mod tests {
                 "--bin".into(),
                 "b".into(),
                 "--fixture".into(),
-                bad.clone(),
+                bad,
             ],
         ] {
             let failure = parse(&words).expect_err("not UTF-8");

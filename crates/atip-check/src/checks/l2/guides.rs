@@ -138,7 +138,7 @@ impl<'a> Judge<'a> {
         };
         let mut default_names: Vec<String> = Vec::new();
         if succeeded(default) {
-            let problems = data_of(default).map(guide_problems).unwrap_or_default();
+            let problems = data_of(default).map_or_default(guide_problems);
             c.holds_at(default, "default-guide-shape", problems.is_empty(), || {
                 format!(
                     "`skills show` does not validate against guide.schema.json: {}",
@@ -162,7 +162,7 @@ impl<'a> Judge<'a> {
                 });
                 continue;
             }
-            let problems = data_of(*call).map(guide_problems).unwrap_or_default();
+            let problems = data_of(*call).map_or_default(guide_problems);
             c.holds_at(*call, "guide-shape", problems.is_empty(), || {
                 format!(
                     "`skills show {name}` does not validate against guide.schema.json: {}",

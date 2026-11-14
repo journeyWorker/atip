@@ -260,8 +260,7 @@ impl Run<'_> {
             .commands
             .as_ref()
             .and_then(|commands| commands.get(&doc.command))
-            .map(|entry| entry.ok.iter().map(|argv| in_json_mode(argv)).collect())
-            .unwrap_or_default();
+            .map_or_default(|entry| entry.ok.iter().map(|argv| in_json_mode(argv)).collect());
         let from_examples = || -> Vec<Vec<String>> {
             if doc.effect != "read" {
                 return Vec::new();
@@ -319,8 +318,7 @@ impl Run<'_> {
             .docs
             .tree
             .as_ref()
-            .map(|tree| tree.commands.clone())
-            .unwrap_or_default();
+            .map_or_default(|tree| tree.commands.clone());
         // `notRun` names commands of the tool: the tree is what says which there are (approaches/checker.md 5).
         if let Some(unknown) = self.fixture.not_run.iter().find(|id| {
             !entries
@@ -844,7 +842,7 @@ impl Run<'_> {
             // The same values in the environment variable the option reads, the option itself left out (spec 9.7.6: `env` is split too).
             let env = match &arg.env {
                 Some(variable) => {
-                    let mut without = carried.clone();
+                    let mut without = carried;
                     invocation::remove_option(&mut without, &arg.name);
                     Some(
                         self.invoke(
@@ -1189,8 +1187,7 @@ impl Run<'_> {
             .commands
             .as_ref()
             .and_then(|commands| commands.get(&doc.command))
-            .map(|entry| entry.paged.iter().map(|argv| in_json_mode(argv)).collect())
-            .unwrap_or_default();
+            .map_or_default(|entry| entry.paged.iter().map(|argv| in_json_mode(argv)).collect());
         let observed = || -> Vec<Vec<String>> {
             self.log
                 .iter()
@@ -1659,8 +1656,7 @@ impl Run<'_> {
             .commands
             .as_ref()
             .and_then(|commands| commands.get(&doc.command))
-            .map(|entry| entry.fields.clone())
-            .unwrap_or_default();
+            .map_or_default(|entry| entry.fields.clone());
         let mut unprojected = base.clone();
         invocation::remove_option(&mut unprojected, "fields");
         for selection in selections {
@@ -1722,16 +1718,16 @@ impl Run<'_> {
                 continue;
             };
             for entry in entries {
-                let argv: Vec<String> = entry
-                    .get("argv")
-                    .and_then(Value::as_array)
-                    .map(|argv| {
-                        argv.iter()
-                            .filter_map(Value::as_str)
-                            .map(str::to_string)
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let argv: Vec<String> =
+                    entry
+                        .get("argv")
+                        .and_then(Value::as_array)
+                        .map_or_default(|argv| {
+                            argv.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect()
+                        });
                 if !argv.is_empty() && seen.insert(argv.clone()) {
                     pending.push((index, argv));
                 }

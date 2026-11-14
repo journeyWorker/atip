@@ -918,7 +918,7 @@ mod tests {
             .field("/api-token")
             .received("hunter2")
             .suggestions(["c"]);
-        let several = first.clone().details(vec![first.clone(), second.clone()]);
+        let several = first.clone().details(vec![first.clone(), second]);
         assert_eq!(several.detail_errors().len(), 2);
         let body = several.body_with(Some("/a".to_string()), Vec::new());
         assert_eq!(

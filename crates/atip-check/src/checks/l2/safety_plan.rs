@@ -199,8 +199,7 @@ impl Run<'_> {
                     .commands
                     .as_ref()
                     .and_then(|commands| commands.get(&doc.command))
-                    .map(|entry| entry.allowed_effects.clone())
-                    .unwrap_or_default();
+                    .map_or_default(|entry| entry.allowed_effects.clone());
                 let note = doc
                     .raw
                     .get("effectNote")
@@ -247,8 +246,7 @@ impl Run<'_> {
             .commands
             .as_ref()
             .and_then(|commands| commands.get(&doc.command))
-            .map(|entry| entry.preview.clone())
-            .unwrap_or_default();
+            .map_or_default(|entry| entry.preview.clone());
         let Some(preview) = previews.first() else {
             out.missing_preview.push(doc.command.clone());
             return Ok(());

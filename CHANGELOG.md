@@ -2,8 +2,14 @@
 
 ## Crates 0.4.0 (2026-11-15)
 
-No spec change; the spec stays 1.6.1. `atip` 0.3.2 is unchanged.
+No spec change; the spec stays 1.6.1. `atip` 0.3.2 is unchanged, except that its next release declares
+`rust-version = "1.99"`.
 
+- **Rust versions.** The workspace develops on Rust 1.100.0 (`rust-toolchain.toml`); `atip-check` 0.4.0 declares
+  `rust-version = "1.100.0"` and needs Rust 1.100 or later to build. The published library `atip` keeps its own floor,
+  `rust-version = "1.99"`, which a CI job (`msrv`) builds and tests on. The lint set, `clippy.toml`, a cargo-deny policy
+  (`deny.toml`, a `deny` CI job) and one platform module per crate follow the workspace's Rust rules
+  (`docs/rust-coding-rules.md`); behaviour is unchanged.
 - **`atip-check` 0.4.0: the checker speaks ATIP 1.6 at L2.** The command line is clap's, projected by the `atip` crate:
   `atip schema` answers the tree (`level` `L2`), the group `skills`, each command's document (`schema check --json`), its
   schemas (`--schemas`), the error and warning registries (`--errors`, `--error CODE`, `--warnings`, `--warning CODE`),

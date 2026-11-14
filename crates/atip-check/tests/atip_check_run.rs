@@ -593,7 +593,7 @@ fn atip_check_25_a_fixture_without_a_probe_a_registry_or_commands_leaves_the_che
         ),
     ] {
         let full = harness.fixture(&config);
-        let mut fixture = full.clone();
+        let mut fixture = full;
         fixture.as_object_mut().expect("object").remove(drop);
         let output = harness.check(&fixture, true);
         assert_eq!(output.code, Some(1), "without `{drop}`: {}", output.stdout);

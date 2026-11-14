@@ -1,15 +1,17 @@
 # The one place the Rust toolchain is chosen. Local `cargo`, every CI job and
 # the release workflows read it: CI installs it with rustup through
 # `.github/actions/setup-rust`, which also fails a job whose `rustc` version
-# differs from `channel` below.
+# differs from `channel` below. The workspace `rust-version` in the root Cargo.toml
+# names the same release; the library `atip` keeps a lower floor of its own,
+# tested by CI's `msrv` job (docs/rust-coding-rules.md).
 #
-# Bumping `channel` is ONE pull request, and that same pull request re-checks
-# the lint list of the clippy step (`-D warnings` in `.github/workflows/ci.yml`,
-# `[workspace.lints]` and `clippy.toml`): a new toolchain adds lints and would
-# turn a clean tree red with no code change.
+# Bumping `channel` is ONE pull request, and that same pull request moves the
+# workspace `rust-version` and re-checks the lint list of the clippy step (`-D warnings`
+# in `.github/workflows/ci.yml`, `[workspace.lints]` and `clippy.toml`): a new
+# toolchain adds lints and would turn a clean tree red with no code change.
 #
 # No `targets` here: each release matrix row adds its own target (setup-rust's `target` input).
 [toolchain]
-channel = "1.99.1"
+channel = "1.100.0"
 profile = "minimal"
 components = ["clippy", "rustfmt"]

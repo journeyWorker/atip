@@ -81,13 +81,12 @@ fn check_of<'a>(data: &'a Value, id: &str) -> &'a Value {
 fn unlisted_of(document: &Value, id: &str) -> Vec<String> {
     check_of(&document["data"], id)["unlisted"]
         .as_array()
-        .map(|list| {
+        .map_or_default(|list| {
             list.iter()
                 .filter_map(Value::as_str)
                 .map(str::to_string)
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// The owner is `fail` with a reason and rule numbers, and every other check passes or does not apply.
@@ -945,7 +944,7 @@ fn atip_checkl1_28_a_check_forced_to_pass_makes_its_seeded_case_fail_and_every_c
     assert!(report.passed, "{}", report.text());
     let l0_args = CheckArgs {
         level: Level::L0,
-        ..args.clone()
+        ..args
     };
     let (_, judged_l0) = check_binary_mutated(&l0_args, &[], &[]).expect("a report");
     // The conditions of `L2.effects` are planted by `atip_checkl2safety`: the row runs at every level.

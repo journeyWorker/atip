@@ -743,7 +743,7 @@ pub fn pattern_findings(doc: &CommandDoc, claim: Claim) -> Vec<Finding> {
             ),
             Err(why) => (Some(why.clone()), None),
         };
-        let shown = pattern.clone().unwrap_or_default();
+        let shown = pattern.unwrap_or_default();
         findings.push((
             "form",
             form.map(|why| format!("{}: the pattern {shown:?} of {spelling} {why}", doc.command)),

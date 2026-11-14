@@ -39,6 +39,7 @@ use std::time::Duration;
 use serde_json::{json, Map, Value};
 
 mod l1;
+mod platform;
 
 /// The registry the tool has, sorted by code: code, exit and the names of its reasons. `schema --errors --json`
 /// prints it and the tests' fixture lists it.
@@ -331,12 +332,8 @@ impl Tool {
             std::fs::write("refused.txt", "written by a refusal").unwrap_or_default();
         }
         if self.flag("refusalWritesHome") {
-            if let Some(home) = std::env::var_os("HOME") {
-                std::fs::write(
-                    std::path::Path::new(&home).join("telemetry.log"),
-                    "refused\n",
-                )
-                .unwrap_or_default();
+            if let Some(home) = platform::home() {
+                std::fs::write(home.join("telemetry.log"), "refused\n").unwrap_or_default();
             }
         }
         if self.flag("refusalWritesRemote") && exit == 2 {
@@ -580,7 +577,7 @@ impl Tool {
                 json!({"command": format!("{tool} {command} --json"), "argv": [command, "--json"], "reason": "read the status again"}),
             ];
             if self.flag("nextEmptyArgv") {
-                next[0] = json!({"command": tool.clone(), "argv": []});
+                next[0] = json!({"command": tool, "argv": []});
             }
             if self.flag("nextPlaceholder") {
                 next[0] = json!({"command": format!("{tool} touch <name> --json"), "argv": ["touch", "<name>", "--json"]});
@@ -1005,12 +1002,8 @@ impl Tool {
 /// Puts the terminal in raw mode and waits for a key: `prompt` prints a prompt first, `react` ends on any byte
 /// (the end-of-file character arrives as `0x04`), `wait` ignores every byte until `q`.
 fn wait_in_raw_mode(mode: &str) {
-    use nix::sys::termios::{cfmakeraw, tcgetattr, tcsetattr, SetArg};
     let stdin = std::io::stdin();
-    if let Ok(mut settings) = tcgetattr(&stdin) {
-        cfmakeraw(&mut settings);
-        tcsetattr(&stdin, SetArg::TCSANOW, &settings).unwrap_or_default();
-    }
+    platform::raw_mode(&stdin);
     if mode == "prompt" {
         print!("Press a key: ");
         std::io::stdout().flush().unwrap_or_default();
@@ -1195,17 +1188,10 @@ fn is_unknown_option(arg: &str) -> bool {
 /// The command `serve` of the seeded `notRun` runs (`serveMode`): it prints one envelope and then serves until it is signalled.
 /// `exitBefore` ends without a document, `exitAfter` ends after it, `silent` prints none and keeps running, `ignoreTerm` ignores SIGTERM;
 /// `dataPatch` and `metaPatch` of `serve` seed a bad document, and `invocationLog` counts the runs.
-#[expect(
-    unsafe_code,
-    reason = "libc::signal is an unsafe FFI call; the seeded violation is a server that ignores SIGTERM"
-)]
 fn serve(tool: &Tool) -> ExitCode {
     let mode = tool.text("serveMode", "serve");
     if mode == "ignoreTerm" {
-        // SAFETY: sets the disposition of SIGTERM of this process to ignore; nothing else touches signals.
-        unsafe {
-            libc::signal(libc::SIGTERM, libc::SIG_IGN);
-        }
+        platform::ignore_sigterm();
     }
     match mode.as_str() {
         "exitBefore" => return ExitCode::SUCCESS,
@@ -1233,7 +1219,8 @@ fn serve(tool: &Tool) -> ExitCode {
         }
         "silent" => {}
         _ => {
-            tool.success("serve", json!({"serving": true}));
+            // The server prints its document and keeps serving: the exit of a finished command is not this one's.
+            let _serving = tool.success("serve", json!({"serving": true}));
         }
     }
     if mode == "exitAfter" {
@@ -1241,17 +1228,6 @@ fn serve(tool: &Tool) -> ExitCode {
     }
     loop {
         std::thread::sleep(Duration::from_secs(1));
-    }
-}
-
-#[expect(
-    unsafe_code,
-    reason = "libc::raise is an unsafe FFI call; the seeded violation is a tool that dies by a signal"
-)]
-fn die_by_signal() {
-    // SAFETY: raises SIGTERM on this process; nothing else runs afterwards.
-    unsafe {
-        libc::raise(libc::SIGTERM);
     }
 }
 
@@ -1291,7 +1267,7 @@ fn run(tool: &Tool, args: &[String]) -> ExitCode {
             "--" => {
                 // The seeded ways to end `<probe> -- --json`: by a signal, as a launcher reports one, or with an exit outside 0 to 2.
                 if tool.flag("dashdashSignal") {
-                    die_by_signal();
+                    platform::die_by_sigterm();
                 }
                 for (knob, exit) in [("dashdashExit130", 130), ("dashdashExit3", 3)] {
                     if tool.flag(knob) {
@@ -1312,8 +1288,7 @@ fn run(tool: &Tool, args: &[String]) -> ExitCode {
                     .map(String::as_str)
                     .filter(|word| tool.commands().contains(word));
                 let takes = command
-                    .map(command_options)
-                    .unwrap_or_default()
+                    .map_or_default(command_options)
                     .iter()
                     .find(|(name, _)| {
                         *name == option
@@ -1608,11 +1583,7 @@ fn touch(tool: &Tool, name: &Option<String>, input: &Option<String>) -> ExitCode
                 String::new()
             };
             let Some(document) = item.as_object() else {
-                let field = if batch {
-                    prefix.clone()
-                } else {
-                    "--input".to_string()
-                };
+                let field = if batch { prefix } else { "--input".to_string() };
                 return refuse_input(
                     "INPUT_INVALID",
                     Some("NOT_JSON"),

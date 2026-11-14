@@ -5,7 +5,7 @@
 //! fake of an L2 run is the L1 fake with `"l2": true`: `--input` on every write command, a batch for `member tag`, and the
 //! `record` group (see `fake-tool/l1/input.rs`); it claims 1.2 and has the L1 registry.
 
-#![allow(dead_code, reason = "each integration test uses a part of this module")]
+#![expect(dead_code, reason = "each integration test uses a part of this module")]
 
 use serde_json::{json, Map, Value};
 
@@ -613,7 +613,7 @@ pub fn covers(cases: Vec<Case>, checks: &[&str], exempt: &[&str]) {
     assert!(report.passed, "{}", report.text());
     let l1_args = CheckArgs {
         level: Level::L1,
-        ..args.clone()
+        ..args
     };
     let (_, judged_l1) = check_binary_mutated(&l1_args, &[], &[]).expect("a report");
     // The conditions of `L2.effects` are judged at every level: they are this level's all the same.

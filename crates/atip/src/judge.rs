@@ -266,6 +266,7 @@ fn rule(
             Rule::Properties(compiled)
         }
         "additionalProperties" => {
+            #[expect(clippy::map_unwrap_or, reason = "MSRV 1.99: map_or_default is 1.100")]
             let declared = siblings
                 .get("properties")
                 .and_then(Value::as_object)

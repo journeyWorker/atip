@@ -346,7 +346,7 @@ fn atip_check14_22_every_acme_document_that_declares_1_4_is_compact() {
         let lines: Vec<String> = if file.ends_with(".ndjson") {
             text.split_inclusive('\n').map(str::to_string).collect()
         } else {
-            vec![text.clone()]
+            vec![text]
         };
         for line in lines {
             let Ok(document) = serde_json::from_str::<Value>(line.trim_end()) else {
