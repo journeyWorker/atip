@@ -1,8 +1,14 @@
 # Changelog
 
-## Unreleased
+## Crates 0.3.2 (2026-11-14)
 
-- **Crates.** `atip` 0.3.2: the `schema` answers cost what they answer (rust-dev-guide PERF-6). `Described::of_models`
+No spec change; the spec stays 1.6.1.
+
+- **`atip-check` 0.3.2:** a `--deep` run takes about a third to a half less time. Each sequence's scratch copy is one
+  `clonefile(2)` on macOS (falling back to the per-entry copy), a snapshot hashes only files whose size, modification
+  time or status-change time differ from the template, the checker waits for a child's exit instead of polling every
+  5 ms, and finished sequences are deleted in the background. Reports are unchanged.
+- **`atip` 0.3.2:** the `schema` answers cost what they answer. `Described::of_models`
   takes each command as its whole document or as its `Surface` (its options and whether it has `input` and an output
   with `fields`, all the tree's shared options read), so a tool that answers one call builds one document; the answers
   are the ones `Described::new` writes, byte for byte. A domain `pattern` is compiled once per process for

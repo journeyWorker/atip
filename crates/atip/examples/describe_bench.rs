@@ -1,4 +1,4 @@
-//! The cost of the `schema` answers by the size of a tool (rust-dev-guide performance §4): a synthetic clap tree of `N`
+//! The cost of the `schema` answers by the size of a tool: a synthetic clap tree of `N`
 //! commands that share `K` options, projected with the crate's own `project` functions and checked with
 //! `constraint::document_problems` the way a tool builds its model, then written by [`Described`].
 //!
