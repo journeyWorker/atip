@@ -140,7 +140,7 @@ Rust crate.
    `--dry-run` (11.2), so it writes the cache only after its checks pass. 7. Run the checker at L2 in CI. Every
    consumer of canon JSON (hooks, the skill, the website) moves in the same release.
 
-### 3.2 lute (Rust, using the crate from canon)
+### 3.2 lute (Rust, using the `atip` crate from crates.io)
 
 Nested envelope; registry with exits; stderr quiet in JSON; per-output versions; exit 3 → exit 1 with a code;
 accepted patch → exit 0; `schema --json`; split `scenario`; `tag --renumber` digest-bound; `--input`; stream
@@ -166,7 +166,9 @@ Callers: the website and every harness that parses lute JSON. approaches/rust.md
   (Annex S1 item 7).
 - A tool's changelog lists every renamed command, option and error code with its replacement.
 - The checker runs in CI from the release that claims the level; before that it can run in report-only mode to
-  show the remaining gaps.
+  show the remaining gaps. CI installs the published checker at a pinned version (`bunx @journeykit/atip@<version>
+  check ...` or `cargo install atip-check --version <version> --locked`, approaches/checker.md §1), not a build from
+  a git checkout of this repository, and never a copy of its `scripts/check.ts`.
 
 ## 6. From 1.0 to 1.1
 

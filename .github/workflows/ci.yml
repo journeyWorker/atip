@@ -8,6 +8,10 @@ name: CI
 #   cargo clippy --workspace -D warnings     lints (the lint set is [workspace.lints] in Cargo.toml)
 #   scripts/check_no_jsonschema.sh           cargo tree: `atip`'s default features and `atip-probe` pull no jsonschema
 #   cargo test --workspace                   the `atip` crate and the checker, with its fake tool
+# and, on ubuntu only, one step `just ci` leaves out (`just package` runs it):
+#   cargo package -p atip -p atip-check      the two published crates package and build from their own files alone (what
+#                                            publish-crate.yml and publish-check.yml publish); it resolves against
+#                                            crates.io, which a local source replacement of crates.io breaks
 #
 # The Rust toolchain is the one `rust-toolchain.toml` pins, installed with rustup (never a floating `stable`); the job fails
 # when `rustc` is not that version. It runs on ubuntu and macOS: the checker needs a pseudo-terminal and process groups, and the
@@ -32,16 +36,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust
-        run: |
-          set -euo pipefail
-          rustup toolchain install
-          want=$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' rust-toolchain.toml)
-          got=$(rustc --version | cut -d' ' -f2)
-          rustc --version
-          if [ -z "$want" ] || [ "$got" != "$want" ]; then
-            echo "::error::rustc is '$got', rust-toolchain.toml pins '$want'" >&2
-            exit 1
-          fi
+        uses: ./.github/actions/setup-rust
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -78,3 +73,7 @@ jobs:
 
       - name: cargo test --workspace
         run: cargo test --workspace --locked
+
+      - name: cargo package (the published crates)
+        if: runner.os == 'Linux'
+        run: cargo package -p atip -p atip-check --locked

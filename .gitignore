@@ -1,3 +1,5 @@
 # Cargo build output. Builds honour CARGO_TARGET_DIR, so a checkout may keep it elsewhere.
 target/
+# The platform binaries the release workflow stages into the npm packages.
+/npm/*/bin/
 .DS_Store

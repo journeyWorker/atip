@@ -1,0 +1,38 @@
+name: Set up Rust
+description: >-
+  Installs the toolchain pinned in rust-toolchain.toml with rustup (never a floating `stable`), installing rustup
+  itself first on a runner image without it, logs `rustc --version`, and fails when that version differs from the
+  pinned channel.
+
+runs:
+  using: composite
+  steps:
+    - name: Install rustup when the image has none
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v rustup >/dev/null 2>&1; then
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        fi
+
+    # With no toolchain argument, rustup installs the one rust-toolchain.toml names, with its profile and components.
+    - name: Install the pinned toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        export PATH="$HOME/.cargo/bin:$PATH"
+        rustup toolchain install
+
+    - name: Check rustc is the pinned version
+      shell: bash
+      run: |
+        set -euo pipefail
+        export PATH="$HOME/.cargo/bin:$PATH"
+        want=$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+        rustc --version
+        got=$(rustc --version | cut -d' ' -f2)
+        if [ -z "$want" ] || [ "$got" != "$want" ]; then
+          echo "::error::rustc is '$got', rust-toolchain.toml pins '$want'" >&2
+          exit 1
+        fi

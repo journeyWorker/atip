@@ -4,11 +4,11 @@
 # differs from `channel` below.
 #
 # Bumping `channel` is ONE pull request, and that same pull request re-checks
-# the lint list of the `clippy` job (the `-D` flags in
-# `.github/workflows/test.yml` and `clippy.toml`): a new toolchain adds lints
-# and would turn a clean tree red with no code change.
+# the lint list of the clippy step (`-D warnings` in `.github/workflows/ci.yml`,
+# `[workspace.lints]` and `clippy.toml`): a new toolchain adds lints and would
+# turn a clean tree red with no code change.
 #
-# No `targets` here: each release matrix row adds only its own target.
+# No `targets` here: each release matrix row builds natively for its runner.
 [toolchain]
 channel = "1.99.1"
 profile = "minimal"

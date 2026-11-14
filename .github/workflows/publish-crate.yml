@@ -1,0 +1,82 @@
+name: Publish atip crate
+run-name: "publish atip ${{ inputs.version || github.ref_name }}"
+
+# Publishes the crate `atip` (crates/atip) to crates.io.
+#
+# A release bumps `version` in crates/atip/Cargo.toml (and the `atip` entry of [workspace.dependencies] in the root
+# Cargo.toml) in a normal commit on main, then pushes the tag `atip-crate-vX.Y.Z` on it. The tag must name the version
+# of crates/atip/Cargo.toml at that commit, or nothing is published. A checker release that needs this version waits
+# for it on the crates.io index (publish-check.yml).
+#
+# `workflow_dispatch` publishes the version at the chosen ref (`gh workflow run publish-crate.yml --ref main -f
+# version=X.Y.Z`): for a version whose tag points at a commit older than this workflow. `version` must equal the
+# version of crates/atip/Cargo.toml at that ref; it confirms what is published.
+#
+# Re-runnable: a version already on crates.io is skipped, never published again.
+
+on:
+  push:
+    tags:
+      - "atip-crate-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version of crates/atip/Cargo.toml at the chosen ref (confirms what is published)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  publish:
+    name: Publish atip to crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Verify the tag or the confirmed version against crates/atip/Cargo.toml
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          CONFIRMED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' crates/atip/Cargo.toml)
+          if [ -z "$version" ]; then
+            echo "::error::no version in crates/atip/Cargo.toml" >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            if [ "$REF_TYPE" != "tag" ] || [ "$REF_NAME" != "atip-crate-v$version" ]; then
+              echo "::error::tag $REF_NAME does not match crates/atip/Cargo.toml version $version (expected atip-crate-v$version)" >&2
+              exit 1
+            fi
+          elif [ "$CONFIRMED" != "$version" ]; then
+            echo "::error::confirmed version '$CONFIRMED' is not crates/atip/Cargo.toml's $version at $REF_NAME" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "atip $version"
+
+      - name: Publish atip (skipped when the version is on crates.io)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          found=0
+          .github/scripts/crates-io-has.sh atip "$VERSION" || found=$?
+          case "$found" in
+            0) echo "atip $VERSION is already on crates.io: skipped." ;;
+            1) cargo publish -p atip --locked ;;
+            *) exit 1 ;;
+          esac

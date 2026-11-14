@@ -30,7 +30,18 @@ Source anchors: canon `crates/canon-cli/src/`.
 
 ## 3. The shared crate
 
-The crate is `atip` (the name is free on crates.io).
+The crate is `atip`, published on crates.io; a tool depends on a released version, with the validators for its tests,
+and its CI runs the published checker (approaches/checker.md §1) on the built binary:
+
+```toml
+[dependencies]
+atip = "0.3"
+
+[dev-dependencies]
+atip = { version = "0.3", features = ["validate"] }
+```
+
+Its layout as designed:
 
 ```text
 atip

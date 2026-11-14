@@ -11,8 +11,15 @@ stderr, exit status and the file system out. It knows nothing about clap or Effe
 binary and runs the checker against it, so all tools are held to one implementation of the rules instead of five
 test suites that agree by intention.
 
-The reference checker is a Rust binary named `atip`. It is built first inside canon's repository and is to be
-published on its own, so that no tool needs canon to run it.
+The reference checker is a Rust binary named `atip`, built from the crate `atip-check` of this repository and
+published on its own, so that no tool needs canon or a checkout of this repository to run it: on npm as
+`@journeykit/atip` (prebuilt for macOS arm64, Linux x64 and Linux arm64) and on crates.io as `atip-check`. A tool's CI
+installs a released checker, pinned to a version, and runs it on the tool's built binary:
+
+```
+bunx @journeykit/atip@0.3.1 check --bin target/release/canon --level L2 --fixture checker-fixture.json
+cargo install atip-check --version 0.3.1 --locked   # then: atip check ...
+```
 
 ```
 atip check --bin <PATH> --fixture <FILE> [--level <L0|L1|L2>] [--contract <MAJOR.MINOR>] [--deep] [--json]
@@ -40,7 +47,7 @@ atip check --bin target/release/canon --level L2 --fixture checker-fixture.json
 
 The JSON Schemas in `schema/` are embedded in the binary, and so are the semantic rules of Annex S2. The
 repository's `scripts/check.ts` validates this repository's own examples; it is not the binary checker (§7.2 lists
-where the two differ).
+where the two differ), and a tool neither copies it nor runs it in its CI: the tool runs the published `atip`.
 
 ## 2. Results and coverage
 

@@ -1,0 +1,249 @@
+name: Publish atip-check
+run-name: "publish atip-check ${{ inputs.version || github.ref_name }}"
+
+# Publishes the checker: the `atip` binary to npm as `@journeykit/atip` (a launcher, npm/atip) with one package per
+# platform (npm/atip-<platform>), and the crate `atip-check` (crates/atip-check) to crates.io. Every version is the
+# version of crates/atip-check/Cargo.toml; the npm package.json files hold a placeholder this workflow replaces.
+#
+# A release bumps `version` in crates/atip-check/Cargo.toml in a normal commit on main (Cargo.lock with it), then
+# pushes the tag `atip-check-vX.Y.Z` on it. The tag must name that version, or nothing is published.
+# `workflow_dispatch` publishes the version at the chosen ref (`gh workflow run publish-check.yml --ref main -f
+# version=X.Y.Z`); `version` must equal crates/atip-check/Cargo.toml's at that ref.
+#
+# Order and failure:
+#   - build (build-native.yml, every platform) must pass before anything is published, so a platform that fails to
+#     build blocks every package, not only its own.
+#   - npm: the platform packages first, then `@journeykit/atip`, whose optional dependencies name them. A version with
+#     a hyphen (`0.4.0-rc.1`) is published under the dist-tag `next`, never `latest`.
+#   - crates.io: `atip-check` depends on `atip` by version, so this job waits (up to 30 minutes) until the `atip`
+#     version of this checkout is on the crates.io index (pushed with its own tag, publish-crate.yml), then publishes.
+# The npm publish is not atomic across packages. A fresh release refuses to start when any of its npm packages already
+# has the version; after a partial publish, run the workflow by hand with `recovery` to publish only what is missing.
+# A crate version already on crates.io is skipped.
+
+on:
+  push:
+    tags:
+      - "atip-check-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version of crates/atip-check/Cargo.toml at the chosen ref (confirms what is published)"
+        required: true
+        type: string
+      recovery:
+        description: "Resume a partial publish: skip the npm packages already published at this version instead of refusing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  read-version:
+    name: Read and verify the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      atip: ${{ steps.version.outputs.atip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Verify the tag or the confirmed version against crates/atip-check/Cargo.toml
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          CONFIRMED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          read_version() { sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$1"; }
+          version=$(read_version crates/atip-check/Cargo.toml)
+          atip=$(read_version crates/atip/Cargo.toml)
+          if [ -z "$version" ] || [ -z "$atip" ]; then
+            echo "::error::no version in crates/atip-check/Cargo.toml or crates/atip/Cargo.toml" >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            if [ "$REF_TYPE" != "tag" ] || [ "$REF_NAME" != "atip-check-v$version" ]; then
+              echo "::error::tag $REF_NAME does not match crates/atip-check/Cargo.toml version $version (expected atip-check-v$version)" >&2
+              exit 1
+            fi
+          elif [ "$CONFIRMED" != "$version" ]; then
+            echo "::error::confirmed version '$CONFIRMED' is not crates/atip-check/Cargo.toml's $version at $REF_NAME" >&2
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "atip=$atip"
+          } >> "$GITHUB_OUTPUT"
+          echo "atip-check $version, built against atip $atip"
+
+  build:
+    name: Build
+    needs: read-version
+    uses: ./.github/workflows/build-native.yml
+
+  npm:
+    name: Publish npm packages
+    needs: [read-version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing (OIDC) needs npm 11.5.1 or later. npm tries OIDC first (`id-token: write`, against the
+      # trusted publisher configured on each package's page: repository journeyWorker/atip, workflow
+      # publish-check.yml) and falls back to NODE_AUTH_TOKEN (the NPM_TOKEN secret). The token is the bootstrap: a
+      # package that does not exist yet has no page to configure a trusted publisher on.
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@11.5.1
+
+      - name: Download darwin-arm64 binary
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: atip-darwin-arm64
+          path: npm/atip-darwin-arm64/bin
+
+      - name: Download linux-x64 binary
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: atip-linux-x64
+          path: npm/atip-linux-x64/bin
+
+      - name: Download linux-arm64 binary
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: atip-linux-arm64
+          path: npm/atip-linux-arm64/bin
+
+      - name: Verify the checksums and make the binaries executable
+        run: |
+          set -euo pipefail
+          for platform in darwin-arm64 linux-x64 linux-arm64; do
+            (cd "npm/atip-$platform/bin" && sha256sum -c atip.sha256)
+            chmod +x "npm/atip-$platform/bin/atip"
+          done
+
+      - name: Apply the version to every package.json
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          for pkg in npm/atip npm/atip-darwin-arm64 npm/atip-linux-x64 npm/atip-linux-arm64; do
+            jq --arg v "$VERSION" '.version = $v' "$pkg/package.json" > "$pkg/package.json.new"
+            mv "$pkg/package.json.new" "$pkg/package.json"
+          done
+          jq --arg v "$VERSION" '.optionalDependencies |= with_entries(.value = $v)' npm/atip/package.json > npm/atip/package.json.new
+          mv npm/atip/package.json.new npm/atip/package.json
+          cat npm/atip/package.json
+
+      # Fails closed: only npm's E404 (never published) counts as absent; any other failure of `npm view` stops the
+      # release rather than being read as "not published".
+      - name: Pre-flight npm release state (fresh release, or recovery)
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+          RECOVERY: ${{ inputs.recovery }}
+        run: |
+          set -euo pipefail
+          is_published() {
+            local out
+            if out=$(npm view "$1" versions --json 2>&1); then
+              printf '%s' "$out" | jq -e --arg v "$VERSION" 'if type == "array" then any(.[]; . == $v) else . == $v end' >/dev/null
+              return
+            fi
+            if printf '%s' "$out" | grep -q 'E404'; then
+              return 1
+            fi
+            echo "::error::npm view $1 failed (not a 404), stopping the release:" >&2
+            printf '%s\n' "$out" >&2
+            exit 1
+          }
+          already=""
+          for pkg in npm/atip-darwin-arm64 npm/atip-linux-x64 npm/atip-linux-arm64 npm/atip; do
+            name=$(jq -r .name "$pkg/package.json")
+            if is_published "$name"; then
+              already="$already $name"
+            fi
+          done
+          if [ -z "$already" ]; then
+            echo "Fresh release: no package is published at $VERSION yet."
+          elif [ "${RECOVERY:-false}" = "true" ]; then
+            echo "Recovery: already published at $VERSION, skipped below:$already"
+          else
+            echo "::error::$VERSION is already published for:$already" >&2
+            echo "Run this workflow by hand with recovery to publish the rest, or release a new version." >&2
+            exit 1
+          fi
+
+      # The platform packages first, then the launcher, whose optional dependencies must already resolve.
+      - name: Publish (platform packages, then @journeykit/atip)
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          for pkg in npm/atip-darwin-arm64 npm/atip-linux-x64 npm/atip-linux-arm64 npm/atip; do
+            name=$(jq -r .name "$pkg/package.json")
+            if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+              echo "$name@$VERSION is already on npm: skipped."
+            elif [[ "$VERSION" == *-* ]]; then
+              (cd "$pkg" && npm publish --provenance --access public --tag next)
+            else
+              (cd "$pkg" && npm publish --provenance --access public)
+            fi
+          done
+
+  crate:
+    name: Publish atip-check to crates.io
+    needs: [read-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust
+        uses: ./.github/actions/setup-rust
+
+      - name: Wait for atip ${{ needs.read-version.outputs.atip }} on the crates.io index
+        env:
+          ATIP: ${{ needs.read-version.outputs.atip }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            found=0
+            .github/scripts/crates-io-has.sh atip "$ATIP" || found=$?
+            case "$found" in
+              0) echo "atip $ATIP is on crates.io."; exit 0 ;;
+              1) echo "atip $ATIP is not on crates.io yet ($attempt/60); push atip-crate-v$ATIP if it is not released." ;;
+              *) exit 1 ;;
+            esac
+            sleep 30
+          done
+          echo "::error::atip $ATIP did not appear on crates.io within 30 minutes; publish it (tag atip-crate-v$ATIP), then re-run this job" >&2
+          exit 1
+
+      - name: Publish atip-check (skipped when the version is on crates.io)
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          found=0
+          .github/scripts/crates-io-has.sh atip-check "$VERSION" || found=$?
+          case "$found" in
+            0) echo "atip-check $VERSION is already on crates.io: skipped." ;;
+            1) cargo publish -p atip-check --locked ;;
+            *) exit 1 ;;
+          esac

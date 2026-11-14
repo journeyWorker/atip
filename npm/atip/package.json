@@ -1,0 +1,41 @@
+{
+  "name": "@journeykit/atip",
+  "version": "0.0.0",
+  "description": "atip check: the conformance checker of ATIP (atip/1), the Agent Terminal Invocation Protocol. It runs a built binary and checks the contract from outside.",
+  "keywords": [
+    "atip",
+    "cli",
+    "conformance",
+    "checker",
+    "agent"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/journeyWorker/atip",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journeyWorker/atip.git",
+    "directory": "npm/atip"
+  },
+  "type": "module",
+  "bin": {
+    "atip": "bin.js"
+  },
+  "files": [
+    "bin.js"
+  ],
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@journeykit/atip-darwin-arm64": "0.0.0",
+    "@journeykit/atip-linux-x64": "0.0.0",
+    "@journeykit/atip-linux-arm64": "0.0.0"
+  }
+}

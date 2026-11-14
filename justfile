@@ -64,5 +64,10 @@ check-minor minor mode="":
 deps-check:
     scripts/check_no_jsonschema.sh
 
-# Everything CI does.
+# The two published crates, packaged and built from their own files alone, as crates.io receives them (`--list` shows
+# the files). It resolves against crates.io, so it fails where crates.io is replaced by another source.
+package *args:
+    cargo package -p atip -p atip-check --locked {{ args }}
+
+# Everything CI does, except `package`, which CI runs on ubuntu only.
 ci: validate fmt-check lint deps-check test
