@@ -1,4 +1,4 @@
-//! Everything in the fake tool that depends on the operating system (house Rust guide PLAT-1): its home directory, a
+//! Everything in the fake tool that depends on the operating system, kept in this one module: its home directory, a
 //! terminal put in raw mode, and the signals of the seeded violations. The rest of the fake tool is portable `std`.
 
 use std::io::Stdin;

@@ -1,4 +1,4 @@
-//! Everything in the checker that depends on the operating system (house Rust guide PLAT-1): signal dispositions,
+//! Everything in the checker that depends on the operating system, kept in this one module: signal dispositions,
 //! process groups, waiting for a child without reaping it, pseudo-terminals, file times and permission bits, links, and
 //! the copy-on-write clone of a tree. `atip check` runs on macOS and Linux; the rest of the crate is portable `std` and
 //! names none of `std::os::unix`, `libc` or `nix`.

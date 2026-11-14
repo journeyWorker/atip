@@ -1,13 +1,13 @@
-# clippy's configuration (house Rust guide LINT-3; docs/rust-coding-rules.md). clippy reads the nearest clippy.toml, so a
-# crate that ever gets its own file repeats every entry here.
+# clippy's configuration (docs/rust-coding-rules.md). clippy reads the nearest clippy.toml, so a crate that ever gets its
+# own file repeats every entry here.
 
-# SIDE-1: side effects belong in a `for` loop.
+# Side effects belong in a `for` loop, not in an iterator adapter.
 disallowed-methods = [
   { path = "core::iter::Iterator::for_each", reason = "side effects belong in a `for` loop" },
   { path = "core::iter::Iterator::try_for_each", reason = "side effects belong in a `for` loop" },
 ]
 
-# `unwrap_used` is on (PANIC-2); a test may unwrap. This covers `#[test]` functions and `#[cfg(test)]` modules, not the
+# `unwrap_used` is on (no `unwrap()` outside tests); a test may unwrap. This covers `#[test]` functions and `#[cfg(test)]` modules, not the
 # helpers of an integration test (`crates/*/tests/support/`), which use `expect` with the reason. `expect_used`, `panic`
 # and `print_stdout` are not on (docs/rust-coding-rules.md), so they need no allowance.
 allow-unwrap-in-tests = true

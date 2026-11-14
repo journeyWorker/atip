@@ -16,7 +16,8 @@ members = [
 
 [workspace.package]
 edition = "2021"
-# The release rust-toolchain.toml pins (house Rust guide LINT-5): one toolchain for local builds, CI and the releases.
+# The release rust-toolchain.toml pins: one toolchain for local builds, CI and the releases. The published library `atip`
+# declares its own, lower floor (crates/atip/Cargo.toml; docs/rust-coding-rules.md).
 rust-version = "1.100.0"
 license = "MIT"
 repository = "https://github.com/journeyWorker/atip"
@@ -78,7 +79,7 @@ undocumented_unsafe_blocks = "warn"
 unnecessary_safety_comment = "warn"
 unnecessary_safety_doc = "warn"
 unneeded_field_pattern = "warn"
-# No `unwrap()` outside tests (PANIC-2): `#[test]` functions and `#[cfg(test)]` modules are exempt (clippy.toml).
+# No `unwrap()` outside tests: `#[test]` functions and `#[cfg(test)]` modules are exempt (clippy.toml).
 unwrap_used = "warn"
 unused_result_ok = "warn"
 # pedantic, selected

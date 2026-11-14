@@ -266,10 +266,12 @@ fn rule(
             Rule::Properties(compiled)
         }
         "additionalProperties" => {
+            #[expect(clippy::map_unwrap_or, reason = "MSRV 1.99: map_or_default is 1.100")]
             let declared = siblings
                 .get("properties")
                 .and_then(Value::as_object)
-                .map_or_default(|members| members.keys().cloned().collect());
+                .map(|members| members.keys().cloned().collect())
+                .unwrap_or_default();
             Rule::AdditionalProperties(Box::new(Node::compile(value)?), declared)
         }
         "items" => match value {

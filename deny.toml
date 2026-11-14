@@ -1,5 +1,5 @@
-# cargo-deny (house Rust guide DEP-1). CI runs `cargo deny --locked check` (DEP-2); docs/rust-coding-rules.md records
-# the decisions. An exception names its crate, or its advisory id, with the reason.
+# cargo-deny's policy for the dependency graph. CI runs `cargo deny --locked check`; docs/rust-coding-rules.md records the
+# decisions. An exception names its crate, or its advisory id, with the reason.
 
 [graph]
 all-features = false
@@ -13,7 +13,6 @@ ignore = []
 confidence-threshold = 0.9
 allow = [
   "Apache-2.0",
-  "BSD-3-Clause",
   "MIT",
   "Unicode-3.0",
 ]
@@ -34,7 +33,13 @@ allow = ["Zlib"]
 ignore = true
 
 [bans]
-multiple-versions = "warn"
+# A second version of a crate fails the check unless it is listed here with the reason it cannot be one version yet.
+multiple-versions = "deny"
+skip = [
+  # jsonschema 0.47 (ahash, referencing) is on getrandom 0.3, tempfile 3.27 on 0.4; one version when jsonschema moves.
+  { crate = "getrandom@0.3.4", reason = "jsonschema 0.47 pulls getrandom 0.3 through ahash; tempfile needs 0.4" },
+  { crate = "r-efi@5.3.0", reason = "the UEFI dependency of getrandom 0.3 (above); getrandom 0.4 takes r-efi 6" },
+]
 wildcards = "deny"
 # Workspace crates depend on each other by path.
 allow-wildcard-paths = true

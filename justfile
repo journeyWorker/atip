@@ -35,6 +35,15 @@ lint:
 deny:
     cargo deny --locked check
 
+# The published library `atip` built (default features, then `validate`) and tested on its own floor, the `rust-version`
+# of crates/atip/Cargo.toml (CI's `msrv` job); installs that toolchain with rustup when missing.
+msrv:
+    msrv=$(sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' crates/atip/Cargo.toml) && \
+    rustup toolchain install "$msrv" --profile minimal && \
+    cargo "+$msrv" build -p atip --locked && \
+    cargo "+$msrv" build -p atip --features validate --locked && \
+    cargo "+$msrv" test -p atip --locked
+
 # Format the sources.
 fmt:
     cargo fmt --all

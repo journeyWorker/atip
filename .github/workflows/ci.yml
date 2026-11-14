@@ -17,7 +17,9 @@ name: CI
 # A second job checks the checker's own claim, ATIP 1.6 L2, with the release binary (`just self-check`): every check of L2
 # (`--deep`) against crates/atip-check/tests/self/atip.fixture.json, the binary's directory first on PATH, since that
 # fixture's `ok` call of `check` checks `atip` itself. A third job runs `cargo deny --locked check` (deny.toml): RustSec
-# advisories, licenses, bans and sources, with a pinned cargo-deny whose download is checked against its SHA-256.
+# advisories, licenses, bans and sources, with a pinned cargo-deny whose download is checked against its SHA-256. A fourth
+# job builds and tests the published library `atip` on its own floor, the `rust-version` of crates/atip/Cargo.toml (`just
+# msrv`; docs/rust-coding-rules.md).
 #
 # The Rust toolchain is the one `rust-toolchain.toml` pins, installed with rustup (never a floating `stable`); the job fails
 # when `rustc` is not that version. It runs on ubuntu and macOS: the checker needs a pseudo-terminal and process groups, and the
@@ -111,6 +113,38 @@ jobs:
 
       - name: cargo deny --locked check
         run: PATH="$HOME/.cargo/bin:$PATH" cargo deny --locked check
+
+  msrv:
+    name: atip on its rust-version
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        uses: ./.github/actions/setup-rust
+
+      # The release the library declares, read from its manifest so the two cannot drift; rustup resolves `1.99` to the
+      # newest 1.99.x.
+      - name: Install the rust-version of crates/atip
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          msrv=$(sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' crates/atip/Cargo.toml)
+          test -n "$msrv"
+          rustup toolchain install "$msrv" --profile minimal
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+
+      # The library with its default features (no `validate`: what a tool that only describes itself links), then with
+      # `validate`, then its tests, which turn `validate` on through the crate's own dev-dependency.
+      - name: cargo build -p atip on the rust-version (default features, then validate)
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo "+$MSRV" build -p atip --locked
+          cargo "+$MSRV" build -p atip --features validate --locked
+
+      - name: cargo test -p atip on the rust-version
+        run: PATH="$HOME/.cargo/bin:$PATH" cargo "+$MSRV" test -p atip --locked
 
   self-check:
     name: atip check of atip (ATIP 1.6 L2)

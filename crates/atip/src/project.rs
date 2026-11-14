@@ -884,17 +884,21 @@ impl Relations {
     }
 
     /// The relations the `constraints` array of a command document states.
+    #[expect(clippy::map_unwrap_or, reason = "MSRV 1.99: map_or_default is 1.100")]
     pub fn from_json(rules: &Value) -> Relations {
         let strings = |value: &Value| -> Vec<String> {
-            value.as_array().map_or_default(|items| {
-                items
-                    .iter()
-                    .filter_map(|item| item.as_str().map(str::to_string))
-                    .collect()
-            })
+            value
+                .as_array()
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
         };
         let mut found = Relations::default();
-        for rule in rules.as_array().map_or_default(Vec::as_slice) {
+        for rule in rules.as_array().map(Vec::as_slice).unwrap_or_default() {
             let names = strings(&rule["names"]);
             let then = strings(&rule["then"]);
             let unconditional = rule["if"].is_object() && rule["if"].get("in").is_none();
