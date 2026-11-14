@@ -41,7 +41,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - host: macos-14
+          - host: macos-15
             platform: darwin-arm64
           - host: ubuntu-22.04
             platform: linux-x64
