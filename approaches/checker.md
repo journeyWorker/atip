@@ -214,7 +214,10 @@ until it is listed. L1.schemas and L1.help-json, which the checks for contract 1
 ## 4. The effects check
 
 The checker snapshots the invocation's directory and `HOME` (path, size, SHA-256 of every file) before and after
-the invocation, and asks the fixture's `probe` command for remote state when one is declared. Snapshots count files
+the invocation, and asks the fixture's `probe` command for remote state when one is declared. A file of a copy of the
+fixture state is not read again when it has the template's size and modification time and neither it nor any directory
+above it has changed since the copy was made (each one's status-change time, which no process can set back, is older
+than that moment): its hash is the template's. Snapshots count files
 only: a directory created to hold an allowed file is not an effect. An `allowedEffects` pattern is a path relative to
 the invocation's directory (a leading `./` allowed) or, written `~/…`, to `HOME`; `*` matches within one path segment,
 `**` across segments (`**/` also matches nothing), `?` one character other than `/`, and the whole path must match.
