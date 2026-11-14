@@ -1,12 +1,13 @@
 //! What a run reports: one entry per check, and whether the level is met.
 
+use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::claim::Claim;
 
 /// Whether a failure of the check fails the level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Strength {
     /// A failure, or a missing fixture entry, fails the level.
@@ -18,7 +19,7 @@ pub enum Strength {
 /// How much of the contract a run checks (approaches/checker.md 3.1). `Interface` is the default: the checks that judge what the tool
 /// prints for ordinary calls, a few process launches on one shared copy of the fixture state. `Deep` (`--deep`) runs every check of the
 /// level, each invocation in a fresh copy of the state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
     Interface,
@@ -26,7 +27,7 @@ pub enum Mode {
 }
 
 /// The five results of a check (approaches/checker.md 2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CheckResult {
     /// Exercised and held.
@@ -44,7 +45,7 @@ pub enum CheckResult {
 /// One thing a check found, as `data.checks[].findings[]` lists it (approaches/checker.md 2). `kind` is the name of the
 /// condition the check judges, or one of `missing-fixture-entry`, `refused-precondition`, `ran-over-time-limit`; it is
 /// public spelling of the report.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct Detail {
     pub kind: &'static str,
     /// What `reason` is made of, whole.
@@ -81,7 +82,7 @@ impl Detail {
 }
 
 /// One check and what it found.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Check {
     /// `L0.<name>`.
@@ -123,7 +124,7 @@ pub struct Check {
 }
 
 /// The run: the claimed level, the mode, whether it is passed, and every check.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Report {
     pub level: &'static str,
     /// The contract minor the tool claimed and the checks judged.

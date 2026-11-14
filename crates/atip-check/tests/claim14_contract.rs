@@ -6,7 +6,7 @@ use std::ffi::OsString;
 use serde_json::json;
 
 use atip_check::claim::{Claim, MINORS};
-use atip_check::cli::{parse, Command, CHECK_HELP};
+use atip_check::cli::{parse, Command};
 use atip_check::fixture;
 
 fn args(words: &[&str]) -> Vec<OsString> {
@@ -44,9 +44,12 @@ fn atip_check16_30_the_checker_knows_seven_minors_and_names_them_when_it_refuses
     assert_eq!(refused.field.as_deref(), Some("--contract"));
     assert_eq!(refused.expected, MINORS);
     assert_eq!(refused.received.as_deref(), Some("1.7"));
+    let Ok(Command::Text(help)) = parse(&args(&["check", "--help"])) else {
+        panic!("check --help is text");
+    };
     assert!(
-        CHECK_HELP.contains("1.0, 1.1, 1.2, 1.3, 1.4, 1.5 or 1.6"),
-        "{CHECK_HELP}"
+        help.contains("1.0, 1.1, 1.2, 1.3, 1.4, 1.5 or 1.6"),
+        "{help}"
     );
 }
 

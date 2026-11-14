@@ -1,30 +1,97 @@
 //! What `atip` prints: the envelope of the contract (spec 6, 7), or the text of a person.
 //!
-//! The checker follows the contract it checks, at L0. Its error codes and
-//! their rows live here, and nothing else decides an exit.
+//! The checker follows the contract it checks: it declares [`DECLARED_MINOR`] and the level of its own tree
+//! (`crate::spec::LEVEL`). Its error and warning codes and their rows live here, and nothing else decides an exit
+//! (spec 7.4.2): a [`Failure`] is built from a [`Code`], whose row gives the exit and `retryable`.
 
 use serde::Serialize;
 use serde_json::Value;
 
-use atip::{CodeInfo, ReasonInfo, WarningInfo};
+use atip::{CodeInfo, Condition, ReasonInfo, WarningInfo};
 
 /// The tool name every envelope and every text error carries.
 pub const TOOL: &str = "atip";
-/// The version of the one output `atip check` has.
+/// The version of the report `atip check` prints, and of what a failure of a command other than `schema` would have printed.
 pub const SCHEMA_VERSION: &str = "1.0";
-/// `meta.contractVersion` of every envelope `atip check` prints: the minor the checker itself declares (spec 15.7). It is
-/// the checker's own constant, apart from `atip::CONTRACT_VERSION`, the newest minor the crate implements.
-pub const DECLARED_MINOR: &str = "1.4";
+/// `meta.contractVersion` of every envelope `atip` prints: the minor the checker itself declares (spec 15.5), and the
+/// `meta.schemaVersion` of a `schema` answer (spec 9.1.2). It is the checker's own constant, apart from
+/// `atip::CONTRACT_VERSION`, the newest minor the crate implements.
+pub const DECLARED_MINOR: &str = "1.6";
+/// [`DECLARED_MINOR`] as the crate's value, which the projection of `schema` writes its documents for.
+pub const DECLARED: atip::Minor = atip::Minor::V1_6;
 
-/// `atip`'s error registry (spec 7.3), sorted by code: the four reserved codes it can produce (`USAGE`, `UNKNOWN_COMMAND`, `COMMAND_REQUIRED`, `INTERNAL`) and four of its own.
-pub const REGISTRY: [CodeInfo; 7] = [
-    CodeInfo { code: "BINARY_INVALID", meaning: "the binary named by --bin does not exist, is not a file, is not executable, or cannot be started", exit: 2, retryable: false, fix: "Pass the path of a built, executable binary with --bin <BINARY>.", reasons: &[] },
-    CodeInfo { code: "COMMAND_REQUIRED", meaning: "atip was run without a command", exit: 2, retryable: false, fix: "Run atip check --bin <BINARY> --level L0 --fixture <FILE>.", reasons: &[] },
-    CodeInfo { code: "FIXTURE_INVALID", meaning: "the fixture file cannot be read, is not JSON, has a member of the wrong shape, or its prepare or setup command failed", exit: 2, retryable: false, fix: "Fix the member the message names, or the setup command, then run atip check again.", reasons: &FIXTURE_INVALID_REASONS },
-    CodeInfo { code: "INTERNAL", meaning: "a bug in atip, or its scratch space could not be used", exit: 1, retryable: false, fix: "Report it at https://github.com/journeyWorker/atip/issues with the command line; if the message names a scratch directory, point TMPDIR at a writable one.", reasons: &[] },
-    CodeInfo { code: "LEVEL_FAILED", meaning: "a MUST check of the level failed or is unprovided", exit: 1, retryable: false, fix: "Read data.checks, fix every check whose result is fail or unprovided, then run atip check again.", reasons: &[] },
-    CodeInfo { code: "UNKNOWN_COMMAND", meaning: "the command word is not a command of atip", exit: 2, retryable: false, fix: "Run atip check; it is the only command.", reasons: &[] },
-    CodeInfo { code: "USAGE", meaning: "the command line does not parse or does not satisfy the command's requirements", exit: 2, retryable: false, fix: "Run atip check --help for the options.", reasons: &[] },
+/// `atip`'s error registry (spec 7.4), sorted by code: the four core codes it can produce (`USAGE`, `UNKNOWN_COMMAND`,
+/// `COMMAND_REQUIRED`, `INTERNAL`) and five of its own, each `<SUBJECT>_<CONDITION>` with the condition's exit and
+/// retryability (spec 7.2; [`CodeInfo::of`] does not build a row that breaks that).
+pub const REGISTRY: [CodeInfo; 9] = [
+    CodeInfo::of(
+        "BINARY_INVALID",
+        Condition::Invalid,
+        "the binary named by --bin does not exist, is not a file, is not executable, or cannot be started",
+        "Pass --bin the path of a built, executable binary, or the name of one on PATH.",
+        &[],
+    ),
+    CodeInfo {
+        code: "COMMAND_REQUIRED",
+        meaning: "atip was run without a command",
+        exit: 2,
+        retryable: false,
+        fix: "Run one of the commands in expected; atip schema --json describes them.",
+        reasons: &[],
+    },
+    CodeInfo::of(
+        "FIXTURE_INVALID",
+        Condition::Invalid,
+        "the fixture file cannot be read, is not JSON, has a member of the wrong shape, or its prepare or setup command failed",
+        "Fix the member the message names, or the prepare or setup command, then run atip check again.",
+        &FIXTURE_INVALID_REASONS,
+    ),
+    CodeInfo {
+        code: "INTERNAL",
+        meaning: "a bug in atip",
+        exit: 1,
+        retryable: false,
+        fix: "Report it at https://github.com/journeyWorker/atip/issues with the command line.",
+        reasons: &[],
+    },
+    CodeInfo::of(
+        "LEVEL_FAILED",
+        Condition::Failed,
+        "a MUST check of the level failed or is unprovided",
+        "Read data.checks, fix every check whose result is fail or unprovided, then run atip check again.",
+        &[],
+    ),
+    CodeInfo::of_retryable(
+        "SCRATCH_FAILED",
+        Condition::Failed,
+        true,
+        "the checks had started when a copy of the fixture state under TMPDIR could not be made, measured or removed",
+        "Free space under TMPDIR, or point TMPDIR at a writable directory, then run atip check again: it writes nothing outside its scratch copies, so a repeat is safe.",
+        &[],
+    ),
+    CodeInfo::of(
+        "SCRATCH_UNAVAILABLE",
+        Condition::Unavailable,
+        "the scratch space under TMPDIR, where atip check builds the fixture state, cannot be used now: it is missing, not writable or full",
+        "Free space under TMPDIR, or point TMPDIR at a writable directory, then run atip check again.",
+        &[],
+    ),
+    CodeInfo {
+        code: "UNKNOWN_COMMAND",
+        meaning: "a command word is not a command of atip",
+        exit: 2,
+        retryable: false,
+        fix: "Use one of the words in expected; atip schema --json lists the commands.",
+        reasons: &[],
+    },
+    CodeInfo {
+        code: "USAGE",
+        meaning: "the command line does not parse or does not satisfy the command's requirements",
+        exit: 2,
+        retryable: false,
+        fix: "Fix the argument field names; atip schema check --json and atip schema schema --json list every option.",
+        reasons: &[],
+    },
 ];
 
 /// The reasons under `FIXTURE_INVALID` (spec 7.6), sorted by name.
@@ -71,14 +138,34 @@ pub enum Code {
     FixtureInvalid,
     Internal,
     LevelFailed,
+    ScratchFailed,
+    ScratchUnavailable,
     UnknownCommand,
     Usage,
 }
 
 impl Code {
+    /// Every code, in the order of [`REGISTRY`].
+    pub const ALL: [Code; 9] = [
+        Code::BinaryInvalid,
+        Code::CommandRequired,
+        Code::FixtureInvalid,
+        Code::Internal,
+        Code::LevelFailed,
+        Code::ScratchFailed,
+        Code::ScratchUnavailable,
+        Code::UnknownCommand,
+        Code::Usage,
+    ];
+
     /// The registry row: the only source of the exit and of `retryable`.
     pub fn info(self) -> &'static CodeInfo {
         &REGISTRY[self as usize]
+    }
+
+    /// The code whose registered name is `name`.
+    pub fn named(name: &str) -> Option<Code> {
+        Code::ALL.into_iter().find(|code| code.info().code == name)
     }
 }
 
@@ -105,7 +192,7 @@ impl std::ops::DerefMut for Failure {
 pub struct FailureBody {
     pub code: Code,
     pub message: String,
-    /// The command resolved so far (`check`); `None` when not even the first word resolved.
+    /// The command resolved so far (`check`, `schema`); `None` when not even the first word resolved.
     pub command: Option<&'static str>,
     pub field: Option<String>,
     pub expected: Vec<String>,
@@ -135,6 +222,25 @@ impl Failure {
             data: None,
             detail: None,
         }))
+    }
+
+    /// The failure of an error the `atip` crate built (the `--help --json` and `--version --json` refusals), in `command`. A code
+    /// the registry lacks is a bug of this build: `INTERNAL`.
+    pub fn from_cli(error: &atip::CliError, command: Option<&'static str>) -> Self {
+        let Some(code) = Code::named(error.code) else {
+            return Failure::new(
+                Code::Internal,
+                format!("atip hit a bug: the code {} is not registered", error.code),
+            );
+        };
+        let mut failure = Failure::new(code, error.message.clone())
+            .expected(error.expected_values().unwrap_or_default().iter().cloned())
+            .suggestions(error.suggested().iter().cloned());
+        failure.command = command;
+        failure.field = error.field_name().map(str::to_string);
+        failure.received = error.received_value().map(str::to_string);
+        failure.hint = error.hint_text().map(str::to_string);
+        failure
     }
 
     #[must_use]
@@ -245,13 +351,22 @@ struct ErrorBody<'a> {
 }
 
 #[derive(Serialize)]
-struct Envelope<'a> {
+struct Envelope<'a, D: Serialize> {
     ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<&'a Value>,
+    data: Option<&'a D>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<ErrorBody<'a>>,
     meta: Meta,
+}
+
+/// The `meta.schemaVersion` of an answer of `command`: the declared minor for `schema` (spec 9.1.2), [`SCHEMA_VERSION`] for
+/// `check`, and `1.0` before a command resolved (spec 6.11).
+fn schema_version(command: Option<&'static str>) -> &'static str {
+    match command.and_then(crate::cli::CommandId::named) {
+        Some(id) => crate::spec::output_version(id),
+        None => SCHEMA_VERSION,
+    }
 }
 
 fn meta(command: Option<&'static str>, warnings: Vec<MetaWarning>) -> Meta {
@@ -259,7 +374,7 @@ fn meta(command: Option<&'static str>, warnings: Vec<MetaWarning>) -> Meta {
         command,
         contract: atip::schema::CONTRACT,
         contract_version: DECLARED_MINOR,
-        schema_version: SCHEMA_VERSION,
+        schema_version: schema_version(command),
         tool: TOOL,
         tool_version: env!("CARGO_PKG_VERSION"),
         warnings,
@@ -282,6 +397,17 @@ pub fn success_line(data: &Value, advisories: usize) -> String {
         data: Some(data),
         error: None,
         meta: meta(Some("check"), warnings),
+    })
+}
+
+/// The success envelope of an answer of `command` (`schema`, spec 9.1.2; `skills show`, spec 14.1): one compact line whose
+/// `data` is `document`.
+pub fn answer_line<D: Serialize>(command: crate::cli::CommandId, document: &D) -> String {
+    atip::line(&Envelope {
+        ok: true,
+        data: Some(document),
+        error: None,
+        meta: meta(Some(command.name()), Vec::new()),
     })
 }
 
@@ -339,30 +465,70 @@ pub fn failure_text(failure: &Failure) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{failure_line, failure_text, success_line, Code, Failure, REGISTRY};
+    use super::{
+        answer_line, failure_line, failure_text, success_line, Code, Failure, REGISTRY, WARNINGS,
+    };
 
     #[test]
     fn atip_check_06_the_registry_is_sorted_and_each_code_reads_its_own_row() {
         assert!(REGISTRY.windows(2).all(|pair| pair[0].code < pair[1].code));
-        for (code, name, exit) in [
-            (Code::BinaryInvalid, "BINARY_INVALID", 2),
-            (Code::CommandRequired, "COMMAND_REQUIRED", 2),
-            (Code::FixtureInvalid, "FIXTURE_INVALID", 2),
-            (Code::Internal, "INTERNAL", 1),
-            (Code::LevelFailed, "LEVEL_FAILED", 1),
-            (Code::UnknownCommand, "UNKNOWN_COMMAND", 2),
-            (Code::Usage, "USAGE", 2),
+        assert!(WARNINGS.windows(2).all(|pair| pair[0].code < pair[1].code));
+        for (code, name, exit, retryable) in [
+            (Code::BinaryInvalid, "BINARY_INVALID", 2, false),
+            (Code::CommandRequired, "COMMAND_REQUIRED", 2, false),
+            (Code::FixtureInvalid, "FIXTURE_INVALID", 2, false),
+            (Code::Internal, "INTERNAL", 1, false),
+            (Code::LevelFailed, "LEVEL_FAILED", 1, false),
+            (Code::ScratchFailed, "SCRATCH_FAILED", 1, true),
+            (Code::ScratchUnavailable, "SCRATCH_UNAVAILABLE", 2, true),
+            (Code::UnknownCommand, "UNKNOWN_COMMAND", 2, false),
+            (Code::Usage, "USAGE", 2, false),
         ] {
-            assert_eq!((code.info().code, code.info().exit), (name, exit));
+            assert_eq!(
+                (code.info().code, code.info().exit, code.info().retryable),
+                (name, exit, retryable)
+            );
             assert_eq!(Failure::new(code, "m").exit(), exit);
+            assert_eq!(Code::named(name), Some(code));
         }
-        assert!(REGISTRY.iter().all(|row| !row.retryable));
+        assert_eq!(Code::ALL.len(), REGISTRY.len());
+    }
+
+    /// Every code is a core code registered as the contract reserves it, or `<SUBJECT>_<CONDITION>` with the condition's exit
+    /// and retryability (spec 7.2).
+    #[test]
+    fn atip_check_06_every_code_is_core_or_subject_and_condition_with_the_conditions_exit_and_retryability(
+    ) {
+        for row in REGISTRY {
+            assert_eq!(
+                atip::code_name_problem(
+                    super::DECLARED,
+                    row.code,
+                    Some(i64::from(row.exit)),
+                    Some(row.retryable)
+                ),
+                None,
+                "{}",
+                row.code
+            );
+            assert_eq!(
+                atip::registration_problem(
+                    super::DECLARED,
+                    row.code,
+                    Some(i64::from(row.exit)),
+                    Some(row.retryable)
+                ),
+                None,
+                "{}",
+                row.code
+            );
+        }
     }
 
     #[test]
     fn atip_check_03_a_failure_omits_what_it_does_not_have() {
         let line = failure_line(&Failure::new(Code::UnknownCommand, "no such command"));
-        assert_eq!(line, r#"{"ok":false,"error":{"code":"UNKNOWN_COMMAND","message":"no such command","retryable":false},"meta":{"contract":"atip/1","contractVersion":"1.4","schemaVersion":"1.0","tool":"atip","toolVersion":""#.to_string() + env!("CARGO_PKG_VERSION") + r#""}}"#);
+        assert_eq!(line, r#"{"ok":false,"error":{"code":"UNKNOWN_COMMAND","message":"no such command","retryable":false},"meta":{"contract":"atip/1","contractVersion":"1.6","schemaVersion":"1.0","tool":"atip","toolVersion":""#.to_string() + env!("CARGO_PKG_VERSION") + r#""}}"#);
         let full = failure_line(
             &Failure::new(Code::Usage, "m")
                 .in_command("check")
@@ -380,6 +546,23 @@ mod tests {
             "{full}"
         );
         assert!(!full.contains("null") && !full.contains("[]"));
+        // A failure of `schema` has the version of what `schema` answers: the declared minor (spec 6.11, 9.1.2).
+        let schema = failure_line(&Failure::new(Code::UnknownCommand, "m").in_command("schema"));
+        assert!(schema.contains(r#""schemaVersion":"1.6""#), "{schema}");
+        let schema_answer = answer_line(
+            crate::cli::CommandId::Schema,
+            &serde_json::json!({"kind": "tree"}),
+        );
+        assert!(
+            schema_answer.contains(r#""command":"schema","contract":"atip/1","contractVersion":"1.6","schemaVersion":"1.6""#),
+            "{schema_answer}"
+        );
+        let guide = answer_line(crate::cli::CommandId::SkillsShow, &serde_json::json!({}));
+        assert!(
+            guide.contains(r#""command":"skills show""#)
+                && guide.contains(r#""schemaVersion":"1.0""#),
+            "{guide}"
+        );
     }
 
     #[test]
@@ -402,6 +585,6 @@ mod tests {
             warned.contains(r#""warnings":[{"code":"SHOULD_FAILED""#),
             "{warned}"
         );
-        assert!(warned.contains(r#""contractVersion":"1.4""#));
+        assert!(warned.contains(r#""contractVersion":"1.6""#));
     }
 }

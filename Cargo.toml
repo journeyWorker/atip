@@ -31,7 +31,8 @@ clap = { version = "4.5", features = ["derive", "env"] }
 # Content hashing (cursor binding, plan digest)
 sha2 = "0.10"
 
-# Serialization
+# Serialization, and the JSON Schemas of reports and documents
+schemars = "1.2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

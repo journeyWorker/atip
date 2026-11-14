@@ -1,6 +1,6 @@
 [package]
 name = "atip-check"
-version = "0.3.3"
+version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -9,16 +9,16 @@ description = "atip check: runs a built binary and checks the atip/1 contract fr
 readme = "README.md"
 keywords = ["cli", "conformance", "checker", "json", "agent"]
 categories = ["command-line-utilities", "development-tools::testing"]
-# The published crate: the library and the `atip` binary. The fake tool, its fixtures and the tests are the checker's own
-# test subject and stay in the repository.
-include = ["/src/**", "/README.md"]
+# The published crate: the library, the `atip` binary and the guides it embeds (`atip skills show`). The fake tool, its
+# fixtures and the tests are the checker's own test subject and stay in the repository.
+include = ["/src/**", "/guides/**", "/README.md"]
 autobins = false
 
 [lib]
 name = "atip_check"
 path = "src/lib.rs"
 
-# The checker. Its bin is `atip`; `atip check` is its one command.
+# The checker. Its bin is `atip`; its commands are `check`, `schema` and `skills show`.
 [[bin]]
 name = "atip"
 path = "src/main.rs"
@@ -43,6 +43,10 @@ test-support = []
 [dependencies]
 # The checker validates every document it reads against the contract's schemas, so it needs the validators of `atip`.
 atip = { workspace = true, features = ["validate"] }
+# The command line (`check`, `schema`): the clap tree the `atip` crate projects onto `atip schema`'s documents.
+clap = { workspace = true }
+# The JSON Schema of the check report, which `atip schema check --schemas` serves.
+schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

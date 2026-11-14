@@ -278,9 +278,13 @@ impl Runner {
     /// Builds the template by running the fixture's `setup` once.
     pub fn new(bin: &Path, fixture: &Fixture) -> Result<Self, RunError> {
         ignore_sigpipe();
+        // A relative TMPDIR is taken from the working directory once, here: the copies, their `HOME` and the working directory of
+        // every invocation are then absolute paths, whatever directory a call runs in.
+        let base = std::path::absolute(std::env::temp_dir())
+            .map_err(|error| RunError::Scratch(error.to_string()))?;
         let scratch = tempfile::Builder::new()
             .prefix("atip-check-")
-            .tempdir()
+            .tempdir_in(base)
             .map_err(|error| RunError::Scratch(error.to_string()))?;
         let template = scratch.path().join("template");
         for part in ["work", "home"] {

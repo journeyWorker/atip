@@ -1,0 +1,776 @@
+{
+  "_generated": "Generated from the clap tree of crates/atip-check/src/cli.rs and the facts of crates/atip-check/src/spec.rs: do not edit. Regenerate with `ATIP_CHECK_BLESS_CLI_SPEC=1 cargo test -p atip-check --test cli_spec`.",
+  "commands": [
+    {
+      "command": "check",
+      "effect": "read",
+      "effectNote": "Runs the binary under test, and the fixture's prepare programs and setup calls, in scratch copies of the fixture state under TMPDIR, and removes the copies before it ends; it writes nothing else.",
+      "errors": [
+        "BINARY_INVALID",
+        "FIXTURE_INVALID",
+        "LEVEL_FAILED",
+        "SCRATCH_FAILED",
+        "SCRATCH_UNAVAILABLE"
+      ],
+      "examples": [
+        "atip check --bin atip --fixture atip.fixture.json --level L0 --json"
+      ],
+      "kind": "command",
+      "options": [
+        {
+          "help": "The binary to check: a path, or a name found on PATH",
+          "name": "bin",
+          "required": true,
+          "valueName": "BINARY"
+        },
+        {
+          "defaultNote": "the level of the tool's own `schema --json` (`data.level`), and L0 when it prints none",
+          "help": "The level the tool claims: L0, L1 or L2 (cumulative: L2 also runs the checks of L0 and L1). Defaults to the level of the tool's own `schema --json`, and to L0 when it has none",
+          "name": "level",
+          "possibleValues": [
+            "L0",
+            "L1",
+            "L2"
+          ],
+          "valueType": "enum"
+        },
+        {
+          "help": "The tool's fixture file: JSON with contractVersion, prepare, setup, env, timeoutSeconds, probe, globalOptions, registry, warnings, commands (and, in commands, ok, refused, paged, missingValue, fields, domainRejects, batchFailsAt, batchFailsFirst, preview, async and allowedEffects), search and notRun (the ids of commands that do not end on their own, such as a server: each runs once, up to its first JSON document, and is then signalled)",
+          "name": "fixture",
+          "required": true,
+          "valueName": "FILE",
+          "valueType": "path"
+        },
+        {
+          "defaultNote": "the fixture's contractVersion, and 1.0 when the fixture has none",
+          "help": "The contract minor the tool claims: 1.0, 1.1, 1.2, 1.3, 1.4, 1.5 or 1.6. Defaults to the fixture's contractVersion, and to 1.0. When it differs from the minor the fixture declares, it is not refused: the checks run by that minor's rules as a preview. The report says `declared X, checked as Y, not a level claim`, the verdict is `preview` (no level is met or failed), and the failed checks are listed; a failed or unprovided MUST check still exits 1 (LEVEL_FAILED), a preview that passes exits 0",
+          "name": "contract",
+          "possibleValues": [
+            "1.0",
+            "1.1",
+            "1.2",
+            "1.3",
+            "1.4",
+            "1.5",
+            "1.6"
+          ],
+          "valueName": "MAJOR.MINOR",
+          "valueType": "enum"
+        },
+        {
+          "help": "Run every check of the level, not only the interface checks (see Modes)",
+          "name": "deep",
+          "valueType": "switch"
+        },
+        {
+          "defaultNote": "half the processors atip may use, at most 4 and at least 1",
+          "domain": {
+            "minimum": 1
+          },
+          "help": "How many invocations of a deep run may run at once, each in its own copy of the state: a whole number, at least 1 (1 runs them one after another). Defaults to half the processors, at most 4. Discovery, the calls that continue another call's state, the timed and terminal runs and the notRun commands run alone, and the report is the same whatever the number",
+          "name": "jobs",
+          "valueType": "integer"
+        }
+      ],
+      "outputs": [
+        {
+          "schemaRef": "#/schemas/CheckReport"
+        }
+      ],
+      "summary": "Run the checks of a level against a built binary"
+    },
+    {
+      "command": "schema",
+      "constraints": [
+        {
+          "names": [
+            "path",
+            "errors",
+            "error",
+            "warnings",
+            "warning"
+          ],
+          "rule": "atMostOne"
+        },
+        {
+          "names": [
+            "schemas",
+            "errors",
+            "error",
+            "warnings",
+            "warning"
+          ],
+          "rule": "atMostOne"
+        }
+      ],
+      "effect": "read",
+      "errors": [
+        "UNKNOWN_COMMAND"
+      ],
+      "examples": [
+        "atip schema --json",
+        "atip schema check --json",
+        "atip schema check --schemas --json",
+        "atip schema --errors --json",
+        "atip schema --error FIXTURE_INVALID --json",
+        "atip schema --warnings --json",
+        "atip schema --warning SHOULD_FAILED --json"
+      ],
+      "kind": "command",
+      "operands": [
+        {
+          "help": "The command to describe, as separate words or one quoted string; none for the tree",
+          "name": "path",
+          "variadic": true
+        }
+      ],
+      "options": [
+        {
+          "help": "The JSON Schemas the command's document refers to, and the rejects of its validators, instead of the document (needs a command path)",
+          "name": "schemas",
+          "valueType": "switch"
+        },
+        {
+          "help": "Every error code, with its exit, retryability, meaning, fix and reasons",
+          "name": "errors",
+          "valueType": "switch"
+        },
+        {
+          "help": "One error code: its exit, retryability, meaning, fix and reasons",
+          "name": "error",
+          "valueName": "CODE"
+        },
+        {
+          "help": "Every warning code, with its meaning and fix",
+          "name": "warnings",
+          "valueType": "switch"
+        },
+        {
+          "help": "One warning code: its meaning and fix",
+          "name": "warning",
+          "valueName": "CODE"
+        }
+      ],
+      "outputs": [
+        {
+          "schemaRef": "#/schemas/SchemaAnswer",
+          "schemaVersion": "1.6"
+        }
+      ],
+      "summary": "Describe atip's commands, options and error codes as JSON",
+      "validators": [
+        {
+          "arguments": [
+            "schemas",
+            "path"
+          ],
+          "code": "USAGE",
+          "description": "--schemas answers for one command: path names a command, not nothing (the tree)."
+        }
+      ]
+    },
+    {
+      "command": "skills show",
+      "effect": "read",
+      "examples": [
+        "atip skills show --json",
+        "atip skills show checker --json"
+      ],
+      "kind": "command",
+      "operands": [
+        {
+          "help": "The guide to print; none for the default guide, which lists every guide",
+          "name": "name",
+          "possibleValues": [
+            "checker"
+          ],
+          "valueType": "enum"
+        }
+      ],
+      "outputs": [
+        {
+          "schemaRef": "#/schemas/Guide"
+        }
+      ],
+      "summary": "Print a guide: the default one, or the one NAME names"
+    }
+  ],
+  "contract": "atip/1",
+  "contractVersion": "1.6",
+  "environment": [
+    {
+      "about": "atip check looks --bin up on it when --bin is a bare name, and passes it to every program it runs",
+      "name": "PATH"
+    },
+    {
+      "about": "where atip check makes its scratch copies of the fixture state: the system's temporary directory when unset, a relative path taken from the working directory",
+      "name": "TMPDIR"
+    }
+  ],
+  "errors": [
+    {
+      "code": "BINARY_INVALID",
+      "exit": 2,
+      "fix": "Pass --bin the path of a built, executable binary, or the name of one on PATH.",
+      "meaning": "the binary named by --bin does not exist, is not a file, is not executable, or cannot be started",
+      "retryable": false
+    },
+    {
+      "code": "COMMAND_REQUIRED",
+      "exit": 2,
+      "fix": "Run one of the commands in expected; atip schema --json describes them.",
+      "meaning": "atip was run without a command",
+      "retryable": false
+    },
+    {
+      "code": "FIXTURE_INVALID",
+      "exit": 2,
+      "fix": "Fix the member the message names, or the prepare or setup command, then run atip check again.",
+      "meaning": "the fixture file cannot be read, is not JSON, has a member of the wrong shape, or its prepare or setup command failed",
+      "reasons": [
+        {
+          "fix": "Write the fixture as one JSON object.",
+          "meaning": "the fixture file is not JSON",
+          "reason": "NOT_JSON"
+        },
+        {
+          "fix": "Run the prepare command named in the message by hand and fix what it reports.",
+          "meaning": "a prepare command of the fixture did not exit 0",
+          "reason": "PREPARE_FAILED"
+        },
+        {
+          "fix": "Run the setup command named in the message by hand and fix what it reports.",
+          "meaning": "a setup command of the fixture did not exit 0",
+          "reason": "SETUP_FAILED"
+        },
+        {
+          "fix": "Pass the path of a readable file with --fixture.",
+          "meaning": "the fixture file cannot be read",
+          "reason": "UNREADABLE"
+        },
+        {
+          "fix": "Fix the member the message names.",
+          "meaning": "a member of the fixture has the wrong shape or an unknown value",
+          "reason": "WRONG_SHAPE"
+        }
+      ],
+      "retryable": false
+    },
+    {
+      "code": "INTERNAL",
+      "exit": 1,
+      "fix": "Report it at https://github.com/journeyWorker/atip/issues with the command line.",
+      "meaning": "a bug in atip",
+      "retryable": false
+    },
+    {
+      "code": "LEVEL_FAILED",
+      "exit": 1,
+      "fix": "Read data.checks, fix every check whose result is fail or unprovided, then run atip check again.",
+      "meaning": "a MUST check of the level failed or is unprovided",
+      "retryable": false
+    },
+    {
+      "code": "SCRATCH_FAILED",
+      "exit": 1,
+      "fix": "Free space under TMPDIR, or point TMPDIR at a writable directory, then run atip check again: it writes nothing outside its scratch copies, so a repeat is safe.",
+      "meaning": "the checks had started when a copy of the fixture state under TMPDIR could not be made, measured or removed",
+      "retryable": true
+    },
+    {
+      "code": "SCRATCH_UNAVAILABLE",
+      "exit": 2,
+      "fix": "Free space under TMPDIR, or point TMPDIR at a writable directory, then run atip check again.",
+      "meaning": "the scratch space under TMPDIR, where atip check builds the fixture state, cannot be used now: it is missing, not writable or full",
+      "retryable": true
+    },
+    {
+      "code": "UNKNOWN_COMMAND",
+      "exit": 2,
+      "fix": "Use one of the words in expected; atip schema --json lists the commands.",
+      "meaning": "a command word is not a command of atip",
+      "retryable": false
+    },
+    {
+      "code": "USAGE",
+      "exit": 2,
+      "fix": "Fix the argument field names; atip schema check --json and atip schema schema --json list every option.",
+      "meaning": "the command line does not parse or does not satisfy the command's requirements",
+      "retryable": false
+    }
+  ],
+  "groups": [
+    {
+      "command": "skills",
+      "commands": [
+        {
+          "command": "skills show",
+          "effect": "read",
+          "summary": "Print a guide: the default one, or the one NAME names"
+        }
+      ],
+      "kind": "group",
+      "summary": "Read the guide built into atip"
+    }
+  ],
+  "level": "L2",
+  "removed": [],
+  "schemas": {
+    "check": {
+      "command": "check",
+      "kind": "schemas",
+      "schemas": {
+        "Check": {
+          "description": "One check and what it found.",
+          "properties": {
+            "advisories": {
+              "description": "Things seen that the contract only recommends against (stderr output that carries no error or result). They never change the result.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "findings": {
+              "description": "Everything a `fail` or `unprovided` check found, whole and in order: `reason` is the first three messages, cut.",
+              "items": {
+                "$ref": "#/schemas/Detail"
+              },
+              "type": "array"
+            },
+            "id": {
+              "description": "`L0.<name>`.",
+              "type": "string"
+            },
+            "notRun": {
+              "description": "The commands the fixture names under `notRun`: the checker never ran them, so this check, which runs commands, did not run them either. Information only: it never changes the result, and a command left out of the run is always on the report.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "notes": {
+              "description": "Facts the check found that do not change its result: the rules an `entailed` check rests on, a verified Unicode-version difference between the two regular-expression engines.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "observed": {
+              "description": "The invocations the verdict rests on: argv, exit, and what the binary printed.",
+              "items": true,
+              "type": "array"
+            },
+            "ran": {
+              "description": "How far a check that judges part of its rule without `--deep` ran: `interface` (the part an interface run judges) or `all` (a deep run). Absent for a check that is the same in both modes.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "description": "Why the check failed, or which fixture entry it lacks.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "result": {
+              "$ref": "#/schemas/CheckResult"
+            },
+            "rules": {
+              "description": "The numbers of the contract's rules the check enforces.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "skipped": {
+              "description": "The runs of those commands that this check did not make, each `<command>: <what>: notRun`: runs that would succeed and so never end.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "strength": {
+              "$ref": "#/schemas/Strength"
+            },
+            "unlisted": {
+              "description": "The write and destructive commands of the tool's documents that no fixture entry covers, named by `L1.constraints`, `L1.domains` and `L1.validators`: the checker never runs them, so they are outside what those checks probe (contract 1.1.2). Information only: it never changes the result.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "strength",
+            "result",
+            "rules"
+          ],
+          "type": "object"
+        },
+        "CheckReport": {
+          "description": "The run: the claimed level, the mode, whether it is passed, and every check.",
+          "properties": {
+            "checks": {
+              "items": {
+                "$ref": "#/schemas/Check"
+              },
+              "type": "array"
+            },
+            "contractVersion": {
+              "description": "The contract minor the tool claimed and the checks judged.",
+              "type": "string"
+            },
+            "declaredContractVersion": {
+              "description": "The minor the fixture declares, when `--contract` asked for another one (a preview, never a level claim).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "deepChecks": {
+              "description": "The checks of the level that this run did not run, because only `--deep` does (interface mode only), by id.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "level": {
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/schemas/Mode",
+              "description": "`interface` (the default) or `deep` (`--deep`)."
+            },
+            "passed": {
+              "description": "Whether no MUST check of the checks run failed or is unprovided. In interface mode that is a verdict on those checks only, not on the level.",
+              "type": "boolean"
+            },
+            "prepare": {
+              "description": "The programs the fixture's `prepare` ran before `setup`, each as its argv: what was made outside the tool, for whoever reviews the claim.",
+              "items": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "statement": {
+              "description": "`declared X, checked as Y, not a level claim` for a preview.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "verdict": {
+              "description": "`preview` when `--contract` differs from the declared minor: the verdict that replaces met and failed. `passed` then only counts the MUST checks.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "level",
+            "contractVersion",
+            "mode",
+            "passed",
+            "checks"
+          ],
+          "title": "Report",
+          "type": "object"
+        },
+        "CheckResult": {
+          "description": "The five results of a check (approaches/checker.md 2).",
+          "oneOf": [
+            {
+              "const": "pass",
+              "description": "Exercised and held.",
+              "type": "string"
+            },
+            {
+              "const": "fail",
+              "description": "Exercised and violated; for a SHOULD check, an advisory.",
+              "type": "string"
+            },
+            {
+              "const": "unprovided",
+              "description": "The check needs a fixture entry the tool did not provide.",
+              "type": "string"
+            },
+            {
+              "const": "unsupported",
+              "description": "The check does not apply: no envelope the run saw carries what it judges (`L0.next` without a `meta.next`, `L0.page` without a `meta.page`).",
+              "type": "string"
+            },
+            {
+              "const": "entailed",
+              "description": "The rule cannot be violated alone (an L1 matter: no L0 check is ever `entailed`).",
+              "type": "string"
+            }
+          ]
+        },
+        "Detail": {
+          "description": "One thing a check found, as `data.checks[].findings[]` lists it (approaches/checker.md 2). `kind` is the name of the\ncondition the check judges, or one of `missing-fixture-entry`, `refused-precondition`, `ran-over-time-limit`; it is\npublic spelling of the report.",
+          "properties": {
+            "argv": {
+              "description": "The argv of the invocation the finding comes from, when one invocation decided it.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "code": {
+              "description": "The registered error code the finding rests on (`refused-precondition`).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "type": "string"
+            },
+            "message": {
+              "description": "What `reason` is made of, whole.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "type": "object"
+        },
+        "Mode": {
+          "description": "How much of the contract a run checks (approaches/checker.md 3.1). `Interface` is the default: the checks that judge what the tool\nprints for ordinary calls, a few process launches on one shared copy of the fixture state. `Deep` (`--deep`) runs every check of the\nlevel, each invocation in a fresh copy of the state.",
+          "enum": [
+            "interface",
+            "deep"
+          ],
+          "type": "string"
+        },
+        "Strength": {
+          "description": "Whether a failure of the check fails the level.",
+          "oneOf": [
+            {
+              "const": "MUST",
+              "description": "A failure, or a missing fixture entry, fails the level.",
+              "type": "string"
+            },
+            {
+              "const": "SHOULD",
+              "description": "A failure is an advisory, reported and never failing.",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "schema": {
+      "command": "schema",
+      "kind": "schemas",
+      "rejects": [
+        [
+          "atip schema --schemas --json"
+        ]
+      ],
+      "schemas": {
+        "SchemaAnswer": {
+          "anyOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "tree"
+                }
+              },
+              "required": [
+                "kind",
+                "level",
+                "commands"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "group"
+                }
+              },
+              "required": [
+                "kind",
+                "command",
+                "summary",
+                "commands"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command"
+                }
+              },
+              "required": [
+                "kind",
+                "command",
+                "summary",
+                "effect",
+                "outputs",
+                "examples"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "schemas"
+                }
+              },
+              "required": [
+                "kind",
+                "command",
+                "schemas"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "errors"
+                }
+              },
+              "required": [
+                "kind",
+                "errors"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "error"
+                }
+              },
+              "required": [
+                "kind",
+                "error"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "warnings"
+                }
+              },
+              "required": [
+                "kind",
+                "warnings"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "warning"
+                }
+              },
+              "required": [
+                "kind",
+                "warning"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "One answer of `atip schema`, told apart by `kind`: the tree, a group, a command document, the schemas of a command, the error registry or one entry, the warning registry or one entry (spec 9).",
+          "title": "SchemaAnswer"
+        }
+      }
+    },
+    "skills show": {
+      "command": "skills show",
+      "kind": "schemas",
+      "schemas": {
+        "Guide": {
+          "additionalProperties": false,
+          "description": "The JSON representation of a guide printed by `<tool> skills show [NAME] --json` (spec 14.3).",
+          "patternProperties": {
+            "^x-[a-z][a-z0-9-]*$": true
+          },
+          "properties": {
+            "full": {
+              "description": "Whether --full material is included.",
+              "type": "boolean"
+            },
+            "guides": {
+              "description": "The name of every guide in this build, this one included.",
+              "items": {
+                "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "name": {
+              "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "text": {
+              "description": "The guide as Markdown.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "text",
+            "guides"
+          ],
+          "title": "atip/1 `skills show --json` data",
+          "type": "object"
+        }
+      }
+    }
+  },
+  "tool": "atip",
+  "tree": {
+    "commands": [
+      {
+        "command": "check",
+        "effect": "read",
+        "summary": "Run the checks of a level against a built binary"
+      },
+      {
+        "command": "schema",
+        "effect": "read",
+        "summary": "Describe atip's commands, options and error codes as JSON"
+      },
+      {
+        "command": "skills",
+        "kind": "group",
+        "summary": "Read the guide built into atip"
+      },
+      {
+        "command": "skills show",
+        "effect": "read",
+        "summary": "Print a guide: the default one, or the one NAME names"
+      }
+    ],
+    "kind": "tree",
+    "level": "L2"
+  },
+  "warnings": [
+    {
+      "code": "SHOULD_FAILED",
+      "fix": "Read data.checks for the checks whose strength is SHOULD and whose result is fail.",
+      "meaning": "a SHOULD check failed: an advisory, which never fails the level"
+    }
+  ]
+}

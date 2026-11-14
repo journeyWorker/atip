@@ -1,20 +1,28 @@
-//! `atip`'s command line: one command, `check`.
+//! `atip`'s command line: `check` and `schema`, parsed by clap.
 //!
-//! Parsed by hand, so the checker names no argument-parsing framework and
-//! answers every malformed line with the contract's codes: `UNKNOWN_COMMAND`,
-//! `COMMAND_REQUIRED` or `USAGE` with the argument at fault in `field`.
+//! The clap tree of [`command`] is the one description of the syntax: `atip schema` projects it with the `atip` crate
+//! (`crate::spec`), and every parse failure is mapped once, here, onto the contract's codes: `UNKNOWN_COMMAND`,
+//! `COMMAND_REQUIRED`, or `USAGE` with the argument at fault in `field` (spec 7.1.3, 7.3; Annex S1 item 6).
 
 use std::ffi::OsString;
+use std::path::PathBuf;
+
+use clap::builder::PossibleValuesParser;
+use clap::error::{ContextKind, ContextValue, ErrorKind};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 
 use crate::claim::MINORS;
-use crate::output::{Code, Failure};
+use crate::output::{Code, Failure, TOOL};
 use crate::report::Mode;
 
 /// The levels the contract defines; each has checks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Level {
+    #[value(name = "L0")]
     L0,
+    #[value(name = "L1")]
     L1,
+    #[value(name = "L2")]
     L2,
 }
 
@@ -49,60 +57,86 @@ pub enum LevelSource {
     Tree,
 }
 
+/// The arguments of `atip schema`. The path, `--errors`, `--error`, `--warnings` and `--warning` exclude each other, and so do
+/// `--schemas` and the four registry options (clap refuses both, spec 9.1.1); that `--schemas` names a command is the
+/// validator of `crate::spec`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SchemaArgs {
+    /// The command path, as given: each word separately or several in one quoted word.
+    pub path: Vec<String>,
+    pub schemas: bool,
+    pub errors: bool,
+    pub error: Option<String>,
+    pub warnings: bool,
+    pub warning: Option<String>,
+}
+
 /// What the command line asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    Version,
-    RootHelp,
-    CheckHelp,
+    /// `--help` or `--version`: text for people, printed as it is.
+    Text(String),
     /// A run of the checks: the arguments (with `L0` as the level when [`LevelSource::Tree`] says it is the tool's to give), the mode (`--deep` makes it
     /// [`Mode::Deep`]) and where the level comes from.
     Check(CheckArgs, Mode, LevelSource),
+    /// A `schema` answer.
+    Schema(SchemaArgs),
+    /// `skills show`: the guide named, or the default one.
+    Skills(Option<String>),
 }
 
-const COMMANDS: [&str; 1] = ["check"];
-const ROOT_OPTIONS: [&str; 3] = ["--json", "--version", "--help"];
-const CHECK_OPTIONS: [&str; 8] = [
-    "--bin",
-    "--level",
-    "--fixture",
-    "--contract",
-    "--deep",
-    "--jobs",
-    "--json",
-    "--help",
-];
-const LEVELS: [&str; 3] = ["L0", "L1", "L2"];
+/// The commands of `atip`, by id (spec 4.1): the commands of the tree, which every table keyed by command matches
+/// exhaustively, so a command without its facts does not compile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandId {
+    Check,
+    Schema,
+    SkillsShow,
+}
 
-pub const ROOT_HELP: &str = "atip: run a built binary and check the atip/1 contract from outside
+impl CommandId {
+    /// Every command, in the order of the tree.
+    pub const ALL: [CommandId; 3] = [CommandId::Check, CommandId::Schema, CommandId::SkillsShow];
 
-Usage: atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]
+    /// The command's id: its words, joined by one space.
+    pub const fn name(self) -> &'static str {
+        match self {
+            CommandId::Check => "check",
+            CommandId::Schema => "schema",
+            CommandId::SkillsShow => "skills show",
+        }
+    }
 
-Commands:
-  check    Run the checks of a level against a binary
+    /// The command whose id is `name`.
+    pub fn named(name: &str) -> Option<CommandId> {
+        CommandId::ALL.into_iter().find(|id| id.name() == name)
+    }
+}
 
-Options:
-  -h, --help       Print help
-  -V, --version    Print the version
+/// The groups of `atip`: `skills`, which holds `skills show`.
+pub const GROUPS: [&str; 1] = ["skills"];
 
-Run atip check --help for the options of check.";
+/// The id of the command or group `path` names, as a string that lives as long as the program.
+fn path_id(path: &[String]) -> Option<&'static str> {
+    let joined = path.join(" ");
+    CommandId::named(&joined)
+        .map(CommandId::name)
+        .or_else(|| GROUPS.into_iter().find(|group| *group == joined))
+}
 
-pub const CHECK_HELP: &str = "atip check: run the checks of a level against a built binary
+/// The first line of every `--help`: where an agent reads the machine description and the guide (spec 4.4.2, 4.4.3).
+pub const HELP_POINTER: &str =
+    "Agents: `atip schema --json` describes every command, option and error code as JSON; `atip skills show` is the guide.";
 
-Usage: atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]
+/// The largest `--jobs`: the largest integer the contract carries (spec 9.7.5).
+const MAX_JOBS: u64 = 9_007_199_254_740_991;
 
-Options:
-      --bin <BINARY>     The binary to check: a path, or a name found on PATH
-      --level <LEVEL>    The level the tool claims: L0, L1 or L2 (cumulative: L2 also runs the checks of L0 and L1). Defaults to the level of the tool's own `schema --json`, and to L0 when it has none
-      --fixture <FILE>   The tool's fixture file: JSON with contractVersion, prepare, setup, env, timeoutSeconds, probe, globalOptions, registry, warnings, commands (and, in commands, ok, refused, paged, missingValue, fields, domainRejects, batchFailsAt, batchFailsFirst, preview, async and allowedEffects), search and notRun (the ids of commands that do not end on their own, such as a server: each runs once, up to its first JSON document, and is then signalled)
-      --contract <MAJOR.MINOR>
-                         The contract minor the tool claims: 1.0, 1.1, 1.2, 1.3, 1.4, 1.5 or 1.6. Defaults to the fixture's contractVersion, and to 1.0. When it differs from the minor the fixture declares, it is not refused: the checks run by that minor's rules as a preview. The report says `declared X, checked as Y, not a level claim`, the verdict is `preview` (no level is met or failed), and the failed checks are listed; a failed or unprovided MUST check still exits 1 (LEVEL_FAILED), a preview that passes exits 0
-      --deep             Run every check of the level, not only the interface checks (see Modes)
-      --jobs <JOBS>      How many invocations of a deep run may run at once, each in its own copy of the state: a whole number, at least 1 (1 runs them one after another). Defaults to half the processors, at most 4. Discovery, the calls that continue another call's state, the timed and terminal runs and the notRun commands run alone, and the report is the same whatever the number
-      --json             Print one JSON envelope on stdout instead of text
-  -h, --help             Print help
+const CHECK_USAGE: &str = "atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]";
+const SCHEMA_USAGE: &str =
+    "atip schema [PATH]... [--schemas | --errors | --error <CODE> | --warnings | --warning <CODE>] [--json]";
+const SKILLS_SHOW_USAGE: &str = "atip skills show [NAME] [--json]";
 
-Fixture keys of L2:
+const CHECK_AFTER_HELP: &str = "Fixture keys of L2:
   commands.<id>.preview        argv arrays that preview a destructive command (no --commit)
   commands.<id>.async          {start, worker, outcomes}: the argv that starts the work, the NAME of the environment variable the tool's test build reads to pick its worker's outcome (the checker sets it to done, failed or timeout), and the outcomes that fake worker supports; a missing outcome leaves L2.async unprovided
   commands.<id>.allowedEffects glob list of the files a successful read may change (a read with an effectNote)
@@ -116,265 +150,478 @@ Modes:
 
 Every MUST check run passing exits 0, a failed check exits 1 (LEVEL_FAILED), a refusal exits 2.";
 
-/// Parses the arguments after the program name.
+const SCHEMA_AFTER_HELP: &str =
+    "Without --json the answer is the same JSON document, without its envelope.
+schema reads no file, no state and no environment variable, and writes nothing.";
+
+const SKILLS_SHOW_AFTER_HELP: &str = "Without --json the guide is printed as Markdown.
+The guides are built into the binary: skills show reads no file and no state, and writes nothing.";
+
+/// `atip`: one tree, `check`, `schema` and `skills show`, and the tool-wide `--json`.
+#[derive(Debug, Parser)]
+#[command(
+    name = "atip",
+    version,
+    about = "Run a built binary and check the atip/1 contract from outside",
+    disable_help_subcommand = true,
+    color = clap::ColorChoice::Never,
+    override_usage = "atip check --bin <BINARY> --fixture <FILE> [--level <LEVEL>] [--contract <MAJOR.MINOR>] [--deep] [--jobs <JOBS>] [--json]\n       atip schema [PATH]... [--schemas | --errors | --error <CODE> | --warnings | --warning <CODE>] [--json]\n       atip skills show [NAME] [--json]"
+)]
+struct Cli {
+    /// Print one JSON envelope on stdout instead of text
+    #[arg(long, global = true, overrides_with = "json", display_order = 100)]
+    json: bool,
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    /// Run the checks of a level against a built binary
+    #[command(override_usage = CHECK_USAGE, after_help = CHECK_AFTER_HELP)]
+    Check(CheckOptions),
+    /// Describe atip's commands, options and error codes as JSON
+    #[command(override_usage = SCHEMA_USAGE, after_help = SCHEMA_AFTER_HELP)]
+    Schema(SchemaOptions),
+    /// Read the guide built into atip
+    #[command(subcommand)]
+    Skills(SkillsCommands),
+}
+
+#[derive(Debug, Subcommand)]
+enum SkillsCommands {
+    /// Print a guide: the default one, or the one NAME names
+    #[command(override_usage = SKILLS_SHOW_USAGE, after_help = SKILLS_SHOW_AFTER_HELP)]
+    Show(SkillsShowOptions),
+}
+
+#[derive(Debug, Args)]
+struct SkillsShowOptions {
+    /// The guide to print; none for the default guide, which lists every guide
+    #[arg(value_name = "NAME", value_parser = PossibleValuesParser::new(crate::guides::names()))]
+    name: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct CheckOptions {
+    /// The binary to check: a path, or a name found on PATH
+    #[arg(long, value_name = "BINARY")]
+    bin: OsString,
+    /// The level the tool claims: L0, L1 or L2 (cumulative: L2 also runs the checks of L0 and L1). Defaults to the level of the tool's own `schema --json`, and to L0 when it has none
+    #[arg(long, value_name = "LEVEL", hide_possible_values = true)]
+    level: Option<Level>,
+    /// The tool's fixture file: JSON with contractVersion, prepare, setup, env, timeoutSeconds, probe, globalOptions, registry, warnings, commands (and, in commands, ok, refused, paged, missingValue, fields, domainRejects, batchFailsAt, batchFailsFirst, preview, async and allowedEffects), search and notRun (the ids of commands that do not end on their own, such as a server: each runs once, up to its first JSON document, and is then signalled)
+    #[arg(long, value_name = "FILE")]
+    fixture: PathBuf,
+    /// The contract minor the tool claims: 1.0, 1.1, 1.2, 1.3, 1.4, 1.5 or 1.6. Defaults to the fixture's contractVersion, and to 1.0. When it differs from the minor the fixture declares, it is not refused: the checks run by that minor's rules as a preview. The report says `declared X, checked as Y, not a level claim`, the verdict is `preview` (no level is met or failed), and the failed checks are listed; a failed or unprovided MUST check still exits 1 (LEVEL_FAILED), a preview that passes exits 0
+    #[arg(long, value_name = "MAJOR.MINOR", value_parser = PossibleValuesParser::new(MINORS), hide_possible_values = true)]
+    contract: Option<String>,
+    /// Run every check of the level, not only the interface checks (see Modes)
+    #[arg(long, overrides_with = "deep")]
+    deep: bool,
+    /// How many invocations of a deep run may run at once, each in its own copy of the state: a whole number, at least 1 (1 runs them one after another). Defaults to half the processors, at most 4. Discovery, the calls that continue another call's state, the timed and terminal runs and the notRun commands run alone, and the report is the same whatever the number
+    #[arg(long, value_name = "JOBS", value_parser = parse_jobs)]
+    jobs: Option<u64>,
+}
+
+#[derive(Debug, Args)]
+struct SchemaOptions {
+    /// The command to describe, as separate words or one quoted string; none for the tree
+    #[arg(value_name = "PATH")]
+    path: Vec<String>,
+    /// The JSON Schemas the command's document refers to, and the rejects of its validators, instead of the document (needs a command path)
+    #[arg(long, conflicts_with_all = ["errors", "error", "warnings", "warning"])]
+    schemas: bool,
+    /// Every error code, with its exit, retryability, meaning, fix and reasons
+    #[arg(long, conflicts_with_all = ["path", "error", "warnings", "warning"])]
+    errors: bool,
+    /// One error code: its exit, retryability, meaning, fix and reasons
+    #[arg(long, value_name = "CODE", conflicts_with_all = ["path", "warnings", "warning"])]
+    error: Option<String>,
+    /// Every warning code, with its meaning and fix
+    #[arg(long, conflicts_with_all = ["path", "warning"])]
+    warnings: bool,
+    /// One warning code: its meaning and fix
+    #[arg(long, value_name = "CODE", conflicts_with_all = ["path"])]
+    warning: Option<String>,
+}
+
+/// `--jobs`: digits only, from 1 to the largest integer the contract carries.
+fn parse_jobs(text: &str) -> Result<u64, String> {
+    let count = text
+        .bytes()
+        .all(|byte| byte.is_ascii_digit())
+        .then(|| text.parse::<u64>().ok())
+        .flatten();
+    match count {
+        Some(count) if (1..=MAX_JOBS).contains(&count) => Ok(count),
+        _ => Err(format!(
+            "{text} is not a number of jobs: a whole number from 1 to {MAX_JOBS}"
+        )),
+    }
+}
+
+/// The clap tree of `atip`, with the first line of every `--help` pointing at `atip schema --json` and `atip skills show`
+/// (spec 4.4.2, 4.4.3). Not built: [`crate::spec`] builds it, so that the global `--json` reaches every command.
+pub fn command() -> clap::Command {
+    atip::project::point_help_at_schema(Cli::command(), HELP_POINTER)
+}
+
+/// Parses the arguments after the program name. Every argument is text: one that is not UTF-8 is refused with `USAGE`
+/// naming `ARGUMENT`, in the command its preceding words resolve to, before clap reads anything.
 pub fn parse(args: &[OsString]) -> Result<Command, Failure> {
-    let mut version = false;
-    let mut help = false;
-    let json = atip::wants_json(args);
-    let mut position = 0;
-    let mut command_at = None;
-    while let Some(arg) = args.get(position) {
-        let word = arg.to_str();
-        match word {
-            Some("--") => {
-                command_at = (position + 1 < args.len()).then_some(position + 1);
-                break;
-            }
-            Some("--json") => {}
-            Some("--version" | "-V") => version = true,
-            Some("--help" | "-h") => help = true,
-            Some(option) if option.starts_with('-') && option.len() > 1 => {
-                return Err(unknown_option(option, &ROOT_OPTIONS, None))
-            }
-            _ => {
-                command_at = Some(position);
-                break;
-            }
+    if let Some(at) = args.iter().position(|arg| arg.to_str().is_none()) {
+        let mut failure =
+            Failure::new(Code::Usage, "an argument is not valid UTF-8").field("ARGUMENT");
+        failure.command = path_id(&resolved_path(&args[..at]));
+        return Err(failure);
+    }
+    let argv = std::iter::once(OsString::from(TOOL)).chain(args.iter().cloned());
+    let matches = match command().try_get_matches_from(argv) {
+        Ok(matches) => matches,
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) =>
+        {
+            return Ok(Command::Text(
+                error.render().to_string().trim_end().to_string(),
+            ))
         }
-        position += 1;
-    }
-    // In JSON mode a command word is resolved first (spec 4.4.1): `--version nosuch --json` is `UNKNOWN_COMMAND`, and the refusal of
-    // `--version --json` is the run's to make.
-    let resolve_first = json && command_at.is_some();
-    if version && !resolve_first {
-        return Ok(Command::Version);
-    }
-    let Some(command_at) = command_at else {
-        return if help {
-            Ok(Command::RootHelp)
-        } else {
-            Err(
-                Failure::new(Code::CommandRequired, "atip was run without a command")
-                    .expected(COMMANDS)
-                    .hint("Run atip check --bin <BINARY> --level L0 --fixture <FILE>."),
-            )
-        };
+        Err(error) => return Err(refusal(&error, args)),
     };
-    let word = args[command_at].to_string_lossy();
-    if word != "check" {
-        return Err(Failure::new(
-            Code::UnknownCommand,
-            format!("{word} is not a command of atip"),
+    let cli = Cli::from_arg_matches(&matches).map_err(|error| {
+        Failure::new(
+            Code::Internal,
+            format!("atip hit a bug: the parsed arguments do not fit their types: {error}"),
         )
-        .field("command")
-        .expected(COMMANDS)
-        .received(word.as_ref())
-        .suggestions(close(&word, &COMMANDS)));
-    }
-    if version {
-        return Ok(Command::Version);
-    }
-    parse_check(&args[command_at + 1..])
+    })?;
+    Ok(match cli.command {
+        Commands::Check(options) => {
+            let source = if options.level.is_some() {
+                LevelSource::Claimed
+            } else {
+                LevelSource::Tree
+            };
+            let mode = if options.deep {
+                Mode::Deep
+            } else {
+                Mode::Interface
+            };
+            Command::Check(
+                CheckArgs {
+                    bin: options.bin,
+                    level: options.level.unwrap_or(Level::L0),
+                    fixture: options.fixture.into_os_string(),
+                    contract: options.contract,
+                    jobs: options.jobs.map_or_else(default_jobs, |count| {
+                        usize::try_from(count).unwrap_or(usize::MAX)
+                    }),
+                },
+                mode,
+                source,
+            )
+        }
+        Commands::Schema(options) => Command::Schema(SchemaArgs {
+            path: options.path,
+            schemas: options.schemas,
+            errors: options.errors,
+            error: options.error,
+            warnings: options.warnings,
+            warning: options.warning,
+        }),
+        Commands::Skills(SkillsCommands::Show(options)) => Command::Skills(options.name),
+    })
 }
 
-fn parse_check(args: &[OsString]) -> Result<Command, Failure> {
-    let usage = |message: String| Failure::new(Code::Usage, message).in_command("check");
-    let mut bin = None;
-    let mut level = None;
-    let mut fixture = None;
-    let mut contract = None;
-    let mut jobs = None;
-    let mut help = false;
-    let mut deep = false;
-    let mut position = 0;
-    while let Some(arg) = args.get(position) {
-        let Some(word) = arg.to_str() else {
-            return Err(usage("an argument is not valid UTF-8".to_string()).field("ARGUMENT"));
-        };
-        if word == "--" {
-            if let Some(operand) = args.get(position + 1) {
-                return Err(unexpected_operand(&operand.to_string_lossy()));
-            }
-            break;
-        }
-        let (name, inline) = match word.split_once('=') {
-            Some((name, value)) if word.starts_with("--") => (name, Some(value)),
-            _ => (word, None),
-        };
-        match name {
-            "--json" if inline.is_none() => {}
-            "--deep" if inline.is_none() => deep = true,
-            "--help" | "-h" if inline.is_none() => help = true,
-            "--json" | "--deep" | "--help" => {
-                return Err(usage(format!("the option {name} takes no value"))
-                    .field(name)
-                    .received(inline.unwrap_or_default()))
-            }
-            "--bin" | "--level" | "--fixture" | "--contract" | "--jobs" => {
-                let value: OsString = match inline {
-                    Some(value) => value.into(),
-                    None => match args.get(position + 1) {
-                        Some(next) if !next.to_string_lossy().starts_with('-') => {
-                            position += 1;
-                            next.clone()
-                        }
-                        _ => {
-                            return Err(
-                                usage(format!("the option {name} needs a value")).field(name)
-                            )
-                        }
-                    },
-                };
-                let slot = match name {
-                    "--bin" => &mut bin,
-                    "--level" => &mut level,
-                    "--contract" => &mut contract,
-                    "--jobs" => &mut jobs,
-                    _ => &mut fixture,
-                };
-                if slot.replace(value).is_some() {
-                    return Err(usage(format!("the option {name} was given twice")).field(name));
+/// `--help` or `--version` with `--json` (spec 4.4.1): `USAGE` naming the flag, with the hint `atip schema <PATH> --json` or
+/// `atip --version`, after the path is resolved, so a word that is no command still answers `UNKNOWN_COMMAND`.
+pub fn help_json_refusal(request: &atip::Request) -> Failure {
+    let root = command();
+    let path = match atip::project::resolve(&root, &request.words) {
+        Ok(atip::project::Resolved::Group(path) | atip::project::Resolved::Command(path)) => path,
+        Ok(atip::project::Resolved::Tree) => Vec::new(),
+        Err(unknown) => unknown.resolved,
+    };
+    Failure::from_cli(&request.refusal(&root, TOOL), path_id(&path))
+}
+
+/// The command or group a failing `args` was in: the words that resolve, when every argument before them is a root option
+/// that takes no value. clap reads argv in order and stops at the first argument it refuses, so a refusal before the first
+/// word is the root's.
+fn resolved_path(args: &[OsString]) -> Vec<String> {
+    let root = command();
+    let mut path: Vec<String> = Vec::new();
+    for arg in args {
+        match arg.to_str() {
+            Some("--json" | "--help" | "-h" | "--version" | "-V") => {}
+            Some(word) if !word.starts_with('-') => {
+                path.push(word.to_string());
+                match atip::project::resolve(&root, &path) {
+                    Ok(atip::project::Resolved::Group(_)) => {}
+                    Ok(_) => return path,
+                    Err(_) => {
+                        path.pop();
+                        return path;
+                    }
                 }
             }
-            option if option.starts_with('-') && option.len() > 1 => {
-                return Err(unknown_option(option, &CHECK_OPTIONS, Some("check")))
-            }
-            operand => return Err(unexpected_operand(operand)),
+            _ => return path,
         }
-        position += 1;
     }
-    if help {
-        return Ok(Command::CheckHelp);
+    path
+}
+
+/// The clap node of the command or group `id` (the root for `None`) in the built tree `root`.
+fn node_of<'a>(root: &'a clap::Command, id: Option<&str>) -> Option<&'a clap::Command> {
+    let mut node = root;
+    for word in id.unwrap_or_default().split_whitespace() {
+        node = node.find_subcommand(word)?;
     }
-    let required = |value: Option<OsString>, name: &str| {
-        value.ok_or_else(|| usage(format!("the option {name} is required")).field(name))
+    Some(node)
+}
+
+/// The argument name of clap's rendering of an argument: `--bin` of `--bin <BINARY>`, the value name `PATH` of an operand's
+/// `[PATH]...`.
+fn argument_name(rendered: &str) -> String {
+    let first = rendered.split_whitespace().next().unwrap_or_default();
+    if first.starts_with('-') {
+        first.split('=').next().unwrap_or_default().to_string()
+    } else {
+        first
+            .trim_matches(|c: char| matches!(c, '[' | ']' | '<' | '>' | '.'))
+            .to_string()
+    }
+}
+
+/// Whether the words `args` hold `word` after a `--`: there it is an operand, whatever it looks like.
+fn after_dashdash(args: &[OsString], word: &str) -> bool {
+    args.iter()
+        .position(|arg| arg == "--")
+        .is_some_and(|at| args[at + 1..].iter().any(|arg| arg == word))
+}
+
+/// The long options of the command `id` (the root's for `None`), each written `--name`.
+fn long_options(id: Option<&str>) -> Vec<String> {
+    let mut root = command();
+    root.build();
+    node_of(&root, id).map_or_else(Vec::new, |node| {
+        node.get_arguments()
+            .filter_map(|arg| arg.get_long().map(|long| format!("--{long}")))
+            .collect()
+    })
+}
+
+/// The first required option of the command `id` that `args` do not give (`--name` or `--name=value`), in declaration order.
+fn first_missing_required(id: &str, args: &[OsString]) -> Option<String> {
+    let mut root = command();
+    root.build();
+    let node = node_of(&root, Some(id))?;
+    let given = |long: &str| {
+        args.iter().any(|arg| {
+            arg.to_str().is_some_and(|arg| {
+                arg == format!("--{long}") || arg.starts_with(&format!("--{long}="))
+            })
+        })
     };
-    let bin = required(bin, "--bin")?;
-    let fixture = required(fixture, "--fixture")?;
-    let (level, source) = match level.as_ref().map(|level| level.to_str()) {
-        None => (Level::L0, LevelSource::Tree),
-        Some(Some("L0")) => (Level::L0, LevelSource::Claimed),
-        Some(Some("L1")) => (Level::L1, LevelSource::Claimed),
-        Some(Some("L2")) => (Level::L2, LevelSource::Claimed),
-        Some(_) => {
-            let given = level.unwrap_or_default();
-            let given = given.to_string_lossy();
-            return Err(usage(format!("{given} is not a level"))
-                .field("--level")
-                .expected(LEVELS)
-                .received(given.as_ref())
-                .suggestions(close(&given.to_ascii_uppercase(), &LEVELS)));
+    let missing = node
+        .get_arguments()
+        .filter(|arg| arg.is_required_set())
+        .filter_map(|arg| arg.get_long())
+        .find(|long| !given(long))
+        .map(|long| format!("--{long}"));
+    missing
+}
+
+/// A clap parse failure as the contract's refusal: the code, the argument at fault (`field`), what was given (`received`, only
+/// when the caller sent a value), what would parse (`expected`) and clap's nearest words (`suggestions`).
+fn refusal(error: &clap::Error, args: &[OsString]) -> Failure {
+    let one = |kind: ContextKind| match error.get(kind) {
+        Some(ContextValue::String(value)) => Some(value.clone()),
+        Some(ContextValue::Strings(values)) => values.first().cloned(),
+        _ => None,
+    };
+    let all = |kind: ContextKind| match error.get(kind) {
+        Some(ContextValue::Strings(values)) => values.clone(),
+        Some(ContextValue::String(value)) => vec![value.clone()],
+        _ => Vec::new(),
+    };
+    let path = resolved_path(args);
+    let command = path_id(&path);
+    // The words a command line may continue with where it stopped: the commands and groups below the path.
+    let mut root = self::command();
+    root.build();
+    let children: Vec<String> = node_of(&root, command)
+        .map(|node| {
+            atip::project::subcommands(node)
+                .into_iter()
+                .map(|sub| sub.get_name().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    let schema_hint = if path.is_empty() {
+        format!("{TOOL} schema --json")
+    } else {
+        format!("{TOOL} schema {} --json", path.join(" "))
+    };
+    // clap checks each value as it reads it and the required options after, but a missing required argument comes before a value
+    // outside its domain (spec 10.7 steps 2-6): a whole number refused by its parser (`--jobs=0`, the one option with a domain) beside
+    // a missing option is answered for the option. A value of the wrong type is a parse failure and keeps its place.
+    let bad_value = error.kind() == ErrorKind::ValueValidation
+        && one(ContextKind::InvalidValue).is_some_and(|value| {
+            !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+        });
+    if let Some(missing) = command
+        .filter(|_| bad_value)
+        .and_then(|id| first_missing_required(id, args))
+    {
+        let mut failure =
+            Failure::new(Code::Usage, format!("the option {missing} is required")).field(missing);
+        failure.command = command;
+        return failure;
+    }
+    let rendered = error.render().to_string();
+    let message = rendered
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default()
+        .trim()
+        .trim_start_matches("error: ")
+        .to_string();
+    let mut failure = match error.kind() {
+        ErrorKind::InvalidSubcommand => {
+            let word = one(ContextKind::InvalidSubcommand).unwrap_or_default();
+            // The nearest words as `atip schema` names them for an unknown path (`atip::project::resolve`), not clap's.
+            let mut words = path.clone();
+            words.push(word.clone());
+            let suggestions = atip::project::resolve(&root, &words)
+                .err()
+                .map(|unknown| unknown.suggestions)
+                .unwrap_or_default();
+            let mut failure = Failure::new(
+                Code::UnknownCommand,
+                format!(
+                    "{word} is not a command of {}",
+                    command.map_or_else(|| TOOL.to_string(), |id| format!("{TOOL} {id}"))
+                ),
+            )
+            .field("command")
+            .received(word)
+            .expected(children)
+            .suggestions(suggestions)
+            .hint(schema_hint);
+            failure.command = command;
+            return failure;
         }
-    };
-    let contract = match contract {
-        None => None,
-        Some(given) => {
-            let given = given.to_string_lossy().into_owned();
-            if !MINORS.contains(&given.as_str()) {
-                return Err(usage(format!(
-                    "{given} is not a contract minor this checker knows"
-                ))
-                .field("--contract")
-                .expected(MINORS)
-                .received(given.as_str()));
+        ErrorKind::MissingSubcommand | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+            let mut failure = Failure::new(
+                Code::CommandRequired,
+                match command {
+                    Some(group) => format!("{TOOL} {group} needs a command"),
+                    None => format!("{TOOL} was run without a command"),
+                },
+            )
+            .expected(children)
+            .hint(schema_hint);
+            failure.command = command;
+            return failure;
+        }
+        ErrorKind::UnknownArgument => {
+            let given = one(ContextKind::InvalidArg).unwrap_or_default();
+            if given.starts_with('-') && !after_dashdash(args, &given) {
+                let name = argument_name(&given);
+                Failure::new(
+                    Code::Usage,
+                    format!(
+                        "{name} is not an option of {}",
+                        command.map_or_else(|| TOOL.to_string(), |id| format!("{TOOL} {id}"))
+                    ),
+                )
+                .field(name)
+                .expected(long_options(command))
+                .suggestions(all(ContextKind::SuggestedArg))
+            } else {
+                Failure::new(
+                    Code::Usage,
+                    format!(
+                        "{} takes no operand, got {given}",
+                        command.map_or_else(|| TOOL.to_string(), |id| format!("{TOOL} {id}"))
+                    ),
+                )
+                .field("ARGUMENT")
+                .received(given)
             }
-            Some(given)
         }
-    };
-    let jobs = match jobs {
-        None => default_jobs(),
-        Some(given) => {
-            let given = given.to_string_lossy();
-            match given.parse::<usize>() {
-                Ok(count) if count >= 1 && given.bytes().all(|byte| byte.is_ascii_digit()) => count,
-                _ => {
-                    return Err(usage(format!(
-                        "{given} is not a number of jobs: a whole number, at least 1"
-                    ))
-                    .field("--jobs")
-                    .received(given.as_ref()))
+        _ => {
+            let mut failure = Failure::new(Code::Usage, message);
+            if let Some(arg) = one(ContextKind::InvalidArg) {
+                let name = argument_name(&arg);
+                if error.kind() == ErrorKind::MissingRequiredArgument {
+                    failure.message = format!("the option {name} is required");
+                }
+                failure = failure.field(name);
+            }
+            // `--schemas` beside a registry option is a refusal of `--schemas` itself (spec 9.1.1), whichever of the two clap
+            // names first.
+            if error.kind() == ErrorKind::ArgumentConflict
+                && command == Some(CommandId::Schema.name())
+                && args.iter().any(|arg| arg == "--schemas")
+            {
+                failure = failure.field("--schemas");
+            }
+            if let Some(value) = one(ContextKind::InvalidValue) {
+                // clap reports an option with no value (`--bin --level`) as an empty value: only a value the caller sent, empty
+                // or not, is `received` (spec 7.1.1).
+                let sent = !value.is_empty()
+                    || failure.field.as_deref().is_some_and(|field| {
+                        args.iter().any(|arg| {
+                            arg.to_str()
+                                .is_some_and(|arg| arg == format!("{field}=").as_str())
+                        })
+                    });
+                if sent {
+                    failure = failure.received(value);
                 }
             }
+            let valid = all(ContextKind::ValidValue);
+            let mut suggested = all(ContextKind::SuggestedValue);
+            // clap's suggestions miss a value that differs only in case (`l1` for `L1`).
+            if suggested.is_empty() {
+                if let Some(received) = &failure.received {
+                    suggested = valid
+                        .iter()
+                        .filter(|value| value.eq_ignore_ascii_case(received))
+                        .cloned()
+                        .collect();
+                }
+            }
+            if !valid.is_empty() {
+                failure = failure.expected(valid);
+            }
+            if !suggested.is_empty() {
+                failure = failure.suggestions(suggested);
+            }
+            failure
         }
     };
-    let mode = if deep { Mode::Deep } else { Mode::Interface };
-    Ok(Command::Check(
-        CheckArgs {
-            bin,
-            level,
-            fixture,
-            contract,
-            jobs,
-        },
-        mode,
-        source,
-    ))
-}
-
-fn unexpected_operand(operand: &str) -> Failure {
-    Failure::new(
-        Code::Usage,
-        format!("atip check takes no operand, got {operand}"),
-    )
-    .in_command("check")
-    .field("ARGUMENT")
-    .received(operand)
-}
-
-fn unknown_option(option: &str, valid: &[&'static str], command: Option<&'static str>) -> Failure {
-    let name = option.split_once('=').map_or(option, |(name, _)| name);
-    let mut failure = Failure::new(
-        Code::Usage,
-        format!(
-            "{name} is not an option of {}",
-            command.map_or("atip", |_| "atip check")
-        ),
-    )
-    .field(name)
-    .expected(valid.iter().copied())
-    .suggestions(close(name, valid));
     failure.command = command;
-    failure
-}
-
-/// The words of `valid` nearest to `word`, when they are within edit distance 2 of it.
-fn close(word: &str, valid: &[&str]) -> Vec<String> {
-    let distances: Vec<(usize, &str)> = valid
-        .iter()
-        .map(|candidate| (distance(word, candidate), *candidate))
-        .collect();
-    let nearest = distances
-        .iter()
-        .map(|(distance, _)| *distance)
-        .min()
-        .unwrap_or(usize::MAX);
-    distances
-        .into_iter()
-        .filter(|(distance, _)| *distance == nearest && nearest <= 2)
-        .map(|(_, candidate)| candidate.to_string())
-        .collect()
-}
-
-fn distance(a: &str, b: &str) -> usize {
-    let b: Vec<char> = b.chars().collect();
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, ca) in a.chars().enumerate() {
-        let mut previous = row[0];
-        row[0] = i + 1;
-        for (j, cb) in b.iter().enumerate() {
-            let substitute = previous + usize::from(ca != *cb);
-            previous = row[j + 1];
-            row[j + 1] = substitute.min(row[j] + 1).min(row[j + 1] + 1);
-        }
+    if failure.field.is_none() {
+        failure = failure.hint(match command {
+            Some(id) => format!("{TOOL} schema {id} --json"),
+            None => format!("{TOOL} schema --json"),
+        });
     }
-    row[b.len()]
+    failure
 }
 
 #[cfg(test)]
 mod tests {
     use std::ffi::OsString;
 
-    use super::{default_jobs, distance, parse, CheckArgs, Command, Level, LevelSource};
+    use super::{
+        command, default_jobs, parse, CheckArgs, Command, CommandId, Level, LevelSource, SchemaArgs,
+    };
     use crate::output::Code;
     use crate::report::Mode;
 
@@ -385,6 +632,79 @@ mod tests {
     fn code(words: &[&str]) -> (Code, Option<String>, Option<&'static str>) {
         let failure = parse(&args(words)).expect_err("must be refused");
         (failure.code, failure.field.clone(), failure.command)
+    }
+
+    #[test]
+    fn atip_check_06_the_command_ids_and_groups_are_the_nodes_of_the_clap_tree() {
+        let mut root = command();
+        root.build();
+        let nodes = atip::project::nodes(&root);
+        let commands: Vec<&str> = nodes
+            .iter()
+            .filter(|node| !node.is_group)
+            .map(|node| node.command.as_str())
+            .collect();
+        let groups: Vec<&str> = nodes
+            .iter()
+            .filter(|node| node.is_group)
+            .map(|node| node.command.as_str())
+            .collect();
+        assert_eq!(commands, CommandId::ALL.map(CommandId::name));
+        assert_eq!(groups, super::GROUPS);
+        root.debug_assert();
+    }
+
+    /// L1.groups-not-runnable and the unknown word of a group (spec 4.1.2): the group's own words in `expected`.
+    #[test]
+    fn atip_check_guides_02_skills_is_a_group_and_show_takes_a_known_guide() {
+        let failure = parse(&args(&["skills", "--json"])).expect_err("a group");
+        assert_eq!(
+            (failure.code, failure.command, failure.expected.as_slice()),
+            (
+                Code::CommandRequired,
+                Some("skills"),
+                ["show".to_string()].as_slice()
+            )
+        );
+        let failure = parse(&args(&["--json", "skills", "shwo"])).expect_err("unknown");
+        assert_eq!(
+            (
+                failure.code,
+                failure.command,
+                failure.expected.as_slice(),
+                failure.suggestions.as_slice()
+            ),
+            (
+                Code::UnknownCommand,
+                Some("skills"),
+                ["show".to_string()].as_slice(),
+                ["show".to_string()].as_slice()
+            )
+        );
+        let failure =
+            parse(&args(&["skills", "show", "nosuch-xyz", "--json"])).expect_err("no guide");
+        assert_eq!(
+            (
+                failure.code,
+                failure.field.as_deref(),
+                failure.command,
+                failure.expected.as_slice()
+            ),
+            (
+                Code::Usage,
+                Some("NAME"),
+                Some("skills show"),
+                ["checker".to_string()].as_slice()
+            )
+        );
+        assert_eq!(
+            parse(&args(&["skills", "--json", "show", "checker"])).ok(),
+            Some(Command::Skills(Some("checker".to_string())))
+        );
+        assert_eq!(
+            parse(&args(&["skills", "show"])).ok(),
+            Some(Command::Skills(None))
+        );
     }
 
     #[test]
@@ -477,10 +797,11 @@ mod tests {
         };
         assert_eq!(jobs(&["--jobs", "1"]), 1);
         assert_eq!(jobs(&["--jobs=3"]), 3);
+        assert_eq!(jobs(&["--jobs=9007199254740991"]), 9_007_199_254_740_991);
         let default = jobs(&[]);
         assert!((1..=4).contains(&default), "{default}");
         assert_eq!(default, default_jobs());
-        for bad in ["0", "-1", "+2", "two", "1.5", ""] {
+        for bad in ["0", "-1", "+2", "two", "1.5", "", "9007199254740992"] {
             let failure = line(&[&format!("--jobs={bad}")]).expect_err(bad);
             assert_eq!(
                 (failure.code, failure.field.as_deref(), failure.command),
@@ -517,7 +838,8 @@ mod tests {
         };
         assert_eq!(mode(&[]), Mode::Interface);
         assert_eq!(mode(&["--deep"]), Mode::Deep);
-        assert_eq!(mode(&["--json", "--deep", "--deep"]), Mode::Deep);
+        // A flag given twice means what it means once, as before 0.4.0.
+        assert_eq!(mode(&["--deep", "--deep", "--json", "--json"]), Mode::Deep);
         assert_eq!(
             code(&line(&["--deep=1"])),
             (Code::Usage, Some("--deep".to_string()), Some("check"))
@@ -541,17 +863,34 @@ mod tests {
             code(&["--bogus", "check"]),
             (Code::Usage, Some("--bogus".to_string()), None)
         );
-        assert_eq!(parse(&args(&["--version"])).ok(), Some(Command::Version));
-        assert_eq!(parse(&args(&["-h"])).ok(), Some(Command::RootHelp));
-        assert_eq!(
-            parse(&args(&["check", "--help"])).ok(),
-            Some(Command::CheckHelp)
+        assert!(
+            matches!(parse(&args(&["--version"])), Ok(Command::Text(text)) if text == format!("atip {}", env!("CARGO_PKG_VERSION")))
         );
+        for help in [
+            &["-h"][..],
+            &["--help"],
+            &["check", "--help"],
+            &["schema", "-h"],
+            &["skills", "--help"],
+            &["skills", "show", "-h"],
+        ] {
+            match parse(&args(help)) {
+                Ok(Command::Text(text)) => {
+                    assert!(text.starts_with(super::HELP_POINTER), "{help:?}: {text}");
+                }
+                other => panic!("{help:?}: not help: {other:?}"),
+            }
+        }
         let failure = parse(&args(&["chekc"])).expect_err("unknown");
         assert_eq!(
             (failure.expected.as_slice(), failure.suggestions.as_slice()),
             (
-                ["check".to_string()].as_slice(),
+                [
+                    "check".to_string(),
+                    "schema".to_string(),
+                    "skills".to_string()
+                ]
+                .as_slice(),
                 ["check".to_string()].as_slice()
             )
         );
@@ -606,17 +945,73 @@ mod tests {
         ]))
         .expect_err("lower case is not a level");
         assert_eq!(level.suggestions, ["L1"]);
+        assert_eq!(level.expected, ["L0", "L1", "L2"]);
+        assert_eq!(level.received.as_deref(), Some("l1"));
     }
 
     #[test]
-    fn edit_distance_counts_single_edits() {
+    fn atip_check_06_schema_takes_a_path_or_one_registry_option() {
         assert_eq!(
-            (
-                distance("check", "check"),
-                distance("chekc", "check"),
-                distance("", "ab")
-            ),
-            (0, 2, 2)
+            parse(&args(&["schema", "check", "--schemas", "--json"])).ok(),
+            Some(Command::Schema(SchemaArgs {
+                path: vec!["check".to_string()],
+                schemas: true,
+                ..SchemaArgs::default()
+            }))
         );
+        for (words, field) in [
+            (&["schema", "--errors", "--error", "USAGE"][..], "--errors"),
+            (&["schema", "check", "--errors"], "--errors"),
+            (&["schema", "--error"], "--error"),
+        ] {
+            let (code, given, command) = code(words);
+            assert_eq!((code, command), (Code::Usage, Some("schema")), "{words:?}");
+            assert!(
+                given
+                    .as_deref()
+                    .is_some_and(|given| given.starts_with("--") || given == "PATH"),
+                "{words:?}: {given:?} (wanted something like {field})"
+            );
+        }
+        // `--schemas` with a registry option names `--schemas`, in either order (spec 9.1.1).
+        for words in [
+            &["schema", "check", "--schemas", "--errors"][..],
+            &["schema", "--errors", "--schemas"],
+            &["schema", "--warnings", "--schemas"],
+        ] {
+            assert_eq!(
+                code(words),
+                (Code::Usage, Some("--schemas".to_string()), Some("schema")),
+                "{words:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn atip_check_06_an_argument_that_is_not_utf8_is_refused_naming_argument() {
+        use std::os::unix::ffi::OsStringExt;
+        let bad = OsString::from_vec(vec![b'b', 0xff]);
+        for words in [
+            vec![
+                OsString::from("check"),
+                "--bin".into(),
+                bad.clone(),
+                "--fixture".into(),
+                "f".into(),
+            ],
+            vec![
+                OsString::from("check"),
+                "--bin".into(),
+                "b".into(),
+                "--fixture".into(),
+                bad.clone(),
+            ],
+        ] {
+            let failure = parse(&words).expect_err("not UTF-8");
+            assert_eq!(
+                (failure.code, failure.field.as_deref(), failure.command),
+                (Code::Usage, Some("ARGUMENT"), Some("check"))
+            );
+        }
     }
 }

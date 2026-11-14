@@ -11,7 +11,7 @@ use atip_check::app::check_binary_mutated;
 use atip_check::cli::{CheckArgs, Level};
 use support::l1::{l1_bin, l1_cases_1_2, l1_config_1_2, l1_fixture_of};
 use support::l2::{check_of, mutations_hold, planted_together};
-use support::{all_seeds, atip_in, kind_verdict, representatives, Case, Harness, Output, ATIP};
+use support::{all_seeds, atip_in, kind_verdict, representatives, Case, Harness, Output};
 
 fn result_of(output: &Output, id: &str) -> String {
     output.check(id)["result"]
@@ -167,39 +167,34 @@ fn atip_check_101_a_1_2_claim_whose_plain_answer_says_1_1_fails_l0_contract_vers
 }
 
 #[test]
-fn atip_check_102_the_checker_declares_1_4_and_passes_its_own_l0_checks_as_a_1_4_claim() {
+fn atip_check_102_the_checker_declares_1_6_and_passes_its_own_l0_checks_as_a_1_6_claim() {
     let harness = Harness::new();
     let (cwd, tmp) = (harness.path("cwd"), harness.path("tmp"));
     std::fs::create_dir_all(&cwd).expect("cwd");
     std::fs::create_dir_all(&tmp).expect("tmp");
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("atip.fixture.json");
-    let fixture = fixture.to_str().expect("utf8");
-    let args = [
-        "check",
-        "--bin",
-        ATIP,
-        "--level",
-        "L0",
-        "--fixture",
-        fixture,
-        "--contract",
-        "1.4",
-        "--json",
-    ];
-    let output = atip_in(&cwd, &tmp, &args);
+    let output = support::atip_self_check(
+        &cwd,
+        &tmp,
+        &["--level", "L0", "--contract", "1.6", "--json"],
+        true,
+    );
     assert_eq!(output.code, Some(0), "{}{}", output.stdout, output.stderr);
     let document = output.envelope();
-    assert_eq!(document["meta"]["contractVersion"], "1.4");
-    assert_eq!(document["data"]["contractVersion"], "1.4");
+    assert_eq!(document["meta"]["contractVersion"], "1.6");
+    assert_eq!(document["data"]["contractVersion"], "1.6");
     assert_eq!(document["data"]["passed"], true);
     // The fixture is the one that declares it, and the checker run as a 1.1 claim is a preview, not a refusal.
     let committed: Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture).expect("fixture")).expect("json");
-    assert_eq!(committed["contractVersion"], "1.4");
-    let mut other = args.to_vec();
-    other[8] = "1.1";
-    let preview = atip_in(&cwd, &tmp, &other);
-    // The checker's documents declare 1.4, so it does not pass as 1.1: exit 1, still a preview (issue #13).
+        serde_json::from_str(&std::fs::read_to_string(support::self_fixture()).expect("fixture"))
+            .expect("json");
+    assert_eq!(committed["contractVersion"], "1.6");
+    let preview = support::atip_self_check(
+        &cwd,
+        &tmp,
+        &["--level", "L0", "--contract", "1.1", "--json"],
+        true,
+    );
+    // The checker's documents declare 1.6, so it does not pass as 1.1: exit 1, still a preview (issue #13).
     assert_eq!(preview.code, Some(1), "{}", preview.stdout);
     assert_eq!(preview.envelope()["data"]["verdict"], "preview");
     // The help and the messages say the three minors and name no list of two.

@@ -67,6 +67,34 @@ atip = "0.3"
 
 `scripts/check.ts` is this repository's check of its own examples (`scripts/validate.sh`), not a step of a tool's CI.
 
+## The checker's own claim
+
+`atip` itself is **ATIP 1.6 L2**: every envelope declares `contractVersion` `1.6`; `atip schema --json` answers the tree
+(`level` `L2`), each group and command document and its schemas, and the error and warning registries, projected from
+its clap tree by the crate `atip`; and `atip skills show [--json]` prints the guide built into the binary. `atip` has
+no `write`, `destructive`, `async` or stream command, so `--input`, the destructive exchange, long-running work and
+streams do not apply to it (spec 3.3, 10.1). CI builds the release binary and checks the claim with it, every MUST of
+L2 included:
+
+```sh
+PATH="$PWD/target/release:$PATH" atip check --bin atip --fixture crates/atip-check/tests/self/atip.fixture.json --level L2 --deep --contract 1.6
+```
+
+The fixture's `ok` call of `check` checks `atip` again, the one on `PATH`, at L0 in the default mode. `docs/atip.cli.json`
+is the generated spec (equal to what `atip schema` answers) and `docs/atip-vocabulary.tsv` the vocabulary of its value
+names. What changed in 0.4.0 for callers of `atip`:
+
+| 0.3.3 | 0.4.0 |
+|---|---|
+| no `schema` command | `atip schema [PATH]... [--schemas \| --errors \| --error <CODE> \| --warnings \| --warning <CODE>] [--json]` |
+| no guide | `atip skills show [NAME] [--json]` (the group `skills`; one guide, `checker`) |
+| `meta.contractVersion` `1.4` | `1.6` |
+| first line of `--help`: `atip: run a built binary and check the atip/1 contract from outside` | ``Agents: `atip schema --json` describes every command, option and error code as JSON; `atip skills show` is the guide.`` |
+| `--help --json`: `USAGE`, hint `atip --help` or `atip check --help` | `USAGE`, hint `atip schema --json` or `atip schema check --json` |
+| `UNKNOWN_COMMAND`, `COMMAND_REQUIRED`: `expected` `check` | `check`, `schema`, `skills` |
+| `INTERNAL` (exit 1) for a scratch space that cannot be used | `SCRATCH_UNAVAILABLE` (exit 2, retryable) before the checks run, `SCRATCH_FAILED` (exit 1, retryable) after |
+| `--jobs`: any whole number from 1 | 1 to 9007199254740991 |
+
 ## Layout
 
 | Path | What |
@@ -93,6 +121,7 @@ atip = "0.3"
 | `scripts/regex-cases.json` | Patterns and values with the answers of ECMAScript (`u`) and the Rust `regex` crate: the evidence that the pattern form of Annex V2 reads the same in both. |
 | `crates/atip/` | The Rust crate `atip`: what a clap tool shares to speak the contract (projection of a clap tree onto the `schema` documents, the error value and its redaction, field projection, domains and constraints, cursors, plan digests, the envelope line, the code-name conditions and the reserved codes per minor, the 1.4 self-description writer with the `--schemas` answer and the `--help --json` refusals, validators for the schemas). It supports the minors 1.0 to 1.6 of atip/1 (`atip::Minor`, one rule set per minor). It embeds `crates/atip/schema/*.json`, a copy of `schema/` that its test `schema_copy` keeps byte-identical, so the published crate carries the schemas. |
 | `crates/atip-check/` | The Rust crate `atip-check`: the checker, `atip check`, and its test subject, a fake tool whose behaviour is a JSON configuration (`fake-tool/`). Tags `atip-crate-v0.x.y` and `atip-check-v0.x.y` version the two crates independently of the spec and publish them (crates.io; the checker also on npm); `atip::CONTRACT_VERSION` is the newest spec minor a crate release supports (1.6 since `atip-crate-v0.3.0`); `atip check --contract` takes `1.0` to `1.6`. |
+| `docs/` | The checker's own CLI: `atip.cli.json`, its generated spec (tree, command documents, schemas answers, registries, environment), and `atip-vocabulary.tsv`, the vocabulary of its value names. |
 | `crates/atip-probe/` | An unpublished crate (`publish = false`): the smallest tool that depends on `atip` with its default features. Its test and `scripts/check_no_jsonschema.sh` prove with `cargo tree` that such a tool does not link `jsonschema`, which only the feature `validate` brings in. |
 | `Cargo.toml`, `rust-toolchain.toml`, `clippy.toml` | The Cargo workspace (`crates/atip`, `crates/atip-check`, `crates/atip-probe`, `scripts/regex-parity`; one `Cargo.lock`), its lint set, the pinned toolchain and the clippy configuration. |
 | `justfile`, `.github/workflows/ci.yml` | Contributor recipes and the CI job that runs the same steps. |

@@ -102,18 +102,56 @@ pub fn atip_in(cwd: &Path, tmp: &Path, args: &[&str]) -> Output {
 
 /// Runs `atip` with exactly `args` in `cwd`, its scratch space in `tmp`.
 pub fn atip_as_given(cwd: &Path, tmp: &Path, args: &[&str]) -> Output {
-    let output = Command::new(ATIP)
-        .args(args)
-        .current_dir(cwd)
-        .env("TMPDIR", tmp)
-        .output()
-        .expect("run atip");
+    run_atip(
+        Command::new(ATIP)
+            .args(args)
+            .current_dir(cwd)
+            .env("TMPDIR", tmp),
+    )
+}
+
+fn run_atip(command: &mut Command) -> Output {
+    let output = command.output().expect("run atip");
     Output {
         code: output.status.code(),
         signal: output.status.signal(),
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     }
+}
+
+/// The fixture of `atip` itself, which CI's self-check runs at L2 (`tests/self/atip.fixture.json`).
+pub fn self_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/self/atip.fixture.json")
+}
+
+/// `atip check` of `atip` itself with its own fixture, as [`atip_in`] runs it (`--deep` added unless `deep` is false), with the
+/// directory of the `atip` under test first on `PATH`: the fixture's calls name the subject's subject `atip`, found there.
+pub fn atip_self_check(cwd: &Path, tmp: &Path, extra: &[&str], deep: bool) -> Output {
+    let fixture = self_fixture();
+    let mut args = vec![
+        "check",
+        "--bin",
+        ATIP,
+        "--fixture",
+        fixture.to_str().expect("utf8"),
+    ];
+    if deep && !extra.contains(&"--deep") {
+        args.push("--deep");
+    }
+    args.extend(extra);
+    let bin_dir = Path::new(ATIP).parent().expect("the directory of atip");
+    let path = std::env::join_paths(std::iter::once(bin_dir.to_path_buf()).chain(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    ))
+    .expect("a PATH");
+    run_atip(
+        Command::new(ATIP)
+            .args(&args)
+            .current_dir(cwd)
+            .env("TMPDIR", tmp)
+            .env("PATH", path),
+    )
 }
 
 /// A scratch directory with the fake tool's configuration and fixtures in it.

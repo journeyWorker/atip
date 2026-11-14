@@ -6,11 +6,12 @@ use std::process::ExitCode;
 
 use crate::checks::{run_checks, Judged, Mutation};
 use crate::claim::Claim;
-use crate::cli::{self, CheckArgs, Command, Level, LevelSource, CHECK_HELP, ROOT_HELP};
+use crate::cli::{self, CheckArgs, Command, Level, LevelSource};
 use crate::exec::{Call, RunError, Runner};
 use crate::fixture;
 use crate::output::{failure_line, failure_text, success_line, Code, Failure};
 use crate::report::{Mode, Report};
+use crate::spec;
 
 /// Runs `atip` with `args` (the words after the program name) and returns its exit status: 0, 1 or 2.
 pub fn main(args: &[OsString]) -> ExitCode {
@@ -62,34 +63,18 @@ fn restore_sigpipe() {
     }
 }
 
-/// The text a successful run prints on stdout: the version, a help text, the report, or the success envelope.
+/// The text a successful run prints on stdout: the version, a help text, a `schema` answer, a guide, the report, or the success envelope.
 fn execute(args: &[OsString]) -> Result<String, Failure> {
     let json = atip::wants_json(args);
+    // `--help` and `--version` print text for people; with `--json` they are refused after the path is resolved (spec 4.4.1), so
+    // that JSON mode always prints an envelope and `schema` is the one machine-readable description.
+    if let Some(request) = atip::json_request(args) {
+        return Err(cli::help_json_refusal(&request));
+    }
     match cli::parse(args)? {
-        // `--version` and `--help` print text for people; in JSON mode a document that declares 1.4 refuses them (spec 4.4.1), so that JSON
-        // mode always prints an envelope. `atip` has no `schema`, so the hint is the text it points at.
-        Command::Version if json => Err(Failure::new(
-            Code::Usage,
-            "--version prints text; the version is meta.toolVersion of every envelope",
-        )
-        .field("--version")
-        .hint("atip --version")),
-        Command::RootHelp if json => Err(Failure::new(
-            Code::Usage,
-            "--help prints text for people, atip has no machine-readable self-description",
-        )
-        .field("--help")
-        .hint("atip --help")),
-        Command::CheckHelp if json => Err(Failure::new(
-            Code::Usage,
-            "--help prints text for people, atip has no machine-readable self-description",
-        )
-        .in_command("check")
-        .field("--help")
-        .hint("atip check --help")),
-        Command::Version => Ok(format!("atip {}", env!("CARGO_PKG_VERSION"))),
-        Command::RootHelp => Ok(ROOT_HELP.to_string()),
-        Command::CheckHelp => Ok(CHECK_HELP.to_string()),
+        Command::Text(text) => Ok(text),
+        Command::Skills(name) => crate::guides::answer(name.as_deref(), json),
+        Command::Schema(schema) => spec::answer(&schema, json),
         Command::Check(check, mode, source) => {
             let report = check_binary_at(&check, mode, source)?;
             // A run with a failed or unprovided MUST check is a negative answer, exit 1 (spec 5.3), a preview too: a preview has no level verdict
@@ -177,6 +162,46 @@ pub fn check_binary_mutated(
     .map(|judged| (judged.report, judged.conditions))
 }
 
+/// Where a run was when its scratch space failed: building the fixture state, before any check ran, or later, while the checks
+/// ran (spec 8.3: a failure after the work started is exit 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stage {
+    Preparing,
+    Checking,
+}
+
+/// The failure of a run that stopped with `error` at `stage`.
+fn run_failure(error: RunError, stage: Stage) -> Failure {
+    let refuse = |code: Code, message: String, field: &str| {
+        Failure::new(code, message).in_command("check").field(field)
+    };
+    match error {
+        RunError::Spawn(reason) => refuse(
+            Code::BinaryInvalid,
+            format!("the binary cannot be started: {reason}"),
+            "--bin",
+        ),
+        RunError::Setup(reason) => {
+            refuse(Code::FixtureInvalid, reason, "--fixture").reason("SETUP_FAILED")
+        }
+        RunError::Prepare(reason) => {
+            refuse(Code::FixtureInvalid, reason, "--fixture").reason("PREPARE_FAILED")
+        }
+        RunError::Fixture(reason) => {
+            refuse(Code::FixtureInvalid, reason, "--fixture").reason("WRONG_SHAPE")
+        }
+        RunError::Scratch(reason) => {
+            let code = match stage {
+                Stage::Preparing => Code::ScratchUnavailable,
+                Stage::Checking => Code::ScratchFailed,
+            };
+            Failure::new(code, format!("the scratch space cannot be used: {reason}"))
+                .in_command("check")
+                .hint("Free space under TMPDIR, or point TMPDIR at a writable directory, then run atip check again.")
+        }
+    }
+}
+
 fn check_binary_with(
     args: &CheckArgs,
     mode: Mode,
@@ -202,34 +227,10 @@ fn check_binary_with(
     };
     let bin =
         resolve_binary(&args.bin).map_err(|reason| refuse(Code::BinaryInvalid, reason, "--bin"))?;
-    let scratch_failure = |reason: String| {
-        Failure::new(
-            Code::Internal,
-            format!("the scratch space cannot be used: {reason}"),
-        )
-        .in_command("check")
-        .hint("Point TMPDIR at a writable directory.")
-    };
-    let from_run = |error: RunError| match error {
-        RunError::Spawn(reason) => refuse(
-            Code::BinaryInvalid,
-            format!("the binary cannot be started: {reason}"),
-            "--bin",
-        ),
-        RunError::Setup(reason) => {
-            refuse(Code::FixtureInvalid, reason, "--fixture").reason("SETUP_FAILED")
-        }
-        RunError::Prepare(reason) => {
-            refuse(Code::FixtureInvalid, reason, "--fixture").reason("PREPARE_FAILED")
-        }
-        RunError::Fixture(reason) => {
-            refuse(Code::FixtureInvalid, reason, "--fixture").reason("WRONG_SHAPE")
-        }
-        RunError::Scratch(reason) => scratch_failure(reason),
-    };
     let mut runner = Runner::new(&bin, &fixture)
-        .map_err(from_run)?
+        .map_err(|error| run_failure(error, Stage::Preparing))?
         .with_jobs(args.jobs);
+    let from_run = |error: RunError| run_failure(error, Stage::Checking);
     let level = match source {
         LevelSource::Claimed => args.level,
         LevelSource::Tree => tree_level(&mut runner).map_err(from_run)?,
@@ -272,10 +273,12 @@ fn resolve_binary(bin: &OsStr) -> Result<PathBuf, String> {
         std::path::absolute(given).map_err(|error| format!("{}: {error}", given.display()))?
     } else {
         let search = std::env::var_os("PATH").unwrap_or_default();
-        std::env::split_paths(&search)
+        let found = std::env::split_paths(&search)
             .map(|dir| dir.join(given))
             .find(|candidate| candidate.is_file())
-            .ok_or_else(|| format!("{} is not on PATH", given.display()))?
+            .ok_or_else(|| format!("{} is not on PATH", given.display()))?;
+        // A relative entry of PATH is relative to the working directory, which every invocation of the run changes.
+        std::path::absolute(&found).map_err(|error| format!("{}: {error}", found.display()))?
     };
     let metadata =
         std::fs::metadata(&path).map_err(|error| format!("{}: {error}", path.display()))?;
@@ -290,7 +293,8 @@ fn resolve_binary(bin: &OsStr) -> Result<PathBuf, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::internal;
+    use super::{internal, run_failure, Stage};
+    use crate::exec::RunError;
     use crate::output::{failure_line, Code};
     use crate::schema::schemas;
 
@@ -311,5 +315,24 @@ mod tests {
             serde_json::from_str(&failure_line(&failure)).expect("json");
         assert_eq!(schemas().envelope_problems(&document), Vec::<String>::new());
         assert_eq!(document["error"]["code"], "INTERNAL");
+    }
+
+    /// The scratch space has a code for each stage (spec 8.3): `SCRATCH_UNAVAILABLE` (exit 2, retryable) while the fixture state is
+    /// built, before any check ran, and `SCRATCH_FAILED` (exit 1, retryable: the checks write nothing outside their copies) once
+    /// they run. The witness of the second, which no black-box call provokes on demand.
+    #[test]
+    fn atip_check_06_a_scratch_failure_has_a_code_for_each_stage() {
+        for (stage, code, exit) in [
+            (Stage::Preparing, Code::ScratchUnavailable, 2),
+            (Stage::Checking, Code::ScratchFailed, 1),
+        ] {
+            let failure = run_failure(RunError::Scratch("disk full".to_string()), stage);
+            assert_eq!((failure.code, failure.exit()), (code, exit));
+            assert!(failure.code.info().retryable);
+            assert_eq!(failure.command, Some("check"));
+            let document: serde_json::Value =
+                serde_json::from_str(&failure_line(&failure)).expect("json");
+            assert_eq!(schemas().envelope_problems(&document), Vec::<String>::new());
+        }
     }
 }
