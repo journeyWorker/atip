@@ -48,8 +48,7 @@ if (!existsSync(bin)) {
 
 const run = spawnSync(bin, process.argv.slice(2), { stdio: "inherit" });
 if (run.error) {
-  const libc = process.platform === "linux" ? " (the Linux binaries need glibc)" : "";
-  fail(`could not run ${bin}: ${run.error.message}${libc}; ${FROM_SOURCE}`);
+  fail(`could not run ${bin}: ${run.error.message}; ${FROM_SOURCE}`);
 }
 if (run.signal !== null) {
   // End by the same signal. Node ignores some (SIGPIPE), so fall back to the shell's status for a signal.

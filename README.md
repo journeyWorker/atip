@@ -56,8 +56,8 @@ bun add -g @journeykit/atip-check   # installs the command `atip`: atip check ..
 cargo install atip-check           # the same binary from source: atip check ...
 ```
 
-The npm package carries prebuilt binaries for macOS arm64 and Linux x64 and arm64 (glibc 2.35 or later); its version
-is the crate's.
+The npm package carries prebuilt binaries for macOS arm64 and Linux x64 and arm64 (static musl binaries: no glibc
+requirement, any distribution); its version is the crate's.
 A Rust tool links the shared crate from crates.io:
 
 ```toml
@@ -96,7 +96,7 @@ atip = "0.3"
 | `crates/atip-probe/` | An unpublished crate (`publish = false`): the smallest tool that depends on `atip` with its default features. Its test and `scripts/check_no_jsonschema.sh` prove with `cargo tree` that such a tool does not link `jsonschema`, which only the feature `validate` brings in. |
 | `Cargo.toml`, `rust-toolchain.toml`, `clippy.toml` | The Cargo workspace (`crates/atip`, `crates/atip-check`, `crates/atip-probe`, `scripts/regex-parity`; one `Cargo.lock`), its lint set, the pinned toolchain and the clippy configuration. |
 | `justfile`, `.github/workflows/ci.yml` | Contributor recipes and the CI job that runs the same steps. |
-| `.github/workflows/publish-crate.yml`, `publish-check.yml`, `build-native.yml` | Releases. The tag `atip-crate-vX.Y.Z` publishes the crate `atip`; `atip-check-vX.Y.Z` builds the `atip` binary natively for each platform, publishes the npm packages and the crate `atip-check`. Each tag must name its crate's `Cargo.toml` version. |
+| `.github/workflows/publish-crate.yml`, `publish-check.yml`, `build-native.yml` | Releases. The tag `atip-crate-vX.Y.Z` publishes the crate `atip`; `atip-check-vX.Y.Z` builds the `atip` binary for each platform (on a runner of its architecture; the Linux ones static, for the `*-unknown-linux-musl` targets), publishes the npm packages and the crate `atip-check`. Each tag must name its crate's `Cargo.toml` version. |
 | `npm/` | The npm packages of the checker: `atip-check` (`@journeykit/atip-check`, the launcher that runs the platform's binary as the command `atip`) and `atip-check-<platform>` (the binaries, staged by the release workflow). |
 | `approaches/` | Not normative. `rust.md` (clap → spec, the shared crate, constraints, `--input` in Rust, canon and lute), `typescript.md` (spec-first `defineCommand` for Effect 4, fragment schemas and numeric codecs, an `effect/cli` interim), `checker.md` (the black-box conformance checker: strengths, coverage, fixtures, tool-owned obligations; a tool that tests the spec, not its definition), `migration.md` (adopting ATIP level by level, canon and lute as worked examples, and the costs the contract does not soften). |
 | `approaches/implementation.md` | Not normative. Recommendations beyond the protocol: the order of the stateless checks, which argument a constraint violation names, cursor binding details and the next-page entry, converting an `--input` document to argv, why each pattern restriction and the cross-engine record, the text-mode error form, and naming error codes in practice. Rules a tool that declares 1.2 must still follow, and that 1.3 recommends. |

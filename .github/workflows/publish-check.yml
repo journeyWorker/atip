@@ -46,12 +46,12 @@ env:
 jobs:
   read-version:
     name: Read and verify the version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.version.outputs.version }}
       atip: ${{ steps.version.outputs.atip }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Verify the tag or the confirmed version against crates/atip-check/Cargo.toml
         id: version
@@ -91,40 +91,42 @@ jobs:
   npm:
     name: Publish npm packages
     needs: [read-version, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
 
-      # Trusted publishing (OIDC) needs npm 11.5.1 or later. npm tries OIDC first (`id-token: write`, against the
-      # trusted publisher configured on each package's page: repository journeyWorker/atip, workflow
-      # publish-check.yml) and falls back to NODE_AUTH_TOKEN (the NPM_TOKEN secret). The token is the bootstrap: a
-      # package that does not exist yet has no page to configure a trusted publisher on.
+      # Trusted publishing (OIDC) needs npm 11.5.1 or later; npm 12 keeps `--provenance` and token publishing, and
+      # needs Node ^24.15.0 (setup-node's "24" is the newest 24.x). npm tries OIDC first (`id-token: write`, against the
+      # trusted publisher configured on each package's page: repository journeyWorker/atip, workflow publish-check.yml)
+      # and falls back to NODE_AUTH_TOKEN (the NPM_TOKEN secret). The token is the bootstrap: a package that does not
+      # exist yet has no page to configure a trusted publisher on. Since npm 12 an unpublished package is created
+      # `restricted` unless asked otherwise, so every publish below passes `--access public`.
       - name: Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@11.5.1
+        run: npm install -g npm@12.2.2
 
       - name: Download darwin-arm64 binary
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: atip-check-darwin-arm64
           path: npm/atip-check-darwin-arm64/bin
 
       - name: Download linux-x64 binary
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: atip-check-linux-x64
           path: npm/atip-check-linux-x64/bin
 
       - name: Download linux-arm64 binary
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: atip-check-linux-arm64
           path: npm/atip-check-linux-arm64/bin
@@ -159,16 +161,25 @@ jobs:
         run: |
           set -euo pipefail
           is_published() {
-            local out
-            if out=$(npm view "$1" versions --json 2>&1); then
-              printf '%s' "$out" | jq -e --arg v "$VERSION" 'if type == "array" then any(.[]; . == $v) else . == $v end' >/dev/null
-              return
+            local out err status=0 found=0
+            err=$(mktemp)
+            out=$(npm view "$1" versions --json 2>"$err") || status=$?
+            if [ "$status" -eq 0 ]; then
+              # stdout only, so a warning on stderr cannot spoil the JSON; jq's 1 is "not listed", anything else an error.
+              jq -e --arg v "$VERSION" 'if type == "array" then any(.[]; . == $v) else . == $v end' <<<"$out" >/dev/null || found=$?
+              case "$found" in
+                0) return 0 ;;
+                1) return 1 ;;
+              esac
+              echo "::error::npm view $1 printed what jq cannot read, stopping the release:" >&2
+              printf '%s\n' "$out" >&2
+              exit 1
             fi
-            if printf '%s' "$out" | grep -q 'E404'; then
+            if grep -q 'E404' "$err"; then
               return 1
             fi
             echo "::error::npm view $1 failed (not a 404), stopping the release:" >&2
-            printf '%s\n' "$out" >&2
+            cat "$err" >&2
             exit 1
           }
           already=""
@@ -209,9 +220,9 @@ jobs:
   crate:
     name: Publish atip-check to crates.io
     needs: [read-version, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust
         uses: ./.github/actions/setup-rust
