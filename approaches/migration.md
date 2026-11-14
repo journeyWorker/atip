@@ -166,7 +166,7 @@ Callers: the website and every harness that parses lute JSON. approaches/rust.md
   (Annex S1 item 7).
 - A tool's changelog lists every renamed command, option and error code with its replacement.
 - The checker runs in CI from the release that claims the level; before that it can run in report-only mode to
-  show the remaining gaps. CI installs the published checker at a pinned version (`bunx @journeykit/atip@<version>
+  show the remaining gaps. CI installs the published checker at a pinned version (`bunx @journeykit/atip-check@<version>
   check ...` or `cargo install atip-check --version <version> --locked`, approaches/checker.md §1), not a build from
   a git checkout of this repository, and never a copy of its `scripts/check.ts`.
 

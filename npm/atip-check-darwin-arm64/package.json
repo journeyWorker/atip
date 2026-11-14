@@ -1,7 +1,7 @@
 {
-  "name": "@journeykit/atip-darwin-arm64",
+  "name": "@journeykit/atip-check-darwin-arm64",
   "version": "0.0.0",
-  "description": "The atip binary (atip check, the ATIP conformance checker) for macOS arm64. Installed by @journeykit/atip.",
+  "description": "The atip binary (atip check, the ATIP conformance checker) for macOS arm64. Installed by @journeykit/atip-check.",
   "license": "MIT",
   "homepage": "https://github.com/journeyWorker/atip",
   "publishConfig": {
@@ -10,7 +10,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/journeyWorker/atip.git",
-    "directory": "npm/atip-darwin-arm64"
+    "directory": "npm/atip-check-darwin-arm64"
   },
   "os": [
     "darwin"

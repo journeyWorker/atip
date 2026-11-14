@@ -3,7 +3,7 @@
 #
 # Releases are tagged per crate and independently of the spec: `atip-crate-v0.x.y` publishes `atip` to crates.io
 # (.github/workflows/publish-crate.yml), `atip-check-v0.x.y` publishes `atip-check` to crates.io and the `atip` binary to
-# npm as `@journeykit/atip` (.github/workflows/publish-check.yml). Only those two crates are published (`publish = true`);
+# npm as `@journeykit/atip-check` (.github/workflows/publish-check.yml). Only those two crates are published (`publish = true`);
 # the workspace default is `publish = false`. `atip::CONTRACT_VERSION` states the spec minor a crate supports.
 [workspace]
 resolver = "2"

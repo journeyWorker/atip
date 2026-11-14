@@ -13,11 +13,11 @@ test suites that agree by intention.
 
 The reference checker is a Rust binary named `atip`, built from the crate `atip-check` of this repository and
 published on its own, so that no tool needs canon or a checkout of this repository to run it: on npm as
-`@journeykit/atip` (prebuilt for macOS arm64, Linux x64 and Linux arm64) and on crates.io as `atip-check`. A tool's CI
+`@journeykit/atip-check` (prebuilt for macOS arm64, Linux x64 and Linux arm64) and on crates.io as `atip-check`. A tool's CI
 installs a released checker, pinned to a version, and runs it on the tool's built binary:
 
 ```
-bunx @journeykit/atip@0.3.1 check --bin target/release/canon --level L2 --fixture checker-fixture.json
+bunx @journeykit/atip-check@0.3.1 check --bin target/release/canon --level L2 --fixture checker-fixture.json
 cargo install atip-check --version 0.3.1 --locked   # then: atip check ...
 ```
 

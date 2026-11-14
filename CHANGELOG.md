@@ -10,7 +10,7 @@ A patch (15.1) from implementer feedback on 1.6. No rule changes; `meta.contract
   ids; a document that declares 1.5 or later), each with cases in both engines.
 - **Crates.** `atip` 0.3.1: in a document that declares 1.6, a name whose definitions differ in value name or value
   type is not shared in the tree's `options` (a tree option is tool-wide; Annex S1 item 4 scopes the rest to a group).
-  `atip-check` 0.3.1 builds on it; both are published on crates.io, and the `atip` binary on npm (`@journeykit/atip`).
+  `atip-check` 0.3.1 builds on it; both are published on crates.io, and the `atip` binary on npm (`@journeykit/atip-check`).
 
 ## 1.6.0 (2026-11-13)
 

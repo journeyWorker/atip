@@ -1,8 +1,8 @@
 name: Publish atip-check
 run-name: "publish atip-check ${{ inputs.version || github.ref_name }}"
 
-# Publishes the checker: the `atip` binary to npm as `@journeykit/atip` (a launcher, npm/atip) with one package per
-# platform (npm/atip-<platform>), and the crate `atip-check` (crates/atip-check) to crates.io. Every version is the
+# Publishes the checker: the `atip` binary to npm as `@journeykit/atip-check` (a launcher, npm/atip-check) with one package per
+# platform (npm/atip-check-<platform>), and the crate `atip-check` (crates/atip-check) to crates.io. Every version is the
 # version of crates/atip-check/Cargo.toml; the npm package.json files hold a placeholder this workflow replaces.
 #
 # A release bumps `version` in crates/atip-check/Cargo.toml in a normal commit on main (Cargo.lock with it), then
@@ -13,7 +13,7 @@ run-name: "publish atip-check ${{ inputs.version || github.ref_name }}"
 # Order and failure:
 #   - build (build-native.yml, every platform) must pass before anything is published, so a platform that fails to
 #     build blocks every package, not only its own.
-#   - npm: the platform packages first, then `@journeykit/atip`, whose optional dependencies name them. A version with
+#   - npm: the platform packages first, then `@journeykit/atip-check`, whose optional dependencies name them. A version with
 #     a hyphen (`0.4.0-rc.1`) is published under the dist-tag `next`, never `latest`.
 #   - crates.io: `atip-check` depends on `atip` by version, so this job waits (up to 30 minutes) until the `atip`
 #     version of this checkout is on the crates.io index (pushed with its own tag, publish-crate.yml), then publishes.
@@ -114,27 +114,27 @@ jobs:
       - name: Download darwin-arm64 binary
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: atip-darwin-arm64
-          path: npm/atip-darwin-arm64/bin
+          name: atip-check-darwin-arm64
+          path: npm/atip-check-darwin-arm64/bin
 
       - name: Download linux-x64 binary
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: atip-linux-x64
-          path: npm/atip-linux-x64/bin
+          name: atip-check-linux-x64
+          path: npm/atip-check-linux-x64/bin
 
       - name: Download linux-arm64 binary
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: atip-linux-arm64
-          path: npm/atip-linux-arm64/bin
+          name: atip-check-linux-arm64
+          path: npm/atip-check-linux-arm64/bin
 
       - name: Verify the checksums and make the binaries executable
         run: |
           set -euo pipefail
           for platform in darwin-arm64 linux-x64 linux-arm64; do
-            (cd "npm/atip-$platform/bin" && sha256sum -c atip.sha256)
-            chmod +x "npm/atip-$platform/bin/atip"
+            (cd "npm/atip-check-$platform/bin" && sha256sum -c atip.sha256)
+            chmod +x "npm/atip-check-$platform/bin/atip"
           done
 
       - name: Apply the version to every package.json
@@ -142,13 +142,13 @@ jobs:
           VERSION: ${{ needs.read-version.outputs.version }}
         run: |
           set -euo pipefail
-          for pkg in npm/atip npm/atip-darwin-arm64 npm/atip-linux-x64 npm/atip-linux-arm64; do
+          for pkg in npm/atip-check npm/atip-check-darwin-arm64 npm/atip-check-linux-x64 npm/atip-check-linux-arm64; do
             jq --arg v "$VERSION" '.version = $v' "$pkg/package.json" > "$pkg/package.json.new"
             mv "$pkg/package.json.new" "$pkg/package.json"
           done
-          jq --arg v "$VERSION" '.optionalDependencies |= with_entries(.value = $v)' npm/atip/package.json > npm/atip/package.json.new
-          mv npm/atip/package.json.new npm/atip/package.json
-          cat npm/atip/package.json
+          jq --arg v "$VERSION" '.optionalDependencies |= with_entries(.value = $v)' npm/atip-check/package.json > npm/atip-check/package.json.new
+          mv npm/atip-check/package.json.new npm/atip-check/package.json
+          cat npm/atip-check/package.json
 
       # Fails closed: only npm's E404 (never published) counts as absent; any other failure of `npm view` stops the
       # release rather than being read as "not published".
@@ -172,7 +172,7 @@ jobs:
             exit 1
           }
           already=""
-          for pkg in npm/atip-darwin-arm64 npm/atip-linux-x64 npm/atip-linux-arm64 npm/atip; do
+          for pkg in npm/atip-check-darwin-arm64 npm/atip-check-linux-x64 npm/atip-check-linux-arm64 npm/atip-check; do
             name=$(jq -r .name "$pkg/package.json")
             if is_published "$name"; then
               already="$already $name"
@@ -189,13 +189,13 @@ jobs:
           fi
 
       # The platform packages first, then the launcher, whose optional dependencies must already resolve.
-      - name: Publish (platform packages, then @journeykit/atip)
+      - name: Publish (platform packages, then @journeykit/atip-check)
         env:
           VERSION: ${{ needs.read-version.outputs.version }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          for pkg in npm/atip-darwin-arm64 npm/atip-linux-x64 npm/atip-linux-arm64 npm/atip; do
+          for pkg in npm/atip-check-darwin-arm64 npm/atip-check-linux-x64 npm/atip-check-linux-arm64 npm/atip-check; do
             name=$(jq -r .name "$pkg/package.json")
             if npm view "$name@$VERSION" version >/dev/null 2>&1; then
               echo "$name@$VERSION is already on npm: skipped."

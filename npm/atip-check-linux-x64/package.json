@@ -1,7 +1,7 @@
 {
-  "name": "@journeykit/atip-linux-arm64",
+  "name": "@journeykit/atip-check-linux-x64",
   "version": "0.0.0",
-  "description": "The atip binary (atip check, the ATIP conformance checker) for Linux arm64 (glibc). Installed by @journeykit/atip.",
+  "description": "The atip binary (atip check, the ATIP conformance checker) for Linux x64 (glibc). Installed by @journeykit/atip-check.",
   "license": "MIT",
   "homepage": "https://github.com/journeyWorker/atip",
   "publishConfig": {
@@ -10,13 +10,13 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/journeyWorker/atip.git",
-    "directory": "npm/atip-linux-arm64"
+    "directory": "npm/atip-check-linux-x64"
   },
   "os": [
     "linux"
   ],
   "cpu": [
-    "arm64"
+    "x64"
   ],
   "libc": [
     "glibc"

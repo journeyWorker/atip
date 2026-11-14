@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `@journeykit/atip`: runs the `atip` binary of the platform package installed next to it (an optional dependency,
+// `@journeykit/atip-check`: runs the `atip` binary of the platform package installed next to it (an optional dependency,
 // one per platform), with this process's arguments and stdio, and ends with the binary's exit status, or as close to
 // its signal as Node allows. The checker's own output, exit statuses and refusals are the binary's; this file only
 // finds it.
@@ -11,11 +11,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCOPE = "@journeykit/";
-// `${process.platform}-${process.arch}` → the package that carries the binary for it (npm/atip-<platform>/).
+// `${process.platform}-${process.arch}` → the package that carries the binary for it (npm/atip-check-<platform>/).
 const PLATFORMS = {
-  "darwin-arm64": `${SCOPE}atip-darwin-arm64`,
-  "linux-x64": `${SCOPE}atip-linux-x64`,
-  "linux-arm64": `${SCOPE}atip-linux-arm64`,
+  "darwin-arm64": `${SCOPE}atip-check-darwin-arm64`,
+  "linux-x64": `${SCOPE}atip-check-linux-x64`,
+  "linux-arm64": `${SCOPE}atip-check-linux-arm64`,
 };
 const FROM_SOURCE = "build it from source with `cargo install atip-check`";
 

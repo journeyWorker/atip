@@ -42,7 +42,7 @@ differs in the earlier minors, and 15.8-15.10 say what 1.4, 1.5 and 1.6 mean for
 contract was called `agent-cli/1`.
 
 **Names.** Contract id `atip/1` (`meta.contract`); schema `$id`s under `https://atip.dev/1/` (placeholders); the
-checker command `atip check` (npm `@journeykit/atip`, crate `atip-check`); the TypeScript package `@journeykit/atip`
+checker command `atip check` (npm `@journeykit/atip-check`, crate `atip-check`); the TypeScript package `@journeykit/atip`
 (approaches/typescript.md; not published yet) and the Rust crate `atip`. OpenCLI is out of scope (spec 1.4).
 
 ## Install
@@ -51,11 +51,13 @@ The checker is the binary `atip` (macOS and Linux; it needs a pseudo-terminal an
 a released checker and runs it on the tool's built binary (`approaches/checker.md`):
 
 ```sh
-bunx @journeykit/atip check --bin target/release/<tool> --fixture atip.fixture.json --level L2
-cargo install atip-check     # the same binary from source: atip check ...
+bunx @journeykit/atip-check check --bin target/release/<tool> --fixture atip.fixture.json --level L2
+bun add -g @journeykit/atip-check   # installs the command `atip`: atip check ...
+cargo install atip-check           # the same binary from source: atip check ...
 ```
 
-The npm package carries prebuilt binaries for macOS arm64 and Linux x64 and arm64 (glibc); its version is the crate's.
+The npm package carries prebuilt binaries for macOS arm64 and Linux x64 and arm64 (glibc 2.35 or later); its version
+is the crate's.
 A Rust tool links the shared crate from crates.io:
 
 ```toml
@@ -89,13 +91,13 @@ atip = "0.3"
 | `examples/invalid/` | Documents that must be rejected, one broken rule each (shape, every rule of Annex S2, projection, domains, patterns, validators, batch, stream, input). |
 | `scripts/validate.sh` | Runs `scripts/check.ts`: every example against its JSON Schema and the rules beyond JSON Schema (Annex S2, 6.x, 7.4, 10.x, 13), report and stream data against the output and event schemas of the example command documents, the spec's section cross-references, and the ECMAScript side of `scripts/regex-cases.json`; then `scripts/plan-digest.ts`, which recomputes the plan digest test vectors. With cargo it also runs `scripts/regex-parity`, which checks the Rust side of that record. |
 | `scripts/regex-cases.json` | Patterns and values with the answers of ECMAScript (`u`) and the Rust `regex` crate: the evidence that the pattern form of Annex V2 reads the same in both. |
-| `crates/atip/` | The Rust crate `atip`: what a clap tool shares to speak the contract (projection of a clap tree onto the `schema` documents, the error value and its redaction, field projection, domains and constraints, cursors, plan digests, the envelope line, the code-name conditions and the reserved codes per minor, the 1.4 self-description writer with the `--schemas` answer and the `--help --json` refusals, validators for the schemas). It supports the minors 1.0 to 1.4 of atip/1 (`atip::Minor`, one rule set per minor). It embeds `crates/atip/schema/*.json`, a copy of `schema/` that its test `schema_copy` keeps byte-identical, so the published crate carries the schemas. |
-| `crates/atip-check/` | The Rust crate `atip-check`: the checker, `atip check`, and its test subject, a fake tool whose behaviour is a JSON configuration (`fake-tool/`). Tags `atip-crate-v0.x.y` and `atip-check-v0.x.y` version the two crates independently of the spec and publish them (crates.io; the checker also on npm); `atip::CONTRACT_VERSION` is the newest spec minor a crate release supports (1.4 for `atip-crate-v0.1.0`); `atip check --contract` takes `1.0` to `1.4`. |
+| `crates/atip/` | The Rust crate `atip`: what a clap tool shares to speak the contract (projection of a clap tree onto the `schema` documents, the error value and its redaction, field projection, domains and constraints, cursors, plan digests, the envelope line, the code-name conditions and the reserved codes per minor, the 1.4 self-description writer with the `--schemas` answer and the `--help --json` refusals, validators for the schemas). It supports the minors 1.0 to 1.6 of atip/1 (`atip::Minor`, one rule set per minor). It embeds `crates/atip/schema/*.json`, a copy of `schema/` that its test `schema_copy` keeps byte-identical, so the published crate carries the schemas. |
+| `crates/atip-check/` | The Rust crate `atip-check`: the checker, `atip check`, and its test subject, a fake tool whose behaviour is a JSON configuration (`fake-tool/`). Tags `atip-crate-v0.x.y` and `atip-check-v0.x.y` version the two crates independently of the spec and publish them (crates.io; the checker also on npm); `atip::CONTRACT_VERSION` is the newest spec minor a crate release supports (1.6 since `atip-crate-v0.3.0`); `atip check --contract` takes `1.0` to `1.6`. |
 | `crates/atip-probe/` | An unpublished crate (`publish = false`): the smallest tool that depends on `atip` with its default features. Its test and `scripts/check_no_jsonschema.sh` prove with `cargo tree` that such a tool does not link `jsonschema`, which only the feature `validate` brings in. |
 | `Cargo.toml`, `rust-toolchain.toml`, `clippy.toml` | The Cargo workspace (`crates/atip`, `crates/atip-check`, `crates/atip-probe`, `scripts/regex-parity`; one `Cargo.lock`), its lint set, the pinned toolchain and the clippy configuration. |
 | `justfile`, `.github/workflows/ci.yml` | Contributor recipes and the CI job that runs the same steps. |
 | `.github/workflows/publish-crate.yml`, `publish-check.yml`, `build-native.yml` | Releases. The tag `atip-crate-vX.Y.Z` publishes the crate `atip`; `atip-check-vX.Y.Z` builds the `atip` binary natively for each platform, publishes the npm packages and the crate `atip-check`. Each tag must name its crate's `Cargo.toml` version. |
-| `npm/` | The npm packages of the checker: `atip` (`@journeykit/atip`, the launcher that runs the platform's binary) and `atip-<platform>` (the binaries, staged by the release workflow). |
+| `npm/` | The npm packages of the checker: `atip-check` (`@journeykit/atip-check`, the launcher that runs the platform's binary as the command `atip`) and `atip-check-<platform>` (the binaries, staged by the release workflow). |
 | `approaches/` | Not normative. `rust.md` (clap → spec, the shared crate, constraints, `--input` in Rust, canon and lute), `typescript.md` (spec-first `defineCommand` for Effect 4, fragment schemas and numeric codecs, an `effect/cli` interim), `checker.md` (the black-box conformance checker: strengths, coverage, fixtures, tool-owned obligations; a tool that tests the spec, not its definition), `migration.md` (adopting ATIP level by level, canon and lute as worked examples, and the costs the contract does not soften). |
 | `approaches/implementation.md` | Not normative. Recommendations beyond the protocol: the order of the stateless checks, which argument a constraint violation names, cursor binding details and the next-page entry, converting an `--input` document to argv, why each pattern restriction and the cross-engine record, the text-mode error form, and naming error codes in practice. Rules a tool that declares 1.2 must still follow, and that 1.3 recommends. |
 | `CHANGELOG.md` | What each version of the contract is. |

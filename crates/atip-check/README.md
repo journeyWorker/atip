@@ -10,8 +10,9 @@ never the definition of one (spec 3.7).
 The binary is `atip`. It runs on macOS and Linux (it needs a pseudo-terminal and process groups).
 
 ```sh
-bunx @journeykit/atip check --help     # npm: prebuilt for macOS arm64, Linux x64 and arm64 (glibc)
-cargo install atip-check               # from source, any unix
+bunx @journeykit/atip-check check --help   # npm: prebuilt for macOS arm64, Linux x64 and arm64 (glibc 2.35+)
+bun add -g @journeykit/atip-check          # npm, installed: the command atip
+cargo install atip-check                   # from source, any unix
 ```
 
 ## Use
