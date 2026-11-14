@@ -449,8 +449,17 @@ impl Run<'_> {
         } else {
             self.runner.run(&call)?
         };
+        Ok(self.record(outcome))
+    }
+
+    /// Adds `outcome` to the log and returns its index. An answer with `next` entries keeps the sequence it ran in, which
+    /// `plan_nexts` may continue after other sequences were made; every other sequence a plan continues, it continues at once.
+    fn record(&mut self, outcome: Outcome) -> usize {
+        if carries_next(&outcome) {
+            self.runner.keep(outcome.sequence);
+        }
         self.log.push(outcome);
-        Ok(self.log.len() - 1)
+        self.log.len() - 1
     }
 
     /// The first JSON document an invocation printed, when it is a success whose `data.<key>` is a list of objects with a `code`.
@@ -716,7 +725,10 @@ impl Run<'_> {
                 }
             } else {
                 for argv in &entry.ok {
-                    calls.ok.push(self.invoke(Call::new(in_json_mode(argv)))?);
+                    let ok = self.invoke(Call::new(in_json_mode(argv)))?;
+                    // The L2 repeat of a write continues it (`ok_bases`).
+                    self.runner.keep(self.log[ok].sequence);
+                    calls.ok.push(ok);
                 }
                 for argv in &entry.paged {
                     calls
@@ -789,8 +801,7 @@ impl Run<'_> {
         let mut call = Call::new(in_json_mode(argv)).on_terminal();
         call.limit = Some(deadline);
         let outcome = self.runner.run_on_terminal(&call, deadline)?;
-        self.log.push(outcome);
-        Ok(self.log.len() - 1)
+        Ok(self.record(outcome))
     }
 
     fn invoke_group(&mut self) -> Result<Option<GroupCalls>, RunError> {
@@ -3510,6 +3521,15 @@ fn first_document(stdout: &[u8]) -> Option<Value> {
         .into_iter::<Value>()
         .next()?
         .ok()
+}
+
+/// Whether `outcome` is a JSON answer whose first document has `meta.next` entries: one `plan_nexts` follows. Only an
+/// answer with the word `"next"` in it is parsed.
+fn carries_next(outcome: &Outcome) -> bool {
+    outcome.call.json_mode()
+        && outcome.stdout.windows(6).any(|word| word == b"\"next\"")
+        && first_document(&outcome.stdout)
+            .is_some_and(|document| document.pointer("/meta/next").is_some_and(Value::is_array))
 }
 
 /// The text of the first JSON value of `text`; all of it when it holds none.

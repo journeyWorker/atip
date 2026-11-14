@@ -11,22 +11,23 @@
 //! Telemetry opt-outs are never set: a write the tool does on its own is what
 //! the effects check must see.
 
-use std::io::Read;
+use std::fs::File;
+use std::io::{PipeWriter, Read};
 use std::os::fd::AsFd;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use nix::sys::signal::{killpg, Signal};
 use nix::unistd::Pid;
 use tempfile::TempDir;
 
 use crate::fixture::Fixture;
-use crate::snapshot::{changed, copy_tree, take, Snapshot};
+use crate::snapshot::{changed, changed_at, copy_or_clone, take, Snapshot, Source, Template, Time};
 
 /// How long a `notRun` command has to end after SIGTERM before it gets SIGKILL.
 pub const SERVED_GRACE: Duration = Duration::from_secs(2);
@@ -202,19 +203,59 @@ pub enum RunError {
 }
 
 /// The binary under test and the template every invocation copies.
+///
+/// A sequence that no later call continues is removed on a thread of its own as soon as the next sequence is made, while
+/// the calls go on; the ones a later call continues ([`Runner::keep`]) and the shared one stay until the runner is dropped.
 #[derive(Debug)]
 pub struct Runner {
     bin: PathBuf,
-    scratch: TempDir,
     template: PathBuf,
-    template_files: Snapshot,
+    template_files: Template,
     fixture_env: Vec<(String, String)>,
     timeout: Duration,
-    sequences: usize,
+    /// Every sequence made so far: sequence `n` is at index `n - 1`.
+    sequences: Vec<Sequence>,
+    /// The last fresh sequence: removed when the next one is made, unless it is kept or shared.
+    last: Option<usize>,
+    /// Whether a sequence is made by cloning the template; cleared once a clone fails.
+    clone: bool,
+    /// A file of the scratch space, touched to read the file system's clock when a sequence is made.
+    clock: File,
     /// The number of the one sequence every [`Runner::run_shared`] call runs in, once the first has made it.
     shared: Option<usize>,
     /// The probe command with `--json`: asked for the remote state after a refusal.
     probe: Option<Vec<String>>,
+    /// The thread that removes finished sequences, once there is one.
+    remover: Option<Remover>,
+    scratch: TempDir,
+}
+
+/// One copy of the fixture state.
+#[derive(Debug, Clone, Copy)]
+struct Sequence {
+    /// When the copy of the template was made, on the file system's clock; `None` for an empty one.
+    made: Option<Time>,
+    /// A later call continues it: it stays until the end.
+    kept: bool,
+    /// It has been handed to the remover.
+    removed: bool,
+}
+
+/// Removes finished sequences on a thread of its own, while the next calls run.
+#[derive(Debug)]
+struct Remover {
+    queue: Sender<PathBuf>,
+    thread: JoinHandle<()>,
+}
+
+impl Drop for Runner {
+    /// What the remover was given is gone before the scratch space is removed: two removals of one tree at once can each fail on what the other took.
+    fn drop(&mut self) {
+        if let Some(Remover { queue, thread }) = self.remover.take() {
+            drop(queue);
+            let _removed = thread.join();
+        }
+    }
 }
 
 impl Runner {
@@ -230,23 +271,29 @@ impl Runner {
             std::fs::create_dir_all(template.join(part))
                 .map_err(|error| RunError::Scratch(error.to_string()))?;
         }
+        let clock = File::create(scratch.path().join("clock"))
+            .map_err(|error| RunError::Scratch(error.to_string()))?;
         let mut runner = Self {
             bin: bin.to_path_buf(),
-            scratch,
             template,
-            template_files: Snapshot::new(),
+            template_files: Template::default(),
             fixture_env: fixture
                 .env
                 .iter()
                 .map(|(name, value)| (name.clone(), value.clone()))
                 .collect(),
             timeout: fixture.timeout,
-            sequences: 0,
+            sequences: Vec::new(),
+            last: None,
+            clone: true,
+            clock,
             shared: None,
             probe: fixture.probe.clone().map(|mut words| {
                 words.push("--json".to_string());
                 words
             }),
+            remover: None,
+            scratch,
         };
         for command in &fixture.prepare {
             let template = runner.template.clone();
@@ -302,17 +349,28 @@ impl Runner {
                 )));
             }
         }
-        runner.template_files =
-            Self::both(&runner.template).map_err(|error| RunError::Scratch(error.to_string()))?;
+        runner.template_files = Template::take(&[
+            (&runner.template.join("work"), "."),
+            (&runner.template.join("home"), "~"),
+        ])
+        .map_err(|error| RunError::Scratch(error.to_string()))?;
         Ok(runner)
     }
 
-    fn both(root: &Path) -> std::io::Result<Snapshot> {
+    /// The entries of the directory and `HOME` of sequence `number`, as `./path` and `~/path`. A copy of the template is
+    /// measured against it: only what changed since the copy was made is read.
+    fn both(&self, number: usize) -> std::io::Result<Snapshot> {
+        let root = self.sequence_dir(number);
+        let source = match self.sequences[number - 1].made {
+            Some(made) => Source::Copy {
+                template: &self.template_files,
+                made,
+            },
+            None => Source::Unknown,
+        };
         let mut all = Snapshot::new();
         for (part, label) in [("work", "."), ("home", "~")] {
-            for (path, entry) in take(&root.join(part))? {
-                all.insert(format!("{label}{path}"), entry);
-            }
+            take(&root.join(part), label, source, &mut all)?;
         }
         Ok(all)
     }
@@ -343,20 +401,88 @@ impl Runner {
         self.scratch.path().join(format!("sequence-{number}"))
     }
 
-    /// A fresh copy of the template as the next sequence's directory, or an empty one for a call in the empty state.
+    /// The directory of sequence `number`, which a call is about to continue or measure: it must not have been removed.
+    fn continued(&self, number: usize) -> PathBuf {
+        assert!(
+            !self.sequences[number - 1].removed,
+            "sequence {number} was removed when the next one was made: a call that continues a sequence later needs `Runner::keep`"
+        );
+        self.sequence_dir(number)
+    }
+
+    /// Keeps sequence `number` until the runner is dropped: a later call continues it ([`Runner::run_after`], [`Runner::fingerprint`]).
+    pub fn keep(&mut self, number: usize) {
+        if let Some(sequence) = number
+            .checked_sub(1)
+            .and_then(|index| self.sequences.get_mut(index))
+        {
+            sequence.kept = true;
+        }
+    }
+
+    /// Hands sequence `number` to the remover, unless it is kept or shared.
+    fn release(&mut self, number: usize) {
+        let sequence = &mut self.sequences[number - 1];
+        if sequence.kept || self.shared == Some(number) {
+            return;
+        }
+        sequence.removed = true;
+        let dir = self.sequence_dir(number);
+        let remover = self.remover.get_or_insert_with(|| {
+            let (queue, dirs) = mpsc::channel::<PathBuf>();
+            let thread = thread::spawn(move || {
+                for dir in dirs {
+                    // What is left is removed with the scratch space.
+                    let _removed = std::fs::remove_dir_all(dir);
+                }
+            });
+            Remover { queue, thread }
+        });
+        // A remover that is gone leaves the sequence to the removal of the scratch space.
+        let _sent = remover.queue.send(dir);
+    }
+
+    /// The file system's clock now: the status-change time of the clock file, just touched.
+    fn now_on_disk(&self) -> std::io::Result<Time> {
+        self.clock.set_modified(SystemTime::now())?;
+        Ok(changed_at(&self.clock.metadata()?))
+    }
+
+    /// A fresh copy of the template as the next sequence's directory, or an empty one for a call in the empty state. The
+    /// sequence made before it is finished: it is removed unless a later call continues it.
     fn sequence(&mut self, empty: bool) -> Result<(usize, PathBuf), RunError> {
-        self.sequences += 1;
-        let number = self.sequences;
+        if let Some(previous) = self.last.take() {
+            self.release(previous);
+        }
+        let number = self.sequences.len() + 1;
         let sequence = self.sequence_dir(number);
-        for part in ["work", "home"] {
-            if empty {
-                std::fs::create_dir_all(sequence.join(part))
-                    .map_err(|error| RunError::Scratch(error.to_string()))?;
-            } else {
-                copy_tree(&self.template.join(part), &sequence.join(part))
-                    .map_err(|error| RunError::Scratch(error.to_string()))?;
+        let scratch = |error: std::io::Error| RunError::Scratch(error.to_string());
+        if empty {
+            for part in ["work", "home"] {
+                std::fs::create_dir_all(sequence.join(part)).map_err(scratch)?;
+            }
+        } else {
+            std::fs::create_dir(&sequence).map_err(scratch)?;
+            for part in ["work", "home"] {
+                copy_or_clone(
+                    &self.template.join(part),
+                    &sequence.join(part),
+                    &mut self.clone,
+                )
+                .map_err(scratch)?;
             }
         }
+        let made = if empty {
+            None
+        } else {
+            Some(self.now_on_disk().map_err(scratch)?)
+        };
+        self.sequences.push(Sequence {
+            made,
+            kept: false,
+            removed: false,
+        });
+        self.last = Some(number);
         Ok((number, sequence))
     }
 
@@ -370,18 +496,23 @@ impl Runner {
     fn after_call(
         &self,
         outcome: &mut Outcome,
-        sequence: &Path,
+        number: usize,
         before: &Snapshot,
     ) -> Result<(), RunError> {
         if outcome.exit != Exit::Code(2) && !outcome.call.measure {
             return Ok(());
         }
-        let after = Self::both(sequence).map_err(|error| RunError::Scratch(error.to_string()))?;
+        let after = self
+            .both(number)
+            .map_err(|error| RunError::Scratch(error.to_string()))?;
         outcome.changes = changed(before, &after);
         if outcome.exit == Exit::Code(2) {
             if let Some(probe) = &self.probe {
                 outcome.probe_after = self
-                    .execute(&Call::new(probe.iter().cloned()), sequence)
+                    .execute(
+                        &Call::new(probe.iter().cloned()),
+                        &self.sequence_dir(number),
+                    )
                     .ok()
                     .map(|probed| probed.stdout);
             }
@@ -391,7 +522,8 @@ impl Runner {
 
     /// Runs `call` once in its own fresh copy of the template (an empty one for a call in the empty state).
     pub fn run(&mut self, call: &Call) -> Result<Outcome, RunError> {
-        let (number, sequence) = self.sequence(call.empty || call.without_setup)?;
+        let fresh = call.empty || call.without_setup;
+        let (number, sequence) = self.sequence(fresh)?;
         let mut outcome = (if call.served {
             self.execute_served(call, &sequence)
         } else {
@@ -399,12 +531,13 @@ impl Runner {
         })
         .map_err(|error| RunError::Spawn(format!("{}: {error}", self.bin.display())))?;
         outcome.sequence = number;
-        let before = if call.empty || call.without_setup {
-            Snapshot::new()
+        let nothing = Snapshot::new();
+        let before = if fresh {
+            &nothing
         } else {
-            self.template_files.clone()
+            &self.template_files.files
         };
-        self.after_call(&mut outcome, &sequence, &before)?;
+        self.after_call(&mut outcome, number, before)?;
         Ok(outcome)
     }
 
@@ -438,13 +571,15 @@ impl Runner {
     /// the state an earlier call left (a page and the next page it points to, a `next` entry and the answer that carried it).
     /// What it changed is measured against the state it found.
     pub fn run_after(&mut self, number: usize, call: &Call) -> Result<Outcome, RunError> {
-        let sequence = self.sequence_dir(number);
-        let before = Self::both(&sequence).map_err(|error| RunError::Scratch(error.to_string()))?;
+        let sequence = self.continued(number);
+        let before = self
+            .both(number)
+            .map_err(|error| RunError::Scratch(error.to_string()))?;
         let mut outcome = self
             .execute(call, &sequence)
             .map_err(|error| RunError::Spawn(format!("{}: {error}", self.bin.display())))?;
         outcome.sequence = number;
-        self.after_call(&mut outcome, &sequence, &before)?;
+        self.after_call(&mut outcome, number, &before)?;
         Ok(outcome)
     }
 
@@ -479,7 +614,9 @@ impl Runner {
 
     /// The state of sequence `number` as text: two sequences with the same files, sizes and contents give the same text.
     pub fn fingerprint(&self, number: usize) -> Result<String, RunError> {
-        let state = Self::both(&self.sequence_dir(number))
+        self.continued(number);
+        let state = self
+            .both(number)
             .map_err(|error| RunError::Scratch(error.to_string()))?;
         Ok(format!("{state:?}"))
     }
@@ -497,8 +634,7 @@ impl Runner {
             .execute_terminal(call, &sequence, deadline)
             .map_err(|error| RunError::Spawn(format!("{}: {error}", self.bin.display())))?;
         outcome.sequence = number;
-        let before = self.template_files.clone();
-        self.after_call(&mut outcome, &sequence, &before)?;
+        self.after_call(&mut outcome, number, &self.template_files.files)?;
         Ok(outcome)
     }
 
@@ -537,18 +673,23 @@ impl Runner {
     fn execute(&self, call: &Call, root: &Path) -> std::io::Result<Outcome> {
         let started = Instant::now();
         let mut command = self.command(call, root);
-        // A terminal on stdout: the slave end goes to the child and a copy stays here until the output has been read.
+        // A terminal on stdout: the slave end goes to the child and a copy stays here until the output has been read. The
+        // reader is woken through a pipe whose writing end is dropped once the process has ended.
         let buffer = Arc::new(Mutex::new(Vec::new()));
+        let mut ended: Option<PipeWriter> = None;
         let stdout_terminal = if call.pty {
             let pty = raw_terminal()?;
             let kept = pty.slave.try_clone()?;
+            let (wake, ring) = std::io::pipe()?;
+            ended = Some(ring);
             command.stdout(Stdio::from(pty.slave));
-            Some((std::fs::File::from(pty.master), kept))
+            Some((std::fs::File::from(pty.master), kept, wake))
         } else {
             command.stdout(Stdio::piped());
             None
         };
         let mut child = spawn(&mut command)?;
+        let mut events = Events::watch(&child);
         // The document goes in from a thread of its own: a tool that answers before it reads must not block this one. A tool that has
         // exited by then (it refused the call without reading stdin) makes the write fail with `EPIPE`, which is no one's error.
         let writer = match (call.stdin.clone(), child.stdin.take()) {
@@ -558,10 +699,9 @@ impl Runner {
             _ => None,
         };
         drop(command);
-        let ended = Arc::new(AtomicBool::new(false));
         let stdout = match (stdout_terminal, child.stdout.take()) {
-            (Some((master, slave)), _) => {
-                terminal_reader(master, slave, Arc::clone(&ended), Arc::clone(&buffer))
+            (Some((master, slave, wake)), _) => {
+                terminal_reader(master, slave, wake, Arc::clone(&buffer), None)
             }
             (None, Some(pipe)) => reader(pipe),
             (None, None) => thread::spawn(Vec::new),
@@ -570,10 +710,10 @@ impl Runner {
             .stderr
             .take()
             .map_or_else(|| thread::spawn(Vec::new), reader);
-        let exit = wait(&mut child, call.limit.unwrap_or(self.timeout))?;
+        let exit = wait(&mut child, &mut events, call.limit.unwrap_or(self.timeout))?;
         // Whatever the tool left running in its group must not hold the output open.
         kill_group(&child);
-        ended.store(true, Ordering::Release);
+        drop(ended);
         // The tool is gone, so the writer ends (`EPIPE` at the latest): nothing of this call writes to a pipe once it returns.
         if let Some(writer) = writer {
             let _ = writer.join();
@@ -601,10 +741,12 @@ impl Runner {
         let mut command = self.command(call, root);
         command.stdout(Stdio::piped());
         let mut child = spawn(&mut command)?;
+        let mut events = Events::watch(&child);
         drop(command);
         let printed = Arc::new(Mutex::new(Vec::new()));
         let reading = child.stdout.take().map(|mut pipe| {
             let sink = Arc::clone(&printed);
+            let news = events.printer();
             thread::spawn(move || {
                 let mut chunk = [0u8; 8192];
                 while let Ok(read) = pipe.read(&mut chunk) {
@@ -614,6 +756,7 @@ impl Runner {
                     if let Ok(mut bytes) = sink.lock() {
                         bytes.extend_from_slice(&chunk[..read]);
                     }
+                    let _told = news.send(Event::Printed);
                 }
             })
         });
@@ -636,30 +779,29 @@ impl Runner {
         let mut exit = Exit::TimedOut;
         let mut end: Option<usize> = None;
         loop {
-            let seen = printed
+            if let Some(at) = printed
                 .lock()
-                .map(|bytes| bytes.clone())
-                .unwrap_or_default();
-            if let Some(at) = first_document_end(&seen) {
+                .ok()
+                .and_then(|bytes| first_document_end(&bytes))
+            {
                 end = Some(at);
                 break;
             }
-            if let Some(status) = child.try_wait()? {
+            if events.exited {
                 // Ended before a document: whatever it printed up to its end is read, but it is a fixture error all the same.
-                exit = exit_of(status);
+                exit = exit_of(child.wait()?);
                 ended_alone = true;
                 break;
             }
             if started.elapsed() >= limit {
                 break;
             }
-            thread::sleep(Duration::from_millis(5));
+            events.next_within(limit.saturating_sub(started.elapsed()));
         }
         if end.is_some() {
             // The closing newline of the document's line, then a moment for a process that prints its document and ends.
-            thread::sleep(Duration::from_millis(SERVED_SETTLE_MILLIS));
-            if let Some(status) = child.try_wait()? {
-                exit = exit_of(status);
+            if events.exit_within(Duration::from_millis(SERVED_SETTLE_MILLIS)) {
+                exit = exit_of(child.wait()?);
                 ended_alone = true;
             } else {
                 let group = i32::try_from(child.id()).ok().map(Pid::from_raw);
@@ -667,24 +809,11 @@ impl Runner {
                     // ESRCH is the usual answer for a group that is already gone.
                     let _gone = killpg(group, Signal::SIGTERM);
                 }
-                let asked = Instant::now();
-                let ended = loop {
-                    if let Some(status) = child.try_wait()? {
-                        break Some(status);
-                    }
-                    if asked.elapsed() >= SERVED_GRACE {
-                        break None;
-                    }
-                    thread::sleep(Duration::from_millis(5));
-                };
-                exit = match ended {
-                    Some(status) => exit_of(status),
-                    None => {
-                        kill_group(&child);
-                        child.kill().unwrap_or_default();
-                        exit_of(child.wait()?)
-                    }
-                };
+                if !events.exit_within(SERVED_GRACE) {
+                    kill_group(&child);
+                    child.kill().unwrap_or_default();
+                }
+                exit = exit_of(child.wait()?);
                 served = true;
             }
         } else if !ended_alone {
@@ -743,55 +872,63 @@ impl Runner {
         command.stdout(Stdio::from(pty.slave));
         let master = std::fs::File::from(pty.master);
         let mut writer = master.try_clone()?;
+        let (wake, ring) = std::io::pipe()?;
         let mut child = spawn(&mut command)?;
+        let mut events = Events::watch(&child);
         drop(command);
-        let ended = Arc::new(AtomicBool::new(false));
         let buffer = Arc::new(Mutex::new(Vec::new()));
-        let stdout = terminal_reader(master, kept, Arc::clone(&ended), Arc::clone(&buffer));
+        let stdout = terminal_reader(
+            master,
+            kept,
+            wake,
+            Arc::clone(&buffer),
+            Some(events.printer()),
+        );
         let stderr = child
             .stderr
             .take()
             .map_or_else(|| thread::spawn(Vec::new), reader);
         let printed = || buffer.lock().map_or(0, |bytes| bytes.len());
         let mut at_deadline = None;
-        let exit = loop {
-            if let Some(status) = child.try_wait()? {
-                break exit_of(status);
-            }
-            if started.elapsed() >= deadline {
-                let output = buffer.lock().map(|bytes| bytes.clone()).unwrap_or_default();
-                std::io::Write::write_all(&mut writer, &[end_of_file])?;
-                let grace = Instant::now();
-                let mut reacted = false;
-                let mut ended_by = None;
-                while grace.elapsed() < Duration::from_secs(2) {
-                    if let Some(status) = child.try_wait()? {
-                        reacted = true;
-                        ended_by = Some(exit_of(status));
-                        break;
-                    }
-                    if printed() > output.len() {
-                        reacted = true;
-                        break;
-                    }
-                    thread::sleep(Duration::from_millis(5));
+        let exit = if events.exit_within(deadline.saturating_sub(started.elapsed())) {
+            exit_of(child.wait()?)
+        } else {
+            let output = buffer.lock().map(|bytes| bytes.clone()).unwrap_or_default();
+            std::io::Write::write_all(&mut writer, &[end_of_file])?;
+            let grace = Instant::now();
+            let mut reacted = false;
+            let mut ended_by = None;
+            loop {
+                if events.exited {
+                    reacted = true;
+                    ended_by = Some(exit_of(child.wait()?));
+                    break;
                 }
-                at_deadline = Some(AtDeadline {
-                    output,
-                    reacted_to_eof: reacted,
-                });
-                if let Some(exit) = ended_by {
-                    break exit;
+                if printed() > output.len() {
+                    reacted = true;
+                    break;
                 }
-                kill_group(&child);
-                child.kill().unwrap_or_default();
-                child.wait()?;
-                break Exit::TimedOut;
+                let left = Duration::from_secs(2).saturating_sub(grace.elapsed());
+                if left.is_zero() || events.next_within(left).is_none() {
+                    break;
+                }
             }
-            thread::sleep(Duration::from_millis(5));
+            at_deadline = Some(AtDeadline {
+                output,
+                reacted_to_eof: reacted,
+            });
+            match ended_by {
+                Some(exit) => exit,
+                None => {
+                    kill_group(&child);
+                    child.kill().unwrap_or_default();
+                    child.wait()?;
+                    Exit::TimedOut
+                }
+            }
         };
         kill_group(&child);
-        ended.store(true, Ordering::Release);
+        drop(ring);
         stdout.join().unwrap_or_default();
         let output = buffer.lock().map(|bytes| bytes.clone()).unwrap_or_default();
         Ok(Outcome {
@@ -852,18 +989,20 @@ fn canonical_terminal() -> std::io::Result<CanonicalTerminal> {
     })
 }
 
-/// Reads a terminal's master end to its end of file, into `buffer` as it goes.
+/// Reads a terminal's master end to its end of file, into `buffer` as it goes, telling `printed` of each read.
 ///
-/// While the process runs, and until nothing more is waiting after it ended (`ended`), `slave` stays open here:
-/// closing the last slave end before the master has been read can throw unread output away, so the master never
-/// reports a hang-up early. Then `slave` is closed and the read goes on to EOF (the hang-up error), so nothing the
-/// process wrote is cut.
+/// While the process runs, and until nothing more is waiting after it ended (the writing end of the pipe `wake` reads
+/// from is closed), `slave` stays open here: closing the last slave end before the master has been read can throw
+/// unread output away, so the master never reports a hang-up early. Then `slave` is closed and the read goes on to EOF
+/// (the hang-up error), so nothing the process wrote is cut.
 fn terminal_reader(
     mut master: std::fs::File,
     slave: std::os::fd::OwnedFd,
-    ended: Arc<AtomicBool>,
+    wake: std::io::PipeReader,
     buffer: Arc<Mutex<Vec<u8>>>,
+    printed: Option<Sender<Event>>,
 ) -> JoinHandle<Vec<u8>> {
+    use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
     let push = move |buffer: &Arc<Mutex<Vec<u8>>>, bytes: &[u8]| {
         if let Ok(mut all) = buffer.lock() {
             all.extend_from_slice(bytes);
@@ -871,21 +1010,39 @@ fn terminal_reader(
     };
     thread::spawn(move || {
         let mut chunk = [0u8; 8192];
+        let mut ended = false;
         loop {
-            let ended_before = ended.load(Ordering::Acquire);
-            let mut fds = [nix::poll::PollFd::new(
-                master.as_fd(),
-                nix::poll::PollFlags::POLLIN,
-            )];
-            let waiting =
-                nix::poll::poll(&mut fds, nix::poll::PollTimeout::from(20u8)).unwrap_or(0) > 0;
+            let mut fds = [
+                PollFd::new(master.as_fd(), PollFlags::POLLIN),
+                PollFd::new(wake.as_fd(), PollFlags::POLLIN),
+            ];
+            // Once the process has ended, only what is already waiting is read.
+            let timeout = if ended {
+                PollTimeout::ZERO
+            } else {
+                PollTimeout::NONE
+            };
+            match poll(&mut fds, timeout) {
+                Ok(_) => {}
+                Err(nix::errno::Errno::EINTR) => continue,
+                Err(_) => break,
+            }
+            let ready = |fd: &PollFd<'_>| fd.revents().is_some_and(|events| !events.is_empty());
+            let (waiting, woken) = (ready(&fds[0]), ready(&fds[1]));
             if waiting {
                 match master.read(&mut chunk) {
-                    Ok(read) if read > 0 => push(&buffer, &chunk[..read]),
+                    Ok(read) if read > 0 => {
+                        push(&buffer, &chunk[..read]);
+                        if let Some(printed) = &printed {
+                            let _told = printed.send(Event::Printed);
+                        }
+                    }
                     _ => break,
                 }
-            } else if ended_before {
+            } else if ended {
                 break;
+            } else if woken {
+                ended = true;
             }
         }
         drop(slave);
@@ -951,20 +1108,108 @@ fn kill_group(child: &Child) {
     }
 }
 
-fn wait(child: &mut Child, limit: Duration) -> std::io::Result<Exit> {
-    let started = Instant::now();
-    loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok(exit_of(status));
+/// What a run waits for: the process's exit, and for some runs output arriving.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Event {
+    Exited,
+    Printed,
+}
+
+/// The events of one running process, waited for without polling. A thread waits for the process to exit without
+/// reaping it (`waitid` with `WNOWAIT`): the [`Child`] stays the one that reaps it, so it can still be killed safely.
+#[derive(Debug)]
+struct Events {
+    receiver: Receiver<Event>,
+    sender: Sender<Event>,
+    /// The process has exited (it is still to be reaped).
+    exited: bool,
+}
+
+impl Events {
+    fn watch(child: &Child) -> Self {
+        let (sender, receiver) = mpsc::channel();
+        let watcher = sender.clone();
+        let pid = child.id();
+        thread::spawn(move || {
+            wait_for_exit(pid);
+            let _told = watcher.send(Event::Exited);
+        });
+        Self {
+            receiver,
+            sender,
+            exited: false,
         }
-        if started.elapsed() >= limit {
-            kill_group(child);
-            child.kill().unwrap_or_default();
-            child.wait()?;
-            return Ok(Exit::TimedOut);
-        }
-        thread::sleep(Duration::from_millis(5));
     }
+
+    /// A sender for a reader that tells of output.
+    fn printer(&self) -> Sender<Event> {
+        self.sender.clone()
+    }
+
+    /// The next event within `limit`, or `None` when none came.
+    fn next_within(&mut self, limit: Duration) -> Option<Event> {
+        match self.receiver.recv_timeout(limit) {
+            Ok(event) => {
+                self.exited |= event == Event::Exited;
+                Some(event)
+            }
+            Err(RecvTimeoutError::Timeout) => None,
+            // The receiver holds a sender itself, so this does not happen; were it to, nothing would wake the wait.
+            Err(RecvTimeoutError::Disconnected) => {
+                self.exited = true;
+                Some(Event::Exited)
+            }
+        }
+    }
+
+    /// Whether the process exits within `limit`; output in between is passed over.
+    fn exit_within(&mut self, limit: Duration) -> bool {
+        let started = Instant::now();
+        while !self.exited {
+            if self
+                .next_within(limit.saturating_sub(started.elapsed()))
+                .is_none()
+            {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// Returns once the child `pid` has exited, leaving it to be reaped by its [`Child`] (or at once, when it has been reaped).
+#[expect(
+    unsafe_code,
+    reason = "waitid(2) with WNOWAIT has no std equivalent, nor a nix one on macOS"
+)]
+fn wait_for_exit(pid: u32) {
+    loop {
+        // SAFETY: `siginfo_t` is plain data, for which all zeroes is a valid value.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        // SAFETY: waitid only writes to `info`, which outlives the call.
+        let done = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                libc::id_t::from(pid),
+                &raw mut info,
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        };
+        if done == 0 || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+            return;
+        }
+    }
+}
+
+/// Waits for the child to exit within `limit`; past it, the child and its group are killed.
+fn wait(child: &mut Child, events: &mut Events, limit: Duration) -> std::io::Result<Exit> {
+    if events.exit_within(limit) {
+        return Ok(exit_of(child.wait()?));
+    }
+    kill_group(child);
+    child.kill().unwrap_or_default();
+    child.wait()?;
+    Ok(Exit::TimedOut)
 }
 
 fn exit_of(status: ExitStatus) -> Exit {
@@ -1098,13 +1343,36 @@ mod tests {
             "each invocation has its own working directory"
         );
         // `pwd` prints the physical path and `HOME` is the path as made: the temporary directory may be a link (`/var` for `/private/var` on macOS).
+        // The first copy is removed once the second is made, so the second run's paths are the ones resolved.
         let physical = |path: &str| {
             std::fs::canonicalize(path).unwrap_or_else(|error| panic!("{path}: {error}"))
         };
         assert!(
-            physical(paths[1]).starts_with(physical(paths[0]).parent().expect("a copy")),
+            physical(paths[3]).starts_with(physical(paths[2]).parent().expect("a copy")),
             "HOME is inside the copy: {paths:?}"
         );
+    }
+
+    #[test]
+    fn atip_check_deep_04_a_kept_sequence_is_continued_after_later_ones_and_a_finished_one_is_removed(
+    ) {
+        let mut runner = Runner::new(
+            "/bin/sh".as_ref(),
+            &fixture(&[&["-c", "echo seed > seeded"]], Duration::from_secs(10)),
+        )
+        .expect("runner");
+        let kept = runner.run(&sh("echo kept >> seeded")).expect("run");
+        runner.keep(kept.sequence);
+        let finished = runner.run(&sh("echo finished >> seeded")).expect("run");
+        let _later = runner.run(&sh("true")).expect("run");
+        let after = runner
+            .run_after(kept.sequence, &sh("cat seeded"))
+            .expect("run");
+        assert_eq!(text(&after.stdout), "seed\nkept\n");
+        let removed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            runner.fingerprint(finished.sequence)
+        }));
+        let _panic = removed.expect_err("a sequence handed to the remover cannot be continued");
     }
 
     #[test]

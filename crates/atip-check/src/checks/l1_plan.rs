@@ -1763,8 +1763,7 @@ impl Run<'_> {
     /// Like [`Run::invoke`], in the sequence that `sequence` names.
     pub(crate) fn invoke_after(&mut self, sequence: usize, call: Call) -> Result<usize, RunError> {
         let outcome = self.runner.run_after(sequence, &call)?;
-        self.log.push(outcome);
-        Ok(self.log.len() - 1)
+        Ok(self.record(outcome))
     }
 }
 

@@ -328,8 +328,7 @@ impl Run<'_> {
         let mut call = Call::new(argv).on_terminal();
         call.limit = Some(deadline);
         let outcome = self.runner.run_on_terminal(&call, deadline)?;
-        self.log.push(outcome);
-        Ok(self.log.len() - 1)
+        Ok(self.record(outcome))
     }
 
     pub(crate) fn plan_input(

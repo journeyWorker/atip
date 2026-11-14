@@ -436,8 +436,7 @@ impl Run<'_> {
         let pair_state = self.runner.fingerprint(pair_sequence)?;
         let mut pair = [0, 0];
         for (slot, outcome) in pair.iter_mut().zip(outcomes) {
-            self.log.push(outcome);
-            *slot = self.log.len() - 1;
+            *slot = self.record(outcome);
         }
         let lone = self.invoke(Call::new(with_key("chk-two", start_argv)))?;
         let lone_state = self.runner.fingerprint(self.log[lone].sequence)?;
