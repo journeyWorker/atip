@@ -1,4 +1,4 @@
-//! The invocations of `L1.check-order` (approaches/checker.md 6; spec 11.7 step 6): a passing invocation of the fixture changed to break two
+//! The invocations of `L1.check-order` (approaches/checker.md 6; spec 10.7 step 6): a passing invocation of the fixture changed to break two
 //! stages at once, so that the answer says which stage answers first.
 //!
 //! The stages are, in the order that answers: a failure of argv parsing (among them the earliest position in argv), a missing required
@@ -238,7 +238,7 @@ fn build(doc: &CommandDoc, base: &Invocation, faults: &[&Fault]) -> Option<Invoc
 }
 
 impl Run<'_> {
-    /// Plans the pairs of `doc` (spec 11.7 step 6), from the first of `bases`; a command with no passing invocation is a gap.
+    /// Plans the pairs of `doc` (spec 10.7 step 6), from the first of `bases`; a command with no passing invocation is a gap.
     pub(crate) fn plan_order(
         &mut self,
         run: &mut L1Run,

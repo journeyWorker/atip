@@ -166,7 +166,7 @@ fn assert_data_valid(doc: &Value, document: &Value) {
         document["meta"]["schemaVersion"], output["schemaVersion"],
         "{document}"
     );
-    // A projected answer is judged by the schema with `required` reduced (6.10); the structure of the records is
+    // A projected answer is judged by the schema with `required` reduced (Annex F5); the structure of the records is
     // asserted exactly where the projections are tested.
     let judged = if document["meta"].get("fields").is_some() {
         loosened(doc)
@@ -1083,7 +1083,7 @@ fn members_of(document: &Value) -> Vec<Value> {
 }
 
 /// The schema of the records with `required` dropped: a projection removes members, and `required` is reduced to
-/// the kept ones in every cut node at or below the record (6.10), which the structure checks below state exactly.
+/// the kept ones in every cut node at or below the record (Annex F5), which the structure checks below state exactly.
 fn loosened(doc: &Value) -> Value {
     let mut doc = doc.clone();
     for name in ["MemberRow", "Profile", "Owner"] {

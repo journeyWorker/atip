@@ -63,7 +63,7 @@ fn execute(args: &[OsString]) -> Result<String, Failure> {
         Command::Schema(schema) => spec::answer(&schema, json),
         Command::Check(check, mode, source) => {
             let report = check_binary_at(&check, mode, source)?;
-            // A run with a failed or unprovided MUST check is a negative answer, exit 1 (spec 5.3), a preview too: a preview has no level verdict
+            // A run with a failed or unprovided MUST check is a negative answer, exit 1 (spec 8.1), a preview too: a preview has no level verdict
             // and says so (`not a level claim`), but its answer to "does this pass as that minor" is still no. Only a passing preview exits 0, and
             // the warning that the level is still met is not its to give.
             if !report.passed {

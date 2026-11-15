@@ -1,6 +1,6 @@
 [package]
 name = "atip-check"
-version = "0.4.0"
+version = "0.4.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -51,7 +51,7 @@ schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-# The two regular-expression engines of spec 10.7.4: the ECMAScript `u` reading (`regress`) and the Rust one (`regex`, default limits).
+# The two regular-expression engines of Annex V2: the ECMAScript `u` reading (`regress`) and the Rust one (`regex`, default limits).
 regress = "0.12"
 regex = "1"
 tempfile = "3"

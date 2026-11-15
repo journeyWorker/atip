@@ -1,4 +1,4 @@
-//! A documented invocation read against a command document (spec 9.12, 10.13 rule 12, 11.5-11.7).
+//! A documented invocation read against a command document (spec 4.2, Annex S2 rule 12, 10.5-10.7).
 //!
 //! OWNER: the invocation agent. The signatures below are the contract the checks are written against.
 
@@ -12,7 +12,7 @@ use serde_json::Value;
 use super::model::{camel, Arg, CommandDoc};
 use crate::schema::schemas;
 
-/// The explicitly given arguments of one invocation (spec 11.7 step 4).
+/// The explicitly given arguments of one invocation (spec 10.7 step 4).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Args {
     /// The operand values in order. A value is the argv word as a string, except that an operand of valueType `json` is parsed.
@@ -42,7 +42,7 @@ pub struct Invocation {
     pub items: Vec<Item>,
 }
 
-/// The most an integer may be, in magnitude: 2^53 - 1 (spec 10.7.5).
+/// The most an integer may be, in magnitude: 2^53 - 1 (spec 9.7.5).
 const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
 
 /// A compiled regular expression, built on first use.
@@ -53,13 +53,13 @@ fn cached(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
     })
 }
 
-/// A placeholder or an ellipsis in a documented line (spec 10.5 `examples`, 6.8): `<UPPER_CASE>`, `...` or `…`.
+/// A placeholder or an ellipsis in a documented line (spec 9.5 `examples`, 6.8): `<UPPER_CASE>`, `...` or `…`.
 fn placeholder() -> &'static Regex {
     static CELL: OnceLock<Regex> = OnceLock::new();
     cached(&CELL, r"<[A-Z][A-Z0-9_]*>|\.\.\.|…")
 }
 
-/// The JSON integer literal of spec 11.5.
+/// The JSON integer literal of spec 9.7.2.
 fn integer_form() -> &'static Regex {
     static CELL: OnceLock<Regex> = OnceLock::new();
     cached(&CELL, r"^-?(0|[1-9][0-9]*)$")
@@ -71,7 +71,7 @@ fn number_form() -> &'static Regex {
     cached(&CELL, r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$")
 }
 
-/// Whether `word` is a plain word of spec 9.12: non-empty and not starting with `-`, or exactly `-`.
+/// Whether `word` is a plain word of spec 4.2.1: non-empty and not starting with `-`, or exactly `-`.
 fn plain(word: &str) -> bool {
     word == "-" || (!word.is_empty() && !word.starts_with('-'))
 }
@@ -167,7 +167,7 @@ pub fn split_line(line: &str) -> Result<Vec<String>, String> {
 }
 
 /// Reads `words` (an argv without the tool name: tool-wide options, the command path, then the arguments) against `doc` by the
-/// grammar of spec 9.12. `Err` names the first word the grammar or the document does not allow.
+/// grammar of spec 4.2. `Err` names the first word the grammar or the document does not allow.
 pub fn parse(doc: &CommandDoc, words: &[String]) -> Result<Invocation, String> {
     let path_len = doc.path.len();
     if path_len == 0 {
@@ -395,8 +395,8 @@ pub fn args(doc: &CommandDoc, invocation: &Invocation) -> Args {
     out
 }
 
-/// A string value of an integer, count or number argument as the number it denotes (spec 11.5); anything else is returned as it is.
-/// An integer outside the safe range stays a string, so that it is refused and never rounded (spec 10.7.5).
+/// A string value of an integer, count or number argument as the number it denotes (spec 10.5); anything else is returned as it is.
+/// An integer outside the safe range stays a string, so that it is refused and never rounded (spec 9.7.5).
 pub fn normalise(value_type: &str, value: &Value) -> Value {
     let Value::String(text) = value else {
         return value.clone();
@@ -436,7 +436,7 @@ fn safe_integer(value: &Value) -> Option<f64> {
     (number.abs() <= MAX_SAFE).then_some(number)
 }
 
-/// Whether `value` (already normalised) is valid for the valueType of `arg` (spec 10.7.2).
+/// Whether `value` (already normalised) is valid for the valueType of `arg` (spec 9.7.2).
 fn valid_value(arg: &Arg, value: &Value) -> bool {
     match arg.value_type.as_str() {
         "integer" => safe_integer(value).is_some(),
@@ -456,7 +456,7 @@ fn valid_value(arg: &Arg, value: &Value) -> bool {
 type DomainCache = Mutex<HashMap<String, Result<Arc<Validator>, String>>>;
 
 /// The validators of the arguments' domains, compiled once per domain.
-/// `value` without its `pattern` keywords, at any depth; with `only_bad`, only those that are not of the form of spec 10.7.4 or that Rust refuses.
+/// `value` without its `pattern` keywords, at any depth; with `only_bad`, only those that are not of the form of Annex V2 or that Rust refuses.
 /// The form is the newest minor's: a pattern both engines read alike judges values whatever minor the tool claims, and
 /// `L1.patterns` reports one the claimed minor does not admit (`\p{White_Space}` before 1.5).
 fn strip_patterns(value: &mut Value, only_bad: bool) {
@@ -536,7 +536,7 @@ fn schema_problems(validator: &Validator, value: &Value) -> Option<String> {
     (!problems.is_empty()).then(|| problems.join("; "))
 }
 
-/// What is wrong with `value` as a value of `arg`: not valid for its valueType after normalisation (spec 10.7.2), or outside its domain.
+/// What is wrong with `value` as a value of `arg`: not valid for its valueType after normalisation (spec 9.7.2), or outside its domain.
 pub fn value_problem(arg: &Arg, value: &Value) -> Option<String> {
     // A comma is never part of a value of a comma-list option, on any channel (spec 9.7.6, Annex S2 rule 18): argv and `env` words are split before a
     // value is judged, so one that holds a comma is an item of an `--input` array (which is not split) or a default.
@@ -594,7 +594,7 @@ pub fn arg_given(doc: &CommandDoc, args: &Args, name: &str) -> bool {
     given(doc, args, name)
 }
 
-/// Missing required arguments and too many operands: the part of spec 11.7 step 6 that is not a constraint.
+/// Missing required arguments and too many operands: the part of spec 10.7 step 6 that is not a constraint.
 pub fn requirement_problems(doc: &CommandDoc, args: &Args) -> Vec<String> {
     let mut problems = Vec::new();
     for option in &doc.options {
@@ -646,7 +646,7 @@ fn values_of(doc: &CommandDoc, args: &Args, name: &str) -> Vec<Value> {
         .collect()
 }
 
-/// The indices into `doc.constraints` of the rules that `args` violate (spec 10.8.1: "given" means supplied explicitly; values compare after normalisation).
+/// The indices into `doc.constraints` of the rules that `args` violate (spec 9.8.1: "given" means supplied explicitly; values compare after normalisation).
 pub fn violated_constraints(doc: &CommandDoc, args: &Args) -> Vec<usize> {
     let mut violated = Vec::new();
     for (index, constraint) in doc.constraints.iter().enumerate() {
@@ -711,7 +711,7 @@ pub fn violated_constraints(doc: &CommandDoc, args: &Args) -> Vec<usize> {
     violated
 }
 
-/// An argument's value normalised by its valueType and cardinality (spec 11.7 step 3).
+/// An argument's value normalised by its valueType and cardinality (spec 10.7 step 3).
 fn normalise_argument(arg: &Arg, value: &Value) -> Value {
     if arg.repeatable && arg.value_type != "count" {
         return match value {
@@ -727,7 +727,7 @@ fn normalise_argument(arg: &Arg, value: &Value) -> Value {
     normalise(&arg.value_type, value)
 }
 
-/// The argument object of 11.7 step 6 that `input.argumentsRef` describes.
+/// The argument object of 10.7 step 6 that `input.argumentsRef` describes.
 ///
 /// `operands` normalised (absent operands with a non-null default appended in order), then every non-flag-only option under
 /// its camelCase name with its normalised explicit value, or its non-null default. Environment values are not modelled.
@@ -845,7 +845,7 @@ fn input_document_validator() -> Result<&'static Validator, String> {
     .map_err(Clone::clone)
 }
 
-/// The explicit arguments of one `--input` document: camelCase keys name options (spec 11.5). Problems of the values go to `problems`.
+/// The explicit arguments of one `--input` document: camelCase keys name options (spec 10.5). Problems of the values go to `problems`.
 fn document_args(doc: &CommandDoc, item: &Value, at: &str, problems: &mut Vec<String>) -> Args {
     let mut out = Args::default();
     let Some(object) = item.as_object() else {
@@ -904,7 +904,7 @@ pub fn document_arguments(doc: &CommandDoc, item: &Value) -> (Args, Vec<String>)
     (args, problems)
 }
 
-/// Compares a document's arguments with argv's and merges them (spec 11.7 steps 3-4).
+/// Compares a document's arguments with argv's and merges them (spec 10.7 steps 3-4).
 fn merge_args(
     doc: &CommandDoc,
     argv: &Args,
@@ -953,7 +953,7 @@ fn merge_args(
     Args { operands, options }
 }
 
-/// Frames and validates an inline `--input` value of an example as spec 11.2-11.7 say (10.13 rule 12). `None` when the value
+/// Frames and validates an inline `--input` value of an example as spec 10.2-10.7 say (Annex S2 rule 12). `None` when the value
 /// cannot be framed (a file or stdin, not JSON); the reason is in `problems`.
 fn inline_documents(doc: &CommandDoc, text: &str, problems: &mut Vec<String>) -> Option<Vec<Args>> {
     if !text.trim_start().starts_with(['{', '[']) {
@@ -988,7 +988,7 @@ fn inline_documents(doc: &CommandDoc, text: &str, problems: &mut Vec<String>) ->
     if batch {
         if !input.batch {
             problems.push(format!(
-                "a batch, but {} takes no batch (spec 11.4)",
+                "a batch, but {} takes no batch (spec 10.4)",
                 doc.command
             ));
         }
@@ -1130,7 +1130,7 @@ fn joined(problems: &[String]) -> Option<String> {
 
 /// What `L1.examples` judges of one documented line, as `(condition, problem)` pairs: one pair per condition judged, `None` when it holds.
 /// The conditions are `tool-name`, `path`, `grammar`, `no-placeholder`, `values`, `requirements`, `constraints`, `arguments-ref`, `input-inline`.
-/// `with_arguments_ref` is `false` for a validator's `rejects` line (spec 10.13 rule 13).
+/// `with_arguments_ref` is `false` for a validator's `rejects` line (Annex S2 rule 13).
 ///
 /// A line that does not split is judged by `grammar` alone; one whose path is not the command's stops after `path`; one that does
 /// not parse stops at `grammar`, and one with a placeholder at `no-placeholder`. A `--input` value that cannot be framed

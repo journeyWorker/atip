@@ -309,7 +309,7 @@ fn atip_check_05_text_mode_prints_a_line_per_check_and_a_summary_and_a_failed_le
             .lines()
             .next()
             .expect("line")
-            .starts_with("pass       MUST   L0.version (spec 4.6)"),
+            .starts_with("pass       MUST   L0.version (spec 4.4.1)"),
         "{}",
         passing.stdout
     );
@@ -581,7 +581,7 @@ fn atip_check_25_a_fixture_without_a_probe_a_registry_or_commands_leaves_the_che
                 "L0.no-env-switch-text",
             ],
         ),
-        // The tool prints its registry: only the comparison with the fixture is unprovided (spec 17.3).
+        // The tool prints its registry: only the comparison with the fixture is unprovided (approaches/checker.md 5).
         (json!({}), "registry", vec!["L0.registry"]),
         // A tool that prints none has the fixture's registry or nothing to judge exits by.
         (json!({"noSchema": true}), "registry", vec!["L0.ok-exit"]),
@@ -1631,7 +1631,7 @@ fn atip_check_76_a_violation_of_a_1_1_check_is_read_in_the_result_as_its_owner_w
         (
             json!({"omitContractVersion": true}),
             "L0.contract-version",
-            "15.7",
+            "15.5",
             "contractVersion",
         ),
         (
@@ -1649,7 +1649,7 @@ fn atip_check_76_a_violation_of_a_1_1_check_is_read_in_the_result_as_its_owner_w
         (
             json!({"unregisteredReason": true}),
             "L0.registry",
-            "7.6.2",
+            "7.6",
             "NOT_A_REASON",
         ),
     ]

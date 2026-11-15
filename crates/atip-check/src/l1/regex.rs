@@ -1,6 +1,6 @@
-//! The two regular-expression engines of spec 10.7.4, and the comparison of their answers.
+//! The two regular-expression engines of Annex V2, and the comparison of their answers.
 //!
-//! A domain `pattern` is `^`, an I-Regexp (RFC 9485) body with the restrictions of 10.7.4, and `$`; from 1.5 the body may
+//! A domain `pattern` is `^`, an I-Regexp (RFC 9485) body with the restrictions of Annex V2, and `$`; from 1.5 the body may
 //! also use the binary property `White_Space` as `\p{White_Space}` and `\P{White_Space}` (Annex V2), so the form depends
 //! on the minor the document declares. The claim of the contract is that, for a pattern of this form that both engines
 //! compile, the ECMAScript reading with the `u` flag and the Rust `regex` crate's reading accept the same values, up to the
@@ -102,7 +102,7 @@ pub fn rust_category(code_point: char) -> Option<&'static str> {
     })
 }
 
-/// A verified difference between the Unicode versions of the two engines (spec 10.7.4).
+/// A verified difference between the Unicode versions of the two engines (Annex V2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnicodeDifference {
     /// `U+XXXX`.
@@ -187,7 +187,7 @@ pub fn white_space_difference(code_point: char) -> Option<UnicodeDifference> {
 
 /// Runs `value` through both engines. A different answer is a verified Unicode-version difference only when the value
 /// is one code point, the pattern uses a category, and each engine's own tables give the code point a different general
-/// category or, for a pattern that uses `White_Space`, a different `White_Space` value (spec 10.7.4, Annex V2).
+/// category or, for a pattern that uses `White_Space`, a different `White_Space` value (Annex V2).
 pub fn compare(pattern: &str, value: &str) -> Comparison {
     let (ecmascript, rust) = (
         ecmascript_answer(pattern, value),
@@ -231,7 +231,7 @@ pub fn compare(pattern: &str, value: &str) -> Comparison {
     }
 }
 
-/// Why `pattern` is not of the form of spec 10.7.4 in a document that declares `minor`: `^`, an I-Regexp body with its
+/// Why `pattern` is not of the form of Annex V2 in a document that declares `minor`: `^`, an I-Regexp body with its
 /// restrictions, `$`, and it compiles in the ECMAScript engine. `None` when it is. (Compiling in the Rust engine is
 /// [`rust_problem`].)
 pub fn form_problem(pattern: &str, minor: atip::Minor) -> Option<String> {
@@ -270,7 +270,7 @@ fn uncached_rust_problem(pattern: &str) -> Option<String> {
     })
 }
 
-/// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of spec 10.7.4 that make the two
+/// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of Annex V2 that make the two
 /// readings of `^body$` agree, in a document that declares `minor`: no `|` outside parentheses, no `.`, `^` or `$` outside
 /// a character class, no `\-` outside one, no `&&` or `~~` inside one, and `\p{White_Space}` / `\P{White_Space}` only from
 /// 1.5. The first problem, or `None`.

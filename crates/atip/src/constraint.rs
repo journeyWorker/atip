@@ -1,4 +1,4 @@
-//! Constraints and validators (spec 10.8, approaches/rust.md 4.2): the relations between a command's arguments and the
+//! Constraints and validators (spec 9.8, approaches/rust.md 4.2): the relations between a command's arguments and the
 //! stateless checks neither a domain nor a relation can say.
 //!
 //! - what clap says through its public getters (`conflicts_with`, `ArgGroup`) is read by [`clap_rules`];
@@ -7,7 +7,7 @@
 //!   behavioural test replaces reading clap's `Debug` text);
 //! - [`Given`] and [`violations`] say what a set of arguments breaks, so a test can build a call that breaks one rule
 //!   and nothing else, and hold every example and every `rejects` to the declared rules;
-//! - [`document_problems`] is 10.13 rules 3, 4 and 13 as far as a document alone decides them.
+//! - [`document_problems`] is Annex S2 rules 3, 4 and 13 as far as a document alone decides them.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -26,7 +26,7 @@ pub struct When {
     pub values: &'static [&'static str],
 }
 
-/// One rule of a tool's table, written once per relation (spec 10.8.2).
+/// One rule of a tool's table, written once per relation (spec 9.8.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rule {
     pub kind: RuleKind,
@@ -196,7 +196,7 @@ impl Rule {
     }
 }
 
-/// One stateless check of a tool's table that neither a domain nor the five rules can say (spec 10.8.3).
+/// One stateless check of a tool's table that neither a domain nor the five rules can say (spec 9.8.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Validator {
     pub arguments: &'static [&'static str],
@@ -291,7 +291,7 @@ pub fn clap_rules(cmd: &Command) -> Vec<ConstraintDoc> {
         }
     }
     // Pairs that conflict with each other all the way round are one `atMostOne` (`schema --errors --error --warnings
-    // --warning` and the path); a pair that does not extend is an `atMostOne` of two (10.8.1).
+    // --warning` and the path); a pair that does not extend is an `atMostOne` of two (9.8.1).
     for clique in maximal_cliques(args.len(), &pairs) {
         let names: Vec<String> = clique.iter().map(|at| name_of(args[*at])).collect();
         rules.push(ConstraintDoc {
@@ -359,7 +359,7 @@ fn maximal_cliques(count: usize, edges: &BTreeSet<(usize, usize)>) -> Vec<Vec<us
 
 // --------------------------------------------------------------- evaluating
 
-/// The arguments one invocation gives explicitly (spec 10.8.1): name to its values, normalised (an integer as a JSON
+/// The arguments one invocation gives explicitly (spec 9.8.1): name to its values, normalised (an integer as a JSON
 /// number, a switch as `true`). A default or an environment value is not in it.
 pub type Given = BTreeMap<String, Vec<Value>>;
 
@@ -386,7 +386,7 @@ fn same_value(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// Whether `given` breaks `rule`, and, when it does, the argument a violation names (spec 10.8.1, 7.1.1): the first argument of the
+/// Whether `given` breaks `rule`, and, when it does, the argument a violation names (spec 9.8.1, 7.1.1): the first argument of the
 /// rule at fault in the order the rule declares them: the first of `names` for a rule that demands one and has none, the first
 /// given of `names` for a rule that allows one (or at most one) and has several, the first missing of `then` for a `requires`
 /// and the first given of `then` for a `forbids`. The order is the document's, never the order on the command line.
@@ -440,7 +440,7 @@ pub fn members(rule: &ConstraintDoc) -> Vec<String> {
     all
 }
 
-/// The canonical form of a rule, so that two rules that state one relation are equal (spec 10.8.2): the rule, its names
+/// The canonical form of a rule, so that two rules that state one relation are equal (spec 9.8.1): the rule, its names
 /// sorted, its `if` with its values sorted, its `then` sorted; the code and the help are not part of the relation.
 fn relation_key(rule: &ConstraintDoc) -> String {
     let sorted = |names: &Option<Vec<String>>| {
@@ -464,7 +464,7 @@ fn relation_key(rule: &ConstraintDoc) -> String {
 
 // ----------------------------------------------------------------- document
 
-/// What a command document's declarations break of the rules a document alone decides (spec 10.13 rules 3, 4, 13 and 18), in
+/// What a command document's declarations break of the rules a document alone decides (Annex S2 rules 3, 4, 13 and 18), in
 /// a document that declares `minor` (which decides the pattern profile of Annex V2): every name names an operand or
 /// option; no relation is stated twice; `in` is absent on a switch and a count and holds valid values of the argument,
 /// inside its domain; every `code` is in `errors`; a validator reads named arguments, has a code in `errors`, a
@@ -678,7 +678,7 @@ pub fn document_problems(
         }
         if !seen.insert(relation_key(rule)) {
             problems.push(format!(
-                "{label}: the same relation is stated twice (spec 10.8.2)"
+                "{label}: the same relation is stated twice (spec 9.8.1)"
             ));
         }
     }

@@ -20,11 +20,11 @@ use crate::l2::guide;
 use crate::schema::schemas;
 
 pub(crate) const TABLE: [Entry; 5] = [
-    must("L2.stream", &["13.5"], &[Commands]),
+    must("L2.stream", &["13"], &[Commands]),
     must("L2.skills", &["14"], &[]),
-    must("L2.guide-commands", &["14.5"], &[]),
-    should("L2.search", &["10.11"], &[Commands]),
-    must("L2.help-guide", &["4.8"], &[]),
+    must("L2.guide-commands", &["14.3"], &[]),
+    should("L2.search", &["9.10.1"], &[Commands]),
+    must("L2.help-guide", &["4.4.3"], &[]),
 ];
 
 static GUIDE: LazyLock<Result<jsonschema::Validator, String>> =
@@ -81,7 +81,7 @@ impl<'a> Judge<'a> {
         let text = String::from_utf8_lossy(&self.at(l1.root_help).stdout).into_owned();
         let first = text.lines().next().unwrap_or_default();
         c.holds_at(l1.root_help, "mentions-skills-show", first.contains("skills show"), || {
-            format!("the first line of `--help` is {:?}, it must point at `skills show` too (spec 4.8)", super::super::excerpt(first.as_bytes()))
+            format!("the first line of `--help` is {:?}, it must point at `skills show` too (spec 4.4.3)", super::super::excerpt(first.as_bytes()))
         });
         c.finish(true)
     }
@@ -256,7 +256,7 @@ impl<'a> Judge<'a> {
                 let words = match invocation::split_line(&line.text) {
                     Ok(words) => words,
                     Err(why) => {
-                        // Spec 14.5 leaves a line with a pipe, a redirection, `;`, `&` or a substitution out: it is reported and not judged.
+                        // Spec 14.3 leaves a line with a pipe, a redirection, `;`, `&` or a substitution out: it is reported and not judged.
                         c.notes
                             .push(format!("{place}: not judged, {why} (unsupported)"));
                         continue;
@@ -351,7 +351,7 @@ impl<'a> Judge<'a> {
                 .filter_map(|entry| entry.get("command").and_then(Value::as_str))
                 .collect();
             c.holds_at(*call, "expected-in-the-first-five", first_five.contains(&query.expect.as_str()), || {
-                format!("{:?}: {} is not among the first five entries ({}): ranking is advisory (spec 10.11)", query.query, query.expect, first_five.join(", "))
+                format!("{:?}: {} is not among the first five entries ({}): ranking is advisory (spec 9.10.1)", query.query, query.expect, first_five.join(", "))
             });
         }
         c.finish(true)
@@ -493,7 +493,7 @@ impl<'a> Judge<'a> {
                 .count()
                 == 1
                 && last.is_some_and(|line| line.get("type").and_then(Value::as_str) == Some("end"));
-            c.holds_at(*call, "ends-with-end", ends, || format!("{label}: the last line is not the one `end` line: the stream was cut off (spec 13.5.2)"));
+            c.holds_at(*call, "ends-with-end", ends, || format!("{label}: the last line is not the one `end` line: the stream was cut off (spec 13.2)"));
             if let Some(output) = output {
                 if let Some(validator) = output
                     .event_ref
@@ -630,7 +630,7 @@ impl<'a> Judge<'a> {
             && values[0].get("ok") == Some(&Value::Bool(false))
             && values[0].get("type").is_none();
         c.holds_at(stream.refusal, "refusal-is-one-envelope", one_envelope && refusal.exit == Exit::Code(2), || {
-            format!("`{}`: a usage error before the stream begins must be one failure envelope with exit 2 and no `start` line (spec 13.5.3): {}", refusal.call.argv.join(" "), super::super::excerpt(&refusal.stdout))
+            format!("`{}`: a usage error before the stream begins must be one failure envelope with exit 2 and no `start` line (spec 13.3): {}", refusal.call.argv.join(" "), super::super::excerpt(&refusal.stdout))
         });
         judged
     }

@@ -1,4 +1,4 @@
-//! The plan of a destructive command, its digest, and the commit gate (spec 12.2-12.8, 8.3.2; approaches/rust.md 3).
+//! The plan of a destructive command, its digest, and the commit gate (spec 11.2-11.8, 8.3.2; approaches/rust.md 3).
 //!
 //! A destructive command run without `--commit` is a **preview**: it computes the [`Plan`], makes no effect, and answers with a
 //! [`Preview`] (`planDigest`, `effects`, `committed: false`) whose first `meta.next` entry is the exact commit call
@@ -7,13 +7,13 @@
 //! the other is refused by [`mode`] (`USAGE`, the tool's finer code, or the code of the `requires` rule, [`COMMIT_REQUIRES`]).
 //!
 //! The digest is `sha256:` and the lower-case hex SHA-256 of the RFC 8785 canonical JSON ([`crate::jcs`]) of
-//! `{"effects": [...], "inputs": {...}}` (spec 12.6). The effects are in the order the tool lists them; `inputs` is what the tool
+//! `{"effects": [...], "inputs": {...}}` (spec 11.6). The effects are in the order the tool lists them; `inputs` is what the tool
 //! says determines them: the normalised arguments and a digest of every state and file content the plan read. The crate does not
 //! look inside `inputs`, so the same plan has the same digest in every tool that agrees on its `inputs`, and a plan that left
 //! something out of it would not be refused when that changes. When another system computes the digest, the tool passes it through
-//! and uses only [`gate`] (spec 12.6).
+//! and uses only [`gate`] (spec 11.6).
 //!
-//! The crate has no code that makes an effect: a preview and a refusal make none (spec 12.2) because nothing here can.
+//! The crate has no code that makes an effect: a preview and a refusal make none (spec 11.2) because nothing here can.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -37,14 +37,14 @@ pub const PLAN_DIGEST: &str = "plan-digest";
 /// The prefix of every digest.
 pub const DIGEST_PREFIX: &str = "sha256:";
 
-/// `--commit` and `--plan-digest` require each other (spec 12.7): the two `requires` rules a command document lists for them. A tool
-/// adds its own `code` to a rule when it registers a finer code than `USAGE` for it (spec 10.8.1).
+/// `--commit` and `--plan-digest` require each other (spec 11.7): the two `requires` rules a command document lists for them. A tool
+/// adds its own `code` to a rule when it registers a finer code than `USAGE` for it (spec 9.8.1).
 pub const COMMIT_REQUIRES: [Rule; 2] = [
     Rule::requires(COMMIT, &[PLAN_DIGEST]),
     Rule::requires(PLAN_DIGEST, &[COMMIT]),
 ];
 
-/// One thing a commit would do (spec 12.4): the `action` and its target, precise enough that a caller can decide from the
+/// One thing a commit would do (spec 11.4): the `action` and its target, precise enough that a caller can decide from the
 /// effects alone. `path` is a file (relative to the tool's root), `record` a record that is not a file, `detail` where it goes or
 /// why. A tool may add members of its own ([`Effect::with`]); they are part of the digest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -111,7 +111,7 @@ impl Effect {
     }
 }
 
-/// What a commit would do and what it rests on: the thing the digest covers (spec 12.6).
+/// What a commit would do and what it rests on: the thing the digest covers (spec 11.6).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Plan {
     /// Every effect the commit would make, in the order it makes them (the order is part of the digest).
@@ -141,7 +141,7 @@ impl Plan {
     }
 }
 
-/// The digest of a plan written as a JSON document: `sha256:` and the lower-case hex SHA-256 of its RFC 8785 text (spec 12.6). For a
+/// The digest of a plan written as a JSON document: `sha256:` and the lower-case hex SHA-256 of its RFC 8785 text (spec 11.6). For a
 /// plan whose shape is the tool's own (the digest covers whatever document a tool builds), and what [`Plan::digest`] is made of. The
 /// document holds only what JCS writes the same everywhere: an integer beyond ±(2^53-1) goes in as a string (an [`jcs::Error`]
 /// otherwise), and a string holds valid Unicode, which a Rust `str` is.
@@ -168,7 +168,7 @@ impl fmt::Display for PlanDigest {
     }
 }
 
-/// The `data` of a destructive command's answer (spec 12.4): `planDigest`, `effects`, `committed`. A tool's report schema can
+/// The `data` of a destructive command's answer (spec 11.4): `planDigest`, `effects`, `committed`. A tool's report schema can
 /// reference [`preview_schema`] and add members of its own beside these.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -232,11 +232,11 @@ fn without_commit(given: &[Given]) -> Vec<Given> {
         .collect()
 }
 
-/// The step that commits `digest` (spec 12.5): the normalised arguments `given` of the preview as argv options, then `--commit`,
+/// The step that commits `digest` (spec 11.5): the normalised arguments `given` of the preview as argv options, then `--commit`,
 /// `--plan-digest=<digest>` and `--json`, the operands after one `--`. The arguments are written from `given`, not from how the
 /// call was made: one that read `--input -` or a file has its arguments as options and no `--input`, a default and an environment
 /// value are not written (see [`write_argv`]), and a value that starts with `-` is `--name=value`. A secret is not an argument
-/// (spec 16.1), so there is none to disclose; the crate does not check that.
+/// (spec 11.5), so there is none to disclose; the crate does not check that.
 pub fn commit_next(
     tool: &str,
     path: &[&str],
@@ -267,7 +267,7 @@ pub enum Mode {
     Commit(String),
 }
 
-/// One of `--commit` and `--plan-digest` given without the other (spec 12.7).
+/// One of `--commit` and `--plan-digest` given without the other (spec 11.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unpaired {
     /// The option that is missing, with its dashes: `--plan-digest` or `--commit`.
@@ -276,7 +276,7 @@ pub struct Unpaired {
 
 impl Unpaired {
     /// The refusal: `USAGE` by default, or the code of the row when the tool registered a finer one, or the `code` of the `requires`
-    /// rule that says the relation (spec 12.7, 10.8.1). `field` is the missing option.
+    /// rule that says the relation (spec 11.7, 9.8.1). `field` is the missing option.
     pub fn error(self, finer: Option<&CodeInfo>) -> CliError {
         let given = if self.missing == "--commit" {
             "--plan-digest"
@@ -314,7 +314,7 @@ pub fn mode(commit: bool, plan_digest: Option<&str>) -> Result<Mode, Unpaired> {
     }
 }
 
-/// A commit whose digest is not the plan's (spec 12.7): `PLAN_STALE` (exit 2, nothing was changed) and the `meta.next` that goes
+/// A commit whose digest is not the plan's (spec 11.7): `PLAN_STALE` (exit 2, nothing was changed) and the `meta.next` that goes
 /// with it, the preview.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stale {
@@ -343,7 +343,7 @@ pub fn gate(mode: &Mode, current: &str, preview: Next) -> Result<bool, Stale> {
     }
 }
 
-/// A commit that stopped after some of its effects because the plan changed (spec 12.7, 8.3.2). In a document that declares 1.2
+/// A commit that stopped after some of its effects because the plan changed (spec 11.7, 8.3.2). In a document that declares 1.2
 /// it is `STOPPED_MIDWAY` (exit 1, not retryable) with the reason `PLAN_STALE` ([`stopped_by_stale`]); from 1.3 it is the tool's
 /// own `<SUBJECT>_INCOMPLETE` code with the refused code as `reason` ([`stopped_part_way`]). Either way `meta.next` leads with
 /// the command that reads what was done.
@@ -413,7 +413,7 @@ pub fn stopped_part_way(
 }
 
 /// The stop of a commit that met a changed plan after `done` effects of `of` were made, for a tool that declares 1.3 or later:
-/// [`stopped_part_way`] with the core code `PLAN_STALE` as the reason (spec 12.7). `what_was_done` is the command that reads
+/// [`stopped_part_way`] with the core code `PLAN_STALE` as the reason (spec 11.7). `what_was_done` is the command that reads
 /// the effects made; repeating the commit blindly could repeat the steps that ran, so it is not what the `next` leads with.
 ///
 /// # Panics
@@ -879,7 +879,7 @@ mod tests {
                 "the preview is not a commit"
             );
         }
-        // The refusal is a value: the gate reads nothing and writes nothing, so a refusal changes nothing (spec 12.2, 12.7).
+        // The refusal is a value: the gate reads nothing and writes nothing, so a refusal changes nothing (spec 11.2, 11.7).
     }
 
     #[test]

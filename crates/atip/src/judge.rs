@@ -1,6 +1,6 @@
 //! Judging a value against a domain without a JSON Schema validator.
 //!
-//! A domain is written in the contract's fixed profile of JSON Schema (spec 10.7.4), so [`Node`] reads exactly that
+//! A domain is written in the contract's fixed profile of JSON Schema (Annex V1), so [`Node`] reads exactly that
 //! profile and nothing else: `type`, `enum`, `const`, the numeric keywords (`minimum`, `maximum`, `exclusiveMinimum`,
 //! `exclusiveMaximum`, `multipleOf`), the string keywords (`minLength`, `maxLength`, `pattern`) and the structural
 //! ones of a `json` argument (`properties`, `required`, `additionalProperties`, `items`), with the annotations

@@ -1,4 +1,4 @@
-//! Field paths and projection (spec 6.10, 10.13 rules 11 and 15).
+//! Field paths and projection (spec 6.10, Annex F, Annex S2 rules 11 and 15).
 //!
 //! A field path names a member of a record: `profile.name`, `owners[].email`, and since 1.1 a bracketed key for a
 //! member whose name is not an identifier, `attributes["http.status-code"]`. This module reads paths, finds the
@@ -41,7 +41,7 @@ fn identifier_prefix(text: &[char]) -> usize {
         .count()
 }
 
-/// The steps of a field path (spec 6.10), `None` when it is malformed: a bracketed key is a JSON string whose only
+/// The steps of a field path (Annex F1), `None` when it is malformed: a bracketed key is a JSON string whose only
 /// escapes are `\"` and `\\` and that holds no NUL; every other step is an identifier after a `.`; each step may end in `[]`.
 pub fn parse_field_path(path: &str) -> Option<Vec<Step>> {
     let chars: Vec<char> = path.chars().collect();
@@ -106,17 +106,17 @@ pub fn step_names(path: &str) -> Vec<String> {
         .collect()
 }
 
-/// Spec 10.13 rule 15: why `path` is malformed, or writes an identifier in brackets; `None` when it is well formed.
+/// Annex S2 rule 15: why `path` is malformed, or writes an identifier in brackets; `None` when it is well formed.
 pub fn field_path_problem(path: &str) -> Option<String> {
     let Some(steps) = parse_field_path(path) else {
-        return Some(format!("field path {path} is malformed (spec 6.10)"));
+        return Some(format!("field path {path} is malformed (Annex F1)"));
     };
     steps
         .iter()
         .find(|step| step.bracket && is_identifier(&step.name))
         .map(|step| {
             format!(
-                "field path {path} writes the identifier {} in brackets (spec 10.13 rule 15)",
+                "field path {path} writes the identifier {} in brackets (Annex S2 rule 15)",
                 step.name
             )
         })
@@ -142,7 +142,7 @@ pub enum Trie {
     Branch(Members),
 }
 
-/// The trie of `paths` (spec 6.10 rule 2): a path covers its member and replaces any narrower selection below it, and a
+/// The trie of `paths` (Annex F4 rule 2): a path covers its member and replaces any narrower selection below it, and a
 /// path below a covered member adds nothing. A malformed path adds nothing.
 pub fn field_trie(paths: &[String]) -> Members {
     let mut root = Members::new();
@@ -210,7 +210,7 @@ fn leaks_in(value: &Value, trie: &Members, at: &str, found: &mut Vec<String>) {
     }
 }
 
-/// Members the projected `data` holds that no kept path covers and that are not an ancestor of one (spec 6.10 rules 2-3), as `/pointer` paths from the record.
+/// Members the projected `data` holds that no kept path covers and that are not an ancestor of one (Annex F4 rules 2-3), as `/pointer` paths from the record.
 pub fn leaks(data: &Value, output: &Output, kept: &[String]) -> Vec<String> {
     let trie = field_trie(kept);
     let mut found = Vec::new();
@@ -257,7 +257,7 @@ fn dropped_in(
     dropped_in(before, after, rest, &here, found);
 }
 
-/// Kept members the unprojected `data` has and the projected one lacks, as `/pointer` paths (spec 6.10 rule 4), record by record;
+/// Kept members the unprojected `data` has and the projected one lacks, as `/pointer` paths (Annex F4 rule 4), record by record;
 /// empty when the two do not have the same number of records.
 pub fn dropped(
     unprojected: &Value,
@@ -371,7 +371,7 @@ pub fn record_schema<'a>(schemas: &'a Map<String, Value>, output: &Output) -> Op
 static ANY: Value = Value::Bool(true);
 
 /// The schema a field path names: a member the record schema declares, reached through an array only with `[]`; a
-/// last step without `[]` may name a whole array (spec 6.10). `None` when the path is not declared.
+/// last step without `[]` may name a whole array (Annex F1). `None` when the path is not declared.
 pub fn path_node<'a>(
     schemas: &'a Map<String, Value>,
     record: Option<&'a Value>,
@@ -392,7 +392,7 @@ pub fn path_node<'a>(
         if step.array != is_array && (step.array || index + 1 < steps.len()) {
             return None;
         }
-        // Only an explicit `[]` descends into the items: a last step without it names the whole array (spec 6.10).
+        // Only an explicit `[]` descends into the items: a last step without it names the whole array (Annex F1).
         if step.array {
             if let Some(object) = node.and_then(Value::as_object) {
                 node = non_null(schemas, object.get("items"));
@@ -402,7 +402,7 @@ pub fn path_node<'a>(
     Some(node.unwrap_or(&ANY))
 }
 
-/// A map (spec 6.10): an object schema whose `additionalProperties` is a schema (`true` included) and whose `properties` is absent or empty.
+/// A map (Annex F3): an object schema whose `additionalProperties` is a schema (`true` included) and whose `properties` is absent or empty.
 pub fn is_map(node: Option<&Value>) -> bool {
     let Some(object) = node.and_then(Value::as_object) else {
         return false;
@@ -419,7 +419,7 @@ pub fn is_map(node: Option<&Value>) -> bool {
         )
 }
 
-/// The declared path of a map that `path` extends by one key, if `path` is a map-key selection (spec 6.10).
+/// The declared path of a map that `path` extends by one key, if `path` is a map-key selection (Annex F3).
 pub fn map_key_of(doc: &CommandDoc, output: &Output, path: &str) -> Option<String> {
     let steps = parse_field_path(path)?;
     let last = steps.last()?;
@@ -533,7 +533,7 @@ fn descend(
     Some(target)
 }
 
-/// The output's schema with `required` reduced in every object cut node at or below the record along `kept` (spec 6.10, "Projected schema").
+/// The output's schema with `required` reduced in every object cut node at or below the record along `kept` (Annex F5).
 pub fn projected_validator(
     doc: &CommandDoc,
     output: &Output,
@@ -553,7 +553,7 @@ pub fn projected_validator(
     doc.compile_ref_in(&output.schema_ref, &schemas)
 }
 
-/// Whether `path` is selectable: declared in `fields.paths` or `fields.keep`, or, for a document that declares 1.1, one key of a declared map (spec 6.10).
+/// Whether `path` is selectable: declared in `fields.paths` or `fields.keep`, or, for a document that declares 1.1, one key of a declared map (spec 6.10, Annex F3).
 pub fn selectable(doc: &CommandDoc, output: &Output, path: &str, v11: bool) -> bool {
     let declared = output
         .fields
@@ -562,7 +562,7 @@ pub fn selectable(doc: &CommandDoc, output: &Output, path: &str, v11: bool) -> b
     declared || (v11 && map_key_of(doc, output, path).is_some())
 }
 
-/// Whether `number` is a safe integer in the sense of JavaScript's `Number.isSafeInteger` (spec 10.7.5): an integral number within ±(2^53-1).
+/// Whether `number` is a safe integer in the sense of JavaScript's `Number.isSafeInteger` (spec 9.7.5): an integral number within ±(2^53-1).
 pub fn is_safe_integer(number: &Number) -> bool {
     const MAX: u64 = 9_007_199_254_740_991;
     if let Some(value) = number.as_i64() {

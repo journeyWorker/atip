@@ -66,11 +66,11 @@ fn atip_check_grammar_01_command_words_are_verbs_or_noun_views_and_options_follo
                 .insert((option.value_name.clone(), option.value_type.as_str()));
         }
     }
-    // Every command sits in one group, the root: one name has one value name and one value type (spec 9.6).
+    // Every command sits in one group, the root: one name has one value name and one value type (Annex S1 item 4).
     for (name, uses) in &meanings {
         assert_eq!(uses.len(), 1, "--{name} has two meanings: {uses:?}");
     }
-    // No short option but clap's `-h` and the root's `-V`; the reserved names keep their meaning (spec 4.5).
+    // No short option but clap's `-h` and the root's `-V`; the reserved names keep their meaning (Annex S1 item 5, spec 4.5).
     let mut root = atip_check::cli::command();
     root.build();
     let mut shorts = BTreeSet::new();

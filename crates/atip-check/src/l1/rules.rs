@@ -1,4 +1,4 @@
-//! The rules of spec 10.13 that JSON Schema cannot express, over the documents of a `schema` answer.
+//! The rules of Annex S2 that JSON Schema cannot express, over the documents of a `schema` answer.
 //!
 //! Each function returns [`Findings`]: one `(condition, problem)` pair per condition it judged, `None` when the
 //! condition holds. A condition is reported only when the document has something it is about: the conditions of
@@ -12,7 +12,7 @@
 //! of an invocation (7 and 13) read it through [`invocation`].
 //!
 //! A problem names the command id and the rule number, then what is wrong:
-//! `acme member tag: rule 4: constraint 2 repeats constraint 0 (spec 10.8.2)`.
+//! `acme member tag: rule 4: constraint 2 repeats constraint 0 (spec 9.8.1)`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -270,7 +270,7 @@ fn value_issues(arg: &Arg, value: &Value) -> Vec<String> {
     issues
 }
 
-/// `L1.walk`, for a command document: spec 10.13 rules 1-11 and 13 (rule 12 is `L1.examples`).
+/// `L1.walk`, for a command document: Annex S2 rules 1-11 and 13 (rule 12 is `L1.examples`).
 /// The conditions are `rule-1`, `rule-2-refs`, `rule-2-compile`, `rule-2-outputs`, `rule-3-defaults`, `rule-3-domain-profile`, `rule-3-domain-pattern`,
 /// `rule-3-domain-compile`, `rule-4-names`, `rule-4-codes`, `rule-4-relation-once`, `rule-5`, `rule-6`, `rule-7`, `rule-9`, `rule-10`, `rule-11`, `rule-13`,
 /// `rule-18` (only when an option has `commaList`)
@@ -510,7 +510,7 @@ const STRUCTURAL_KEYWORDS: [&str; 7] = [
 ];
 const DOMAIN_ANNOTATIONS: [&str; 4] = ["title", "description", "$comment", "format"];
 
-/// The keywords a domain of `value_type` may use (spec 10.7.4), `None` for a type that has no domain.
+/// The keywords a domain of `value_type` may use (Annex V1), `None` for a type that has no domain.
 fn domain_keywords(value_type: &str) -> Option<Vec<&'static str>> {
     match value_type {
         "integer" | "number" | "count" => Some(NUMERIC_KEYWORDS.to_vec()),
@@ -527,7 +527,7 @@ fn domain_keywords(value_type: &str) -> Option<Vec<&'static str>> {
     }
 }
 
-/// What is wrong with the domain of `arg` against the profile of its valueType (spec 10.7.4), as rule 3 reports it; a value is not judged against such a domain.
+/// What is wrong with the domain of `arg` against the profile of its valueType (Annex V1), as rule 3 reports it; a value is not judged against such a domain.
 /// The patterns are not part of it (a pattern outside the form is left out of judging a value, `invocation::strip_patterns`).
 pub fn domain_profile_problems(arg: &Arg) -> Vec<String> {
     let Some(domain) = arg.domain.as_ref().filter(|domain| !domain.is_null()) else {
@@ -557,7 +557,7 @@ pub fn domain_unusable(arg: &Arg) -> bool {
 struct DomainState {
     /// Keywords outside the profile of the argument's valueType, numbers that are not finite or not safe, non-scalar `enum`.
     profile: Vec<String>,
-    /// A `pattern` that is not of the form of 10.7.4 for the claimed minor, or that Rust refuses.
+    /// A `pattern` that is not of the form of Annex V2 for the claimed minor, or that Rust refuses.
     patterns: Vec<String>,
     has_pattern: bool,
     /// Why the domain does not compile as a JSON Schema; judged only when the two lists above are empty.
@@ -570,12 +570,12 @@ impl DomainState {
         !self.profile.is_empty() || !self.patterns.is_empty() || self.compile.is_some()
     }
 
-    /// Reads `node` as a domain of `arg` in a document of `minor` (the check of spec 10.7.4: structural, then the patterns,
+    /// Reads `node` as a domain of `arg` in a document of `minor` (the check of Annex V: structural, then the patterns,
     /// then the compile).
     fn walk(&mut self, arg: &Arg, node: &Value, at: &str, minor: atip::Minor) {
         let Some(keywords) = domain_keywords(&arg.value_type) else {
             self.profile.push(format!(
-                "{at}: a {} argument has no domain (spec 10.7.4)",
+                "{at}: a {} argument has no domain (Annex V1)",
                 arg.value_type
             ));
             return;
@@ -593,7 +593,7 @@ impl DomainState {
             }
             if !keywords.contains(&keyword) {
                 self.profile.push(format!(
-                    "{at}: keyword {keyword} is outside the domain profile of {} (spec 10.7.4)",
+                    "{at}: keyword {keyword} is outside the domain profile of {} (Annex V1)",
                     arg.value_type
                 ));
                 continue;
@@ -603,7 +603,7 @@ impl DomainState {
                     Value::Number(number) if number.as_f64().is_some_and(f64::is_finite) => {
                         if integral && !super::project::is_safe_integer(number) {
                             self.profile.push(format!(
-                                "{at}: {keyword} {number} is not a safe integer (spec 10.7.5)"
+                                "{at}: {keyword} {number} is not a safe integer (Annex V3)"
                             ));
                         } else if keyword == "multipleOf"
                             && number.as_f64().is_some_and(|n| n <= 0.0)
@@ -627,7 +627,7 @@ impl DomainState {
                 };
                 if let Some(problem) = problem {
                     self.patterns
-                        .push(format!("{at}: pattern {value}: {problem} (spec 10.7.4)"));
+                        .push(format!("{at}: pattern {value}: {problem} (Annex V2)"));
                 }
             }
             if keyword == "enum" || keyword == "const" {
@@ -640,7 +640,7 @@ impl DomainState {
                     .any(|item| matches!(item, Value::Object(_) | Value::Array(_)))
                 {
                     self.profile.push(format!(
-                        "{at}: {keyword} admits only scalar values in a domain (spec 10.7.4)"
+                        "{at}: {keyword} admits only scalar values in a domain (Annex V1)"
                     ));
                 }
             }
@@ -734,7 +734,7 @@ fn scalar_text(value: &Value) -> String {
 }
 
 /// Rule 3: an `enum` default (each element of a repeatable one) is in `possibleValues`; every non-null default is a valid
-/// value of its valueType and inside its domain; a count's default is one integer (10.7.2).
+/// value of its valueType and inside its domain; a count's default is one integer (9.7.2).
 fn rule_3_defaults(doc: &CommandDoc, domains: &DomainStates) -> Option<String> {
     let mut problems = Vec::new();
     for (index, arg) in doc.args().enumerate() {
@@ -826,8 +826,8 @@ fn rule_4_names_and_codes(doc: &CommandDoc) -> (Option<String>, Option<String>) 
     )
 }
 
-/// Rule 4: no relation is stated twice (spec 10.8.2): the same rule over the same names, `if`, `in` and `then`, in any
-/// order and whatever the `code`; `in` values compare after the normalisation of 11.5.
+/// Rule 4: no relation is stated twice (spec 9.8.1): the same rule over the same names, `if`, `in` and `then`, in any
+/// order and whatever the `code`; `in` values compare after the normalisation of 10.5.
 fn rule_4_relation_once(doc: &CommandDoc) -> Option<String> {
     let sorted = |values: &[Value]| -> Vec<String> {
         let mut texts: Vec<String> = values.iter().map(Value::to_string).collect();
@@ -864,7 +864,7 @@ fn rule_4_relation_once(doc: &CommandDoc) -> Option<String> {
         .to_string();
         match seen.get(&key) {
             Some(earlier) => problems.push(format!(
-                "constraint {index} repeats constraint {earlier} (spec 10.8.2)"
+                "constraint {index} repeats constraint {earlier} (spec 9.8.1)"
             )),
             None => {
                 seen.insert(key, index);
@@ -955,7 +955,8 @@ fn rule_10(doc: &CommandDoc) -> Option<String> {
     };
     let mut problems = Vec::new();
     if object.contains_key("required") {
-        problems.push("the fragment schema has a root required list (spec 10.10)".to_string());
+        problems
+            .push("the fragment schema has a root required list (Annex S2 rule 10)".to_string());
     }
     if object.get("additionalProperties") != Some(&Value::Bool(false)) {
         problems.push("the fragment schema does not set additionalProperties: false".to_string());
@@ -982,7 +983,7 @@ fn rule_10(doc: &CommandDoc) -> Option<String> {
 
 // ---- rule 7: input.example ----
 
-/// The explicit arguments of one `--input` document, `camelCase` keys naming options (spec 11.5), with the problems of
+/// The explicit arguments of one `--input` document, `camelCase` keys naming options (spec 10.5), with the problems of
 /// their values.
 fn document_args(
     doc: &CommandDoc,
@@ -1040,7 +1041,7 @@ fn document_args(
 }
 
 /// Rule 7: `input.example` validates against the fragment schema, satisfies `required`, every `domain` and `constraints`,
-/// and, when `argumentsRef` is present, its argument object (11.7 step 6) validates against that schema.
+/// and, when `argumentsRef` is present, its argument object (10.7 step 6) validates against that schema.
 fn rule_7(doc: &CommandDoc, domains: &DomainStates) -> Option<String> {
     let input = doc.input.as_ref()?;
     let mut problems = Vec::new();
@@ -1087,7 +1088,7 @@ fn rule_7(doc: &CommandDoc, domains: &DomainStates) -> Option<String> {
 
 // ---- rule 11: fields ----
 
-/// Keywords a cut node may use beside its shape (spec 6.10).
+/// Keywords a cut node may use beside its shape (Annex F5).
 const ANNOTATIONS: [&str; 8] = [
     "title",
     "description",
@@ -1109,7 +1110,7 @@ fn is_bare_null(branch: &Value) -> bool {
     })
 }
 
-/// Checks that every cut node along `trie` is projectable (spec 6.10, rule 11). The caller passes the output's root
+/// Checks that every cut node along `trie` is projectable (Annex F5, Annex S2 rule 11). The caller passes the output's root
 /// schema and a trie that starts with the decoded `fields.records` segments, so the spine above the records is checked
 /// as well as the records, the record and the ancestors of every declared path.
 fn check_cut(
@@ -1132,7 +1133,7 @@ fn check_cut(
     }
     let Some(object) = node.as_object() else {
         problems.push(format!(
-            "{at}: the {} schema {node} is not a projectable cut node (spec 6.10)",
+            "{at}: the {} schema {node} is not a projectable cut node (Annex F5)",
             if node.is_boolean() {
                 "boolean"
             } else {
@@ -1145,7 +1146,7 @@ fn check_cut(
         for keyword in object.keys() {
             if keyword != allowed && !ANNOTATIONS.contains(&keyword.as_str()) {
                 problems.push(format!(
-                    "{at}: keyword {keyword} beside {allowed} in a cut node (spec 6.10)"
+                    "{at}: keyword {keyword} beside {allowed} in a cut node (Annex F5)"
                 ));
             }
         }
@@ -1180,7 +1181,7 @@ fn check_cut(
     }
     let types = types_of(object);
     if types.is_empty() {
-        problems.push(format!("{at}: a cut node declares no type (spec 6.10)"));
+        problems.push(format!("{at}: a cut node declares no type (Annex F5)"));
         return;
     }
     if types.contains(&"array") || object.contains_key("items") {
@@ -1189,7 +1190,7 @@ fn check_cut(
                 || ["type", "items", "minItems", "maxItems"].contains(&keyword.as_str());
             if !allowed {
                 problems.push(format!(
-                    "{at}: keyword {keyword} in an array cut node (spec 6.10)"
+                    "{at}: keyword {keyword} in an array cut node (Annex F5)"
                 ));
             }
         }
@@ -1215,7 +1216,7 @@ fn check_cut(
                 .contains(&keyword.as_str());
         if !allowed {
             problems.push(format!(
-                "{at}: keyword {keyword} in an object cut node (spec 6.10)"
+                "{at}: keyword {keyword} in an object cut node (Annex F5)"
             ));
         }
     }
@@ -1349,7 +1350,7 @@ fn rule_11(doc: &CommandDoc, v11: bool) -> Option<String> {
 
 // ---- rule 13: validators ----
 
-/// The conditions of a documented line that a validator's `rejects` line must still satisfy (spec 10.13 rule 13): it
+/// The conditions of a documented line that a validator's `rejects` line must still satisfy (Annex S2 rule 13): it
 /// parses, and has the right values, requirements and constraints, so that only the validator can refuse it.
 const BEFORE_THE_VALIDATOR: [&str; 4] = ["grammar", "values", "requirements", "constraints"];
 
@@ -1377,7 +1378,7 @@ fn rule_13(
         }
         if let Some(exit) = exit_of(&validator.code).filter(|exit| *exit != 2) {
             problems.push(format!(
-                "validator {index} code {} exits {exit}, not 2 (spec 10.8.3)",
+                "validator {index} code {} exits {exit}, not 2 (spec 9.8.2)",
                 validator.code
             ));
         }
@@ -1700,7 +1701,7 @@ mod tests {
 
     #[test]
     fn atip_checkl1_rules_a_schema_that_is_false_is_a_member_of_schemas() {
-        // `acme build` refers to a `false` schema: membership, not truthiness (spec 10.13 rule 2).
+        // `acme build` refers to a `false` schema: membership, not truthiness (Annex S2 rule 2).
         let (doc, findings) = judge("schema-docs/schema-command-acme-build.json");
         assert!(doc.schemas.values().any(|schema| *schema == json!(false)));
         assert!(failing(&findings).is_empty(), "{findings:#?}");
@@ -1748,7 +1749,7 @@ mod tests {
             "{findings:#?}"
         );
         assert!(problem_of(&findings, "rule-4-relation-once")
-            .ends_with("constraint 3 repeats constraint 2 (spec 10.8.2)"));
+            .ends_with("constraint 3 repeats constraint 2 (spec 9.8.1)"));
     }
 
     #[test]

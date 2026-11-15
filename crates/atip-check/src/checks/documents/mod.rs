@@ -517,7 +517,7 @@ fn neutralise_grammar(data: &mut Value) {
             });
         if let Some(input) = data.get_mut("input").and_then(Value::as_object_mut) {
             input.insert("batch".to_string(), Value::Bool(batch_output));
-            // `maxItems` goes with `batch: true` and only with it (spec 10.10).
+            // `maxItems` goes with `batch: true` and only with it (spec 9.9.2).
             if batch_output {
                 input.entry("maxItems").or_insert(Value::from(1));
             } else {
@@ -572,7 +572,7 @@ fn neutralise_grammar(data: &mut Value) {
     }
 }
 
-/// The option names with one reserved shape (spec 9.8, 10.13 rule 8): name and value type.
+/// The option names with one reserved shape (spec 4.5, Annex S2 rule 8): name and value type.
 const RESERVED_SHAPES: [(&str, &str); 9] = [
     ("json", "switch"),
     ("commit", "switch"),
@@ -584,7 +584,7 @@ const RESERVED_SHAPES: [(&str, &str); 9] = [
     ("operation", "string"),
     ("limit", "integer"),
 ];
-/// The reserved options that are always flag-only (spec 10.7.1).
+/// The reserved options that are always flag-only (spec 4.5).
 const FLAG_ONLY: [&str; 4] = ["json", "input", "commit", "plan-digest"];
 
 /// `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`.
@@ -606,7 +606,7 @@ pub fn is_kebab(word: &str) -> bool {
 }
 
 /// `L1.grammar`, for the entries of a tree (their paths) and one command document: `kebab-words`, `no-id-suffix`, `reserved-shape`. For a 1.2 claim
-/// `limit`, `cursor`, `all` and `fields` are flag-only too (spec 11.6).
+/// `limit`, `cursor`, `all` and `fields` are flag-only too (spec 4.5).
 pub fn grammar_findings(
     entry_paths: &[(&str, &[String])],
     doc: Option<&CommandDoc>,
@@ -678,7 +678,7 @@ pub fn grammar_findings(
             "no-id-suffix",
             (!no_id.is_empty()).then(|| {
                 format!(
-                    "an option name ends in -id (spec 9.5): {}",
+                    "an option name ends in -id (Annex S1 item 3): {}",
                     join(&no_id[..no_id.len().min(3)])
                 )
             }),
@@ -687,7 +687,7 @@ pub fn grammar_findings(
             "reserved-shape",
             (!shapes.is_empty()).then(|| {
                 format!(
-                    "a reserved option has not its reserved shape (spec 9.8): {}",
+                    "a reserved option has not its reserved shape (Annex S2 rule 8): {}",
                     join(&shapes[..shapes.len().min(3)])
                 )
             }),
@@ -695,7 +695,7 @@ pub fn grammar_findings(
     ]
 }
 
-/// Every `pattern` of a domain schema, at the positions the profile allows (spec 10.7.4): `Err` with a description for one that is not a string.
+/// Every `pattern` of a domain schema, at the positions the profile allows (Annex V1): `Err` with a description for one that is not a string.
 fn patterns_of(domain: &Value, found: &mut Vec<Result<String, String>>) {
     let Some(object) = domain.as_object() else {
         return;
@@ -1009,7 +1009,7 @@ pub fn reserved_applicable_findings(doc: &CommandDoc) -> Vec<Finding> {
     findings
 }
 
-/// What a 1.4 tool answered to `--input '{"<key>":[]}'`, the empty array of a repeatable option (spec 9.7.2, 9.9.2, 1.4.2): the
+/// What a 1.4 tool answered to `--input '{"<key>":[]}'`, the empty array of a repeatable option (spec 9.7.2, 9.9.2, 10.5; since 1.4.2): the
 /// schema derived for `Input` says neither, so both answers conform and the probe never fails a tool; it reports which one it saw.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmptyArray {

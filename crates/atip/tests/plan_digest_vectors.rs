@@ -1,8 +1,8 @@
-//! The plan digest test vectors of the contract repository (`examples/plan-digest/`, spec 12.6), run against
+//! The plan digest test vectors of the contract repository (`examples/plan-digest/`, spec 11.6), run against
 //! `atip::jcs` and `atip::plan`: the RFC 8785 text of each plan and its `sha256:` digest.
 //!
 //! The vectors are read from the repository's own directory, the one copy `scripts/plan-digest.ts` recomputes too. They bind no tool
-//! that computes its digest another way (12.6 is a SHOULD); they bind this crate, which says it follows the recommendation.
+//! that computes its digest another way (11.6 is a SHOULD); they bind this crate, which says it follows the recommendation.
 
 use std::path::Path;
 

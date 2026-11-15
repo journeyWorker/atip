@@ -120,7 +120,7 @@ pub(crate) fn next_argv(stdout: &[u8]) -> Option<Vec<String>> {
         .collect()
 }
 
-/// The value of `--plan-digest` in `argv`, written as two words (`--plan-digest <v>`) or one (`--plan-digest=<v>`, the form of spec 9.12.1).
+/// The value of `--plan-digest` in `argv`, written as two words (`--plan-digest <v>`) or one (`--plan-digest=<v>`, the form of spec 4.2.1).
 pub(crate) fn digest_of(argv: &[String]) -> Option<&str> {
     argv.iter()
         .enumerate()

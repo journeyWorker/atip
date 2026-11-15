@@ -1,7 +1,7 @@
-//! The command lines of a guide (spec 14.5, approaches/checker.md 7.1).
+//! The command lines of a guide (spec 14.3, approaches/checker.md 7.1).
 //!
 //! A guide is Markdown. Every line of its fenced code blocks that starts with the tool name is a documented invocation, read by
-//! the grammar of 9.12 like an example of a command document; a trailing `\` joins the next line. `<UPPER_CASE>`
+//! the grammar of 4.2 like an example of a command document; a trailing `\` joins the next line. `<UPPER_CASE>`
 //! placeholders stand for a value valid for the argument they are written for (an enum's first value, `1` for an
 //! integer, `x` for a string), and are replaced by one before the line is read.
 

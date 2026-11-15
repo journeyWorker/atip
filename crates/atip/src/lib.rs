@@ -20,13 +20,13 @@
 //!   model and writes the tree, groups and commands of 1.0 to 1.3 as they are, and from 1.4 the compact form of spec 9 (defaults,
 //!   implied options and codes left out, shared options in the tree, reserved options by name) and the schemas answer
 //!   (`schema <COMMAND> --schemas --json`).
-//! - [`fragment`]: the fragment schema of one `--input` document, derived from the operands and options (spec 9.9.2, 1.4),
+//! - [`fragment`]: the fragment schema of one `--input` document, derived from the operands and options (spec 9.9.2, since 1.4),
 //!   which the schemas answer holds as `Input`.
-//! - [`help`]: `--help --json` and `--version --json` refused with `USAGE` after the path is resolved (spec 4.4.1, 1.4), and
+//! - [`help`]: `--help --json` and `--version --json` refused with `USAGE` after the path is resolved (spec 4.4.1, since 1.4), and
 //!   the argv test that sees them.
 //! - [`fields`]: field paths and projection (spec 6.10): the path grammar, the
 //!   projection of a record, the `fields` declaration of an output with the checks
-//!   spec 10.13 puts on it, and the validation of a projected answer against the
+//!   Annex S2 puts on it, and the validation of a projected answer against the
 //!   output's schema with `required` reduced.
 //! - [`project`]: the generic projection of a clap tree onto those documents:
 //!   the tree and its paths, `valueType`, typed defaults, the declared `--input`

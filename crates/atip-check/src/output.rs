@@ -432,7 +432,7 @@ pub fn failure_line(failure: &Failure) -> String {
     })
 }
 
-/// The failure as text for stderr (spec 7.4), then its `detail` lines.
+/// The failure as text for stderr (approaches/implementation.md §6), then its `detail` lines.
 pub fn failure_text(failure: &Failure) -> String {
     let mut lines = vec![format!(
         "{TOOL}: {}: {}",

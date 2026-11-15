@@ -1,5 +1,5 @@
-//! Parsing and enforcement derived from the model of `spec.rs`: argv syntax (spec 9.12), typed values (10.7.2),
-//! domains (10.7.4), integers within ±(2^53-1) (10.7.5), constraints (10.8.1) and validators (10.8.3). The seeded
+//! Parsing and enforcement derived from the model of `spec.rs`: argv syntax (spec 4.2), typed values (9.7.2),
+//! domains (9.7.4), integers within ±(2^53-1) (9.7.5), constraints (9.8.1) and validators (9.8.2). The seeded
 //! violations of this module are runtime toggles of the configuration; each names the model entry it skips. The seeded violations of
 //! the `field` of a constraint refusal (every claim): `constraintFieldOtherQualifying` (a `requires` violation names the rule's `if`
 //! argument, which the caller can remove, instead of the first missing `then` argument; an advisory from 1.3) and
@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use super::spec::{Arg, Check, Command, Rule};
 use crate::Tool;
 
-/// The largest integer a JSON parser, JavaScript and a Rust `i64` agree on (spec 10.7.5).
+/// The largest integer a JSON parser, JavaScript and a Rust `i64` agree on (Annex V3).
 const SAFE: i128 = 9_007_199_254_740_991;
 
 /// What argv gave a command.
@@ -116,7 +116,7 @@ fn parse_integer(tool: &Tool, arg: &Arg, text: &str) -> Result<Value, Failure> {
     ))
 }
 
-/// The typed value of `text` for `arg` (10.7.2).
+/// The typed value of `text` for `arg` (9.7.2).
 pub fn typed(tool: &Tool, arg: &Arg, text: &str) -> Result<Value, Failure> {
     let field = arg.field();
     match arg.value_type {
@@ -152,8 +152,8 @@ pub fn typed(tool: &Tool, arg: &Arg, text: &str) -> Result<Value, Failure> {
     }
 }
 
-/// Reads `args` (the whole argv: path words, options and operands) by the grammar of 9.12 against `command`,
-/// then enforces required arguments, domains, constraints and validators, in that order (spec 11.7 step 6).
+/// Reads `args` (the whole argv: path words, options and operands) by the grammar of 4.2 against `command`,
+/// then enforces required arguments, domains, constraints and validators, in that order (spec 10.7 step 6).
 pub fn parse(
     tool: &Tool,
     command: &Command,
@@ -168,8 +168,8 @@ pub fn parse(
     Ok(parsed)
 }
 
-/// Reads `args` (the whole argv: path words, options and operands) by the grammar of 9.12 against `command`: no
-/// requirement, domain, constraint or validator is enforced (spec 11.7 step 3).
+/// Reads `args` (the whole argv: path words, options and operands) by the grammar of 4.2 against `command`: no
+/// requirement, domain, constraint or validator is enforced (spec 10.7 step 3).
 pub fn read_words(tool: &Tool, command: &Command, args: &[String]) -> Result<Parsed, Failure> {
     let path_len = command.path().len();
     let mut parsed = Parsed::default();
@@ -315,14 +315,14 @@ pub fn read_words(tool: &Tool, command: &Command, args: &[String]) -> Result<Par
     Ok(parsed)
 }
 
-/// What is left of `parse` after the words are read and the document merged: the stages of spec 11.7 step 6.
+/// What is left of `parse` after the words are read and the document merged: the stages of spec 10.7 step 6.
 fn enforce(
     tool: &Tool,
     command: &Command,
     parsed: &Parsed,
     skip_rules: bool,
 ) -> Result<(), Failure> {
-    // The seeded violations of `L1.check-order` (spec 11.7 step 6): a stage answers before an earlier one.
+    // The seeded violations of `L1.check-order` (spec 10.7 step 6): a stage answers before an earlier one.
     if tool.flag("orderDomainFirst") {
         check_domains(tool, command, parsed, false)?;
     }

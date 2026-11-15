@@ -51,7 +51,7 @@ pub(crate) struct SameRun {
     pub twin: usize,
 }
 
-/// A document refused at the framing: the code, the reasons 7.2.3 reserves for the situation, the number of `details` it has.
+/// A document refused at the framing: the code, the reasons 7.3.3 reserves for the situation, the number of `details` it has.
 #[derive(Debug, Clone)]
 pub(crate) struct RefusalRun {
     pub label: String,
@@ -185,7 +185,7 @@ pub(crate) struct DocumentNumberRun {
     pub call: usize,
 }
 
-/// The value of a document key a command refuses by type (spec 11.5: no coercion), or `None` when every JSON value is of the type.
+/// The value of a document key a command refuses by type (spec 10.5: no coercion), or `None` when every JSON value is of the type.
 fn wrong_type(arg: &Arg) -> Option<Value> {
     let wrong = match arg.value_type.as_str() {
         "integer" | "number" | "count" => json!("not-a-number"),

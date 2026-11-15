@@ -12,12 +12,12 @@ use serde_json::{json, Map, Value};
 use super::view::ViewNotes;
 use crate::schema::schemas;
 
-/// The `#/schemas/<Name>` form of a reference (spec 10.9.2): the name, when it has that form.
+/// The `#/schemas/<Name>` form of a reference (spec 9.9.1): the name, when it has that form.
 pub fn ref_name(reference: &str) -> Option<&str> {
     reference.strip_prefix("#/schemas/")
 }
 
-/// `kebab-case` to `camelCase`, the document key of an option (spec 11.5).
+/// `kebab-case` to `camelCase`, the document key of an option (spec 10.5).
 pub fn camel(kebab: &str) -> String {
     let mut out = String::new();
     let mut upper = false;
@@ -58,7 +58,7 @@ pub(crate) fn words(value: &Value, key: &str) -> Vec<String> {
         })
 }
 
-/// One operand or option of a command (spec 10.6, 10.7).
+/// One operand or option of a command (spec 9.6, 9.7).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Arg {
     /// The `name`: an option's long name without `--`, an operand's kebab-case name.
@@ -71,7 +71,7 @@ pub struct Arg {
     pub repeatable: bool,
     /// A repeatable option whose every argv value is a comma-separated list (spec 9.7.6, since 1.6); always `false` on an operand.
     pub comma_list: bool,
-    /// An operand that takes the rest (spec 10.6); always `false` on an option.
+    /// An operand that takes the rest (spec 9.6); always `false` on an option.
     pub variadic: bool,
     /// The typed default, `Value::Null` when there is none.
     pub default: Value,
@@ -125,7 +125,7 @@ impl Arg {
     }
 }
 
-/// One rule of `constraints` (spec 10.8.1).
+/// One rule of `constraints` (spec 9.8.1).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Constraint {
     /// `atLeastOne`, `exactlyOne`, `atMostOne`, `requires`, `forbids`.
@@ -176,7 +176,7 @@ impl Constraint {
     }
 }
 
-/// One stateless validator (spec 10.8.3).
+/// One stateless validator (spec 9.8.2).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Validator {
     pub arguments: Vec<String>,
@@ -184,7 +184,7 @@ pub struct Validator {
     pub rejects: Vec<String>,
 }
 
-/// The `fields` of an output (spec 10.9.1).
+/// The `fields` of an output (spec 9.9.1).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fields {
     pub records: String,
@@ -193,7 +193,7 @@ pub struct Fields {
     pub default: Vec<String>,
 }
 
-/// One output of a command (spec 10.9).
+/// One output of a command (spec 9.9).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Output {
     pub kind: String,
@@ -235,7 +235,7 @@ impl Output {
     }
 }
 
-/// The `input` of a command (spec 10.10).
+/// The `input` of a command (spec 9.9.2).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Input {
     pub schema_ref: String,
@@ -246,7 +246,7 @@ pub struct Input {
     pub example: Value,
 }
 
-/// A `command` document (spec 10.5).
+/// A `command` document (spec 9.5).
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommandDoc {
     pub command: String,

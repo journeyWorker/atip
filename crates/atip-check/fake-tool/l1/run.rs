@@ -424,7 +424,7 @@ fn schema_path(
                     2,
                 );
             }
-            // Seeded: the refusal of an unknown path names another field than `command` (spec 10.1.2).
+            // Seeded: the refusal of an unknown path names another field than `command` (spec 9.1.1).
             if tool.flag("schemaUnknownField") {
                 return tool.fail(
                     "usage",
@@ -838,7 +838,7 @@ fn list(tool: &Tool, args: &[String], parsed: &Parsed) -> ExitCode {
         members.sort_by_key(|member| member.id);
     }
     // A cursor is bound to the arguments the invocation gave (a default written out is another invocation) and, for
-    // an option it left out, to the value its environment variable has (spec 6.9, 1.2); before 1.2, to the effective values.
+    // an option it left out, to the value its environment variable has (spec 6.9, since 1.2); before 1.2, to the effective values.
     let binding = if tool.is_1_2() && !tool.flag("cursorBindsEffective") {
         let env = if tool.flag("cursorIgnoresEnv") || parsed.has("team") {
             String::new()
@@ -1256,7 +1256,7 @@ fn put(tool: &Tool, parsed: &Parsed) -> ExitCode {
 
 // ---- batches ----
 
-/// Executes a batch whose preflight passed (spec 11.11): the items one at a time, in order, stopping at the first that fails.
+/// Executes a batch whose preflight passed (spec 10.11): the items one at a time, in order, stopping at the first that fails.
 pub fn execute_batch(tool: &Tool, id: &'static str, items: Vec<Parsed>) -> ExitCode {
     let mut report: Vec<Value> = Vec::new();
     let mut failed: Option<(usize, ItemError)> = None;

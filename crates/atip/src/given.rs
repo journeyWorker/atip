@@ -3,9 +3,9 @@
 //! A tool normalises what the invocation gave (an integer is a JSON integer whether it was `--round=1` or `--round 1`,
 //! a `json` argument is a JSON value) and lists it as [`Given`]s: the explicit arguments, and the values an option's
 //! `env` variable supplied. A value filled in from a `default` is not a [`Given`]. The cursor of [`crate::cursor`] binds
-//! to them, the preview of a plan digests them (spec 12.6), and both write the next call from them with
-//! [`write_argv`]: the forms of spec 9.12.3 (`--name=value` for every valued option, a switch as `--name`, a count's name repeated, the operands after one `--`), so an invocation that read `--input -` or a file is written as the
-//! options it stands for (spec 12.5), never as `--input -`.
+//! to them, the preview of a plan digests them (spec 11.6), and both write the next call from them with
+//! [`write_argv`]: the portable forms of spec 4.2 that approaches/implementation.md §4 lists (`--name=value` for every valued option, a switch as `--name`, a count's name repeated, the operands after one `--`), so an invocation that read `--input -` or a file is written as the
+//! options it stands for (spec 11.5), never as `--input -`.
 
 use serde_json::Value;
 
@@ -16,7 +16,7 @@ use crate::jcs;
 pub enum Source {
     /// The invocation gave it (on argv, or in an `--input` document, which says the same).
     Explicit,
-    /// The option's `env` variable supplied it (spec 11.7 step 5).
+    /// The option's `env` variable supplied it (spec 10.7 step 5).
     Env,
 }
 
@@ -98,7 +98,7 @@ impl Given {
         self
     }
 
-    /// Whether the argument is the same as absent (spec 10.7.2): a switch that is `false`, a count of `0`, no occurrence of a
+    /// Whether the argument is the same as absent (spec 9.7.2): a switch that is `false`, a count of `0`, no occurrence of a
     /// repeated option or no operand, or a `null`.
     pub fn is_absent(&self) -> bool {
         match (self.kind, &self.value) {
@@ -123,7 +123,7 @@ fn word(value: &Value) -> Option<String> {
     }
 }
 
-/// `--name=value`, the one form that no value can be misread in (spec 9.12.3, 11.9): not as an option, as a stdin selector or
+/// `--name=value`, the one form that no value can be misread in (spec 4.2.2, 10.9): not as an option, as a stdin selector or
 /// as an inline-JSON or file selector, whatever the value starts with or whether it is empty.
 fn option(name: &str, value: &str, out: &mut Vec<String>) {
     out.push(format!("--{name}={value}"));
@@ -270,7 +270,7 @@ mod tests {
         );
         assert!(
             !Given::option("a", 0).is_absent(),
-            "an integer option given 0 is given (spec 10.8.1)"
+            "an integer option given 0 is given (spec 9.8.1)"
         );
     }
 }

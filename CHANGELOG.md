@@ -1,5 +1,9 @@
 # Changelog
 
+## Crates 0.4.1 (2026-11-15)
+
+- **`atip-check` 0.4.1:** reports and code cite the sections of the current spec, not of 1.2; a test checks each exists.
+
 ## Crates 0.4.0 (2026-11-15)
 
 No spec change; the spec stays 1.6.1. `atip` 0.3.2 is unchanged, except that its next release declares

@@ -19,7 +19,7 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// The longest time limit a fixture may ask for.
 const MAX_TIMEOUT_SECONDS: f64 = 3600.0;
 
-/// One row of the tool's error registry (spec 7.3), as the fixture lists it: the codes and reasons by name, no prose.
+/// One row of the tool's error registry (spec 7.4), as the fixture lists it: the codes and reasons by name, no prose.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegistryRow {
     pub code: String,
@@ -95,11 +95,11 @@ pub struct Fixture {
     pub timeout: Duration,
     /// The id of the command that runs without state, split into words.
     pub probe: Option<Vec<String>>,
-    /// Tool-wide options with a value, each an argv fragment such as `["--repo", "."]` (spec 9.13).
+    /// Tool-wide options with a value, each an argv fragment such as `["--repo", "."]` (Annex S1 item 9).
     pub global_options: Option<Vec<Vec<String>>>,
     /// The tool's error registry; `None` when the fixture gives none.
     pub registry: Option<Vec<RegistryRow>>,
-    /// `"registry": "from-schema"`: the registry and the warning codes are the tool's own `schema --errors` and `--warnings` answers, and nothing is compared with the fixture (approaches/checker.md 5, spec 17.3).
+    /// `"registry": "from-schema"`: the registry and the warning codes are the tool's own `schema --errors` and `--warnings` answers, and nothing is compared with the fixture (approaches/checker.md 5).
     pub registry_from_schema: bool,
     /// The tool's warning codes; `None` when the fixture gives none.
     pub warnings: Option<Vec<String>>,

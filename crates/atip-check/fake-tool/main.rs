@@ -694,7 +694,7 @@ impl Tool {
                 .and_then(|(_, value)| value.clone())
         };
         let is_1_1 = self.is_1_1();
-        // `data.kind` names the document from 1.0 on (spec 10.1.4); only the warning kinds are since 1.1.
+        // `data.kind` names the document from 1.0 on (spec 9.1); only the warning kinds are since 1.1.
         let with_kind = |kind: &str, mut data: Value| {
             data["kind"] = json!(kind);
             data
@@ -1111,7 +1111,7 @@ fn main() -> ExitCode {
     run(&tool, &args)
 }
 
-/// JSON mode: `--json` before the first `--`, decided before parsing (spec 4.4), unless a seeded violation says otherwise.
+/// JSON mode: `--json` before the first `--`, decided before parsing (spec 4.3.4), unless a seeded violation says otherwise.
 fn json_mode(tool: &Tool, args: &[String]) -> bool {
     if tool.flag("jsonAfterDashdash") {
         return args.iter().any(|arg| arg == "--json");
@@ -1238,7 +1238,7 @@ fn run(tool: &Tool, args: &[String]) -> ExitCode {
             return code;
         }
     }
-    // An L2 tool reads `--input` first (spec 11.7): a refusal, a batch, or the argv that says what the document and argv say.
+    // An L2 tool reads `--input` first (spec 10.7): a refusal, a batch, or the argv that says what the document and argv say.
     let synthesized: Vec<String>;
     let args: &[String] = if tool.flag("l2") {
         match l1::prepare_input(tool, args) {
@@ -1467,7 +1467,7 @@ fn team(tool: &Tool, words: &[String], repo_given: bool) -> ExitCode {
             println!("{}", json!({"ok": true, "data": {}}));
             ExitCode::SUCCESS
         }
-        // A stream command (13.5): a start line, an event, an end line holding the envelope.
+        // A stream command (spec 13): a start line, an event, an end line holding the envelope.
         Some("add") if tool.flag("teamAddStream") && tool.json => {
             let version = tool.text("streamStartContractVersion", &tool.minor());
             let mut start = json!({"type": "start", "contract": "atip/1", "tool": tool.name(), "toolVersion": "1.2.3", "command": "team add", "schemaVersion": "1.0"});
@@ -1510,7 +1510,7 @@ fn team_verbs(tool: &Tool) -> Vec<&'static str> {
 }
 
 /// `touch --name <NAME>` or `touch --input '{"name": <NAME>}'`, or a batch: `--input '[{"name": ...}, ...]'` (spec
-/// 11.11; at most `MAX_BATCH_ITEMS` documents, each merged with the argv arguments). An `--input` that is no JSON is
+/// 10.11; at most `MAX_BATCH_ITEMS` documents, each merged with the argv arguments). An `--input` that is no JSON is
 /// refused with a reason, a document with another key with `UNKNOWN_KEY`, a larger one with `INPUT_TOO_LARGE`, and a
 /// name that differs from `--name` with `INPUT_CONFLICT`; a batch is refused whole, before its first item runs.
 fn touch(tool: &Tool, name: &Option<String>, input: &Option<String>) -> ExitCode {
