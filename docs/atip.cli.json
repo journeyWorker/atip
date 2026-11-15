@@ -699,7 +699,7 @@
       "schemas": {
         "Guide": {
           "additionalProperties": false,
-          "description": "The JSON representation of a guide printed by `<tool> skills show [NAME] --json` (spec 14.3).",
+          "description": "The JSON representation of a guide printed by `<tool> skills show [NAME] --json` (spec 14.1).",
           "patternProperties": {
             "^x-[a-z][a-z0-9-]*$": true
           },

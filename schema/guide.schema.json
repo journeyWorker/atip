@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://atip.dev/1/guide.schema.json",
   "title": "atip/1 `skills show --json` data",
-  "description": "The JSON representation of a guide printed by `<tool> skills show [NAME] --json` (spec 14.3).",
+  "description": "The JSON representation of a guide printed by `<tool> skills show [NAME] --json` (spec 14.1).",
   "type": "object",
   "required": ["name", "text", "guides"],
   "properties": {
