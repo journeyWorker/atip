@@ -1,6 +1,6 @@
-//! The `input` member of a command document and the schemas it names, generated from the arguments of the model (spec 10.10,
-//! 11.5): the fragment schema describes the document as it is written (a numeric string is a number there), the arguments
-//! schema the argument object of 11.7 step 6.
+//! The `input` member of a command document and the schemas it names, generated from the arguments of the model (spec 9.9.2,
+//! 10.5): the fragment schema describes the document as it is written (a numeric string is a number there), the arguments
+//! schema the argument object of 10.7 step 6.
 
 use serde_json::{json, Map, Value};
 

@@ -464,7 +464,7 @@ fn refusal(error: &clap::Error, args: &[OsString]) -> Failure {
         format!("{TOOL} schema {} --json", path.join(" "))
     };
     // clap checks each value as it reads it and the required options after, but a missing required argument comes before a value
-    // outside its domain (spec 10.7 steps 2-6): a whole number refused by its parser (`--jobs=0`, the one option with a domain) beside
+    // outside its domain (spec 10.7 step 6, approaches/implementation.md §1): a whole number refused by its parser (`--jobs=0`, the one option with a domain) beside
     // a missing option is answered for the option. A value of the wrong type is a parse failure and keeps its place.
     let bad_value = error.kind() == ErrorKind::ValueValidation
         && one(ContextKind::InvalidValue).is_some_and(|value| {

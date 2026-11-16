@@ -9,7 +9,7 @@
 //! digits that read back, no exponent from `1e-6` up to below `1e21`, `e+21` and `e-7` forms outside it, `-0` as `0`), so `1`,
 //! `1.0`, `1e0` and `100.000` are `1` and `1`, `1` and `100`. A JSON number written with a fraction or an exponent is a double
 //! here, as it is to every other implementation. An integer too large to be one is the exception, and an [`Error`]: a number
-//! that serde reads as a 64-bit integer outside ±(2^53-1) is not one every JSON reader holds exactly (spec 10.7.5), and its digest
+//! that serde reads as a 64-bit integer outside ±(2^53-1) is not one every JSON reader holds exactly (Annex V3), and its digest
 //! would depend on the implementation. A plan or an argument holds such an integer as a string (examples/README.md, "Plan
 //! digests"). An integer written with more digits than 64 bits hold is read as a double before it gets here and is written as
 //! one, which is the rounding the README warns of: a tool puts it in as a string. A string holds only valid Unicode, which a
@@ -20,7 +20,7 @@ use std::fmt;
 use serde_json::{Number, Value};
 use sha2::{Digest, Sha256};
 
-/// Largest integer a JSON reader holds exactly (spec 10.7.5).
+/// Largest integer a JSON reader holds exactly (Annex V3).
 const SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 /// A value that cannot be written canonically here.
@@ -33,7 +33,7 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::NumberNotSafe(number) => write!(f, "the number {number} is not a whole number within ±(2^53-1), which is all a digest holds (spec 10.7.5)"),
+            Error::NumberNotSafe(number) => write!(f, "the number {number} is not a whole number within ±(2^53-1), which is all a digest holds (spec 9.7.5)"),
         }
     }
 }

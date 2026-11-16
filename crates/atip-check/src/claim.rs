@@ -1,4 +1,4 @@
-//! The contract minor a tool claims (spec 15.7), and what a document of that minor may carry (10.13 rule 16).
+//! The contract minor a tool claims (spec 15.5), and what a document of that minor may carry (Annex S2 rule 16).
 //!
 //! A tool that claims `1.0` prints no member, document kind or path syntax the contract marks "since 1.1":
 //! `meta.contractVersion`, `error.reason` (also in `details`), registry `reasons`, the `warnings` and `warning`
@@ -85,7 +85,7 @@ impl Claim {
     }
 }
 
-/// Whether a field path uses the bracketed key syntax of 6.10 (since 1.1).
+/// Whether a field path uses the bracketed key syntax of Annex F1 (since 1.1).
 fn is_bracketed(path: &str) -> bool {
     path.contains("[\"")
 }

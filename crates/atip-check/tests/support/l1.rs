@@ -730,7 +730,7 @@ pub fn l1_cases() -> Vec<Case> {
         ),
         case(
             "walk/rule-3-domain-profile",
-            // A domain on a switch: a switch has two values and no domain (spec 10.7.4).
+            // A domain on a switch: a switch has two values and no domain (Annex V1).
             patch(&[("member search", vec![add("/options/name=quiet/domain", json!({"minimum": 1}))])]),
         ),
         case(

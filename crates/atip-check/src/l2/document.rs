@@ -1,7 +1,7 @@
-//! The `--input` documents the L2 checks build from a passing invocation (spec 11.5-11.7).
+//! The `--input` documents the L2 checks build from a passing invocation (spec 10.5-10.7).
 //!
 //! An invocation of the fixture is split between argv and a document: the options and operands the document takes go
-//! to it under their camelCase keys with normalised values (a numeric string is a number, spec 11.5), the flag-only
+//! to it under their camelCase keys with normalised values (a numeric string is a number, spec 10.5), the flag-only
 //! ones (`--json`, `--repo` when the tool marks it) stay on argv. The checks change one thing of the split to build
 //! the variant they probe: a numeric string, an argument given both ways, a key left out.
 
@@ -30,7 +30,7 @@ pub struct Spec {
     /// The operands go to the document (else they stay on argv).
     pub operands: bool,
     pub options: Which,
-    /// An `integer` value is written as its numeric string (spec 11.5).
+    /// An `integer` value is written as its numeric string (spec 10.5).
     pub numeric_strings: bool,
     /// Arguments (by name) left out of both argv and the document.
     pub omit: Vec<String>,

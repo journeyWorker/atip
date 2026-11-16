@@ -4,13 +4,13 @@
 //! A probe is built from a passing invocation of the fixture, changing the fewest arguments. What it must do is
 //! decided from the self-description alone:
 //!
-//! - **Constraints** (spec 10.8). The rules are compared over the finite table of which named arguments are given
+//! - **Constraints** (spec 9.8). The rules are compared over the finite table of which named arguments are given
 //!   and which `in` class each value falls in. Rules with the same set of violating configurations are one *group*
 //!   (one test obligation: one invocation that violates the group and nothing else). A group no configuration
 //!   violates alone, because every violating one also breaks `required` or another rule, is *entailed*.
-//! - **Domains** (spec 10.7.4). Candidate values at each bound of the profile and one step beyond it are classified
+//! - **Domains** (spec 9.7.4, Annex V1). Candidate values at each bound of the profile and one step beyond it are classified
 //!   by the document's own domain: a value the domain admits must be accepted, one it does not must be refused.
-//! - **Numbers** (spec 10.7.5). `9007199254740992` and its negation, one beyond the safe range.
+//! - **Numbers** (spec 9.7.5). `9007199254740992` and its negation, one beyond the safe range.
 
 use std::collections::BTreeSet;
 
@@ -664,7 +664,7 @@ fn format_number(value: f64, integral: bool) -> String {
     }
 }
 
-/// Probes for the domain of `arg` by its keywords (spec 10.7.4): values at each bound and one step beyond it, a non-multiple,
+/// Probes for the domain of `arg` by its keywords (Annex V1): values at each bound and one step beyond it, a non-multiple,
 /// strings one character short of and one beyond the length limits, a JSON value of a type the domain excludes. Each value is
 /// classified by the domain itself.
 pub fn domain_plan(arg: &Arg) -> DomainPlan {

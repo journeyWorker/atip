@@ -162,7 +162,7 @@ pub fn contract_version_findings(document: &Value, claim: Claim) -> Vec<Finding>
     findings
 }
 
-/// Whether `document` is the first line of a stream (spec 13.5): `{"type":"start", ...}` with no `ok`.
+/// Whether `document` is the first line of a stream (spec 13.1): `{"type":"start", ...}` with no `ok`.
 pub fn is_stream_start(document: &Value) -> bool {
     document.get("type").and_then(Value::as_str) == Some("start") && document.get("ok").is_none()
 }
@@ -368,7 +368,7 @@ pub fn warning_only_code_of(
     code.filter(|code| warning_only(code)).map(str::to_string)
 }
 
-/// `L0.registry`, for the answer to `schema --error <CODE>` with a code only the warning registry has (7.3.4): it is a
+/// `L0.registry`, for the answer to `schema --error <CODE>` with a code only the warning registry has (7.4.3): it is a
 /// refusal (no entry), its code is `USAGE`, its field `--error`, and its hint `<tool> schema --warning <CODE> --json`.
 /// The exit (2) is `L0.ok-exit`'s, which holds every failure to the registered exit of its code.
 pub fn warning_only_findings(document: &Value, tool: &str, code: &str) -> Vec<Finding> {

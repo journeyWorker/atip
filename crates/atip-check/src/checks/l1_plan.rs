@@ -179,7 +179,7 @@ pub(crate) struct FieldsRun {
     pub selection: Vec<String>,
     pub plain: usize,
     pub projected: usize,
-    /// For a claim of 1.2 (spec 12.5), the first selection of a command, with no `--json` at all: its text invocation.
+    /// For a claim of 1.2 (spec 6.10), the first selection of a command, with no `--json` at all: its text invocation.
     pub text: Option<usize>,
 }
 
@@ -649,7 +649,7 @@ impl Run<'_> {
                     .is_none_or(|note| note.trim().is_empty())
                 {
                     return Err(RunError::Fixture(format!(
-                        "`notRun` names {id}, whose command document has no `effectNote`: a command that does not end on its own says so there (spec 10.5)"
+                        "`notRun` names {id}, whose command document has no `effectNote`: a command that does not end on its own says so there (spec 9.5)"
                     )));
                 }
             }
@@ -1429,7 +1429,7 @@ impl Run<'_> {
         Ok(())
     }
 
-    /// The 1.2 half of `L1.paging` (spec 6.9, 10.7.2, 12.5): what the cursor is bound to is what the invocation gave, so `--limit 1` may become `--all`, an option
+    /// The 1.2 half of `L1.paging` (spec 6.9, 9.7.2; approaches/implementation.md §3): what the cursor is bound to is what the invocation gave, so `--limit 1` may become `--all`, an option
     /// written out at its default is another invocation, and so is the same invocation in an environment with another value for the variable of an option it left out.
     fn plan_paging_1_2(
         &mut self,
@@ -1617,7 +1617,7 @@ impl Run<'_> {
         Ok(())
     }
 
-    /// The value an `--input` document gives `option`: typed JSON (spec 11.5), the argument as the invocation gave it.
+    /// The value an `--input` document gives `option`: typed JSON (spec 10.5), the argument as the invocation gave it.
     fn document_value(option: &Arg, value: &Value) -> Value {
         let typed = |value: &Value| -> Value {
             match (option.value_type.as_str(), value) {
@@ -1666,7 +1666,7 @@ impl Run<'_> {
             invocation::set_option(&mut projected, "fields", Some(selection.join(",")));
             let projected =
                 self.invoke_after(sequence, Call::new(invocation::render(&projected)))?;
-            // Since 1.2 a selection is no reason to refuse a text invocation (spec 12.5): the first one is run with no `--json` at all.
+            // Since 1.2 a selection is no reason to refuse a text invocation (spec 6.10): the first one is run with no `--json` at all.
             let text = if claim.at_least(Claim::V1_2)
                 && run.fields.iter().all(|found| found.command != doc.command)
             {

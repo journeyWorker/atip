@@ -1,5 +1,5 @@
 //! Field selection (spec 6.10): the grammar of a field path, the list of paths in `--fields`, and the projection of
-//! a record by the rules 1-4 of 6.10.
+//! a record by the rules 1-4 of Annex F4.
 
 use std::collections::BTreeMap;
 
@@ -21,7 +21,7 @@ fn is_ident(name: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// A path as the grammar of 6.10 reads it; `None` when it is malformed. A bracketed key that is an identifier is
+/// A path as the grammar of Annex F1 reads it; `None` when it is malformed. A bracketed key that is an identifier is
 /// malformed too: a member has exactly one spelling.
 pub fn parse_path(path: &str) -> Option<Vec<Step>> {
     let chars: Vec<char> = path.chars().collect();

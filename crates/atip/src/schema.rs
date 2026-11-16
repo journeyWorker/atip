@@ -1,4 +1,4 @@
-//! The contract's own JSON Schemas, embedded at build time with `include_str!` (spec sections 6, 7.1 and 7.3).
+//! The contract's own JSON Schemas, embedded at build time with `include_str!` (spec sections 6, 7.1 and 7.4).
 //!
 //! The files the spec publishes are the repository's `schema/`; the crate embeds its copy in `crates/atip/schema/`, so
 //! that the published crate carries them. The test `schema_copy` fails when the two differ in any byte or file. With the
@@ -24,21 +24,21 @@ pub const WARNING_ENTRY_SCHEMA: &str = include_str!("../schema/warning-entry.sch
 /// `schema/stream-line.schema.json`: one line of a stream (since 1.0).
 pub const STREAM_LINE_SCHEMA: &str = include_str!("../schema/stream-line.schema.json");
 
-/// `schema/schema-doc.schema.json`: a `schema --json` answer (since 1.0; spec 10).
+/// `schema/schema-doc.schema.json`: a `schema --json` answer (since 1.0; spec 9).
 pub const SCHEMA_DOC_SCHEMA: &str = include_str!("../schema/schema-doc.schema.json");
-/// `schema/input-document.schema.json`: what every `--input` value parses to (spec 11.4-11.6).
+/// `schema/input-document.schema.json`: what every `--input` value parses to (spec 10.4-10.6).
 pub const INPUT_DOCUMENT_SCHEMA: &str = include_str!("../schema/input-document.schema.json");
-/// `schema/batch-report.schema.json`: the shape every batch output's `data` shares (spec 11.11).
+/// `schema/batch-report.schema.json`: the shape every batch output's `data` shares (spec 10.11).
 pub const BATCH_REPORT_SCHEMA: &str = include_str!("../schema/batch-report.schema.json");
 
-/// `schema/guide.schema.json`: the `data` of `skills show --json` (spec 14.3; since 1.2).
+/// `schema/guide.schema.json`: the `data` of `skills show --json` (spec 14.1; since 1.2).
 pub const GUIDE_SCHEMA: &str = include_str!("../schema/guide.schema.json");
 
 /// `meta.contract`: the contract every document follows.
 pub const CONTRACT: &str = "atip/1";
 /// `meta.contractVersion`: the newest minor of the contract this crate implements ([`crate::Minor::LATEST`]), which is
 /// not the minor a tool declares. A tool states its own minor in a constant of its own, so that adopting a crate release
-/// does not change what the tool prints (spec 15.7). The value is never `"1.0"` written out.
+/// does not change what the tool prints (spec 15.5). The value is never `"1.0"` written out.
 pub const CONTRACT_VERSION: &str = "1.6";
 
 /// `$id` of the error schema, which the envelope and the registry entry `$ref`.
@@ -150,7 +150,7 @@ pub fn warning_entry_problems(row: &Value) -> Vec<String> {
 }
 
 /// What breaks the contract's schema for a `schema --json` answer (`schema/schema-doc.schema.json`) in `document`, the
-/// whole envelope: one line per violation, empty when it conforms. The rules of spec 10.13 that JSON Schema cannot
+/// whole envelope: one line per violation, empty when it conforms. The rules of Annex S2 that JSON Schema cannot
 /// express are not checked here.
 #[cfg(feature = "validate")]
 pub fn schema_doc_problems(document: &Value) -> Vec<String> {

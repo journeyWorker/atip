@@ -1,4 +1,4 @@
-//! Every code `atip` emits is registered, and every registered code is emitted (spec 7.3, 10.5): one
+//! Every code `atip` emits is registered, and every registered code is emitted (spec 7.4, 9.5): one
 //! invocation of the built binary per code, the exit and `retryable` of each failure its row's, each command's failures listed
 //! in its document, and every code a document lists seen. `INTERNAL` (a bug) and `SCRATCH_FAILED` (the scratch space failing
 //! once the checks run) have no invocation that provokes them on demand; their witnesses are the unit tests of `app.rs`

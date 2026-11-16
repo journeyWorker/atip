@@ -1,5 +1,5 @@
 //! The two regular-expression engines of `L1.patterns` against the contract's record of them (approaches/checker.md 6, L1.patterns;
-//! spec 10.7.4): `scripts/regex-cases.json` is the contract's record of the cases, whose `ecmascript` column is
+//! Annex V2): `scripts/regex-cases.json` is the contract's record of the cases, whose `ecmascript` column is
 //! what Bun's `RegExp(pattern, "u")` answered and whose `rust` column is what `regex` 1.13.1 answered. The checker is a Rust program, so
 //! its ECMAScript engine is `regress`; it is the evidence that `regress` reads a pattern as Bun does that every case answers as recorded.
 

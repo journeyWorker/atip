@@ -1,11 +1,11 @@
-//! Domains: the restrictions of one argument's own value beyond its `valueType` (spec 10.7.4, approaches/rust.md 4.3).
+//! Domains: the restrictions of one argument's own value beyond its `valueType` (spec 9.7.4, approaches/rust.md 4.3).
 //!
 //! A domain is written in the contract's fixed profile of JSON Schema, so that a clap-based tool and an Effect-based
 //! tool can each turn it into parser checks, and a checker can generate boundary values from it. This module holds
 //! what every tool shares:
 //!
 //! - [`Domain`], a typed form a tool writes in its table so that only the profile can be written;
-//! - [`profile_problems`] and [`pattern_problem`], the structural check of 10.7.4 and 10.13 rule 3: the keywords
+//! - [`profile_problems`] and [`pattern_problem`], the structural check of Annex V and Annex S2 rule 3: the keywords
 //!   allowed for a `valueType`, safe-integer bounds, and a `pattern` that is `^`, a restricted I-Regexp (RFC 9485)
 //!   body and `$` and that the Rust `regex` crate compiles with its default limits; the document's declared minor
 //!   decides whether the body may use `\p{White_Space}` and `\P{White_Space}` (Annex V2, since 1.5);
@@ -31,7 +31,7 @@ use crate::Minor;
 /// The first minor whose domain patterns may use `\p{White_Space}` and `\P{White_Space}` (Annex V2).
 pub const WHITE_SPACE_SINCE: Minor = Minor::V1_5;
 
-/// Largest integer a JSON parser, JavaScript and a Rust `i64` all read the same (spec 10.7.5).
+/// Largest integer a JSON parser, JavaScript and a Rust `i64` all read the same (Annex V3).
 pub const SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
 /// A domain as a tool's table writes it: only the profile of `integer`, `count`, `string` and `path` arguments.
@@ -128,7 +128,7 @@ const STRUCTURAL: [&str; 7] = [
 ];
 const ANNOTATIONS: [&str; 4] = ["title", "description", "$comment", "format"];
 
-/// The keywords a domain of `value_type` may use (spec 10.7.4), or `None` when the type has no domain.
+/// The keywords a domain of `value_type` may use (Annex V1), or `None` when the type has no domain.
 fn keywords(value_type: ValueType) -> Option<Vec<&'static str>> {
     match value_type {
         ValueType::Integer | ValueType::Number | ValueType::Count => Some(NUMERIC.to_vec()),
@@ -145,7 +145,7 @@ fn keywords(value_type: ValueType) -> Option<Vec<&'static str>> {
     }
 }
 
-/// Every way `domain` leaves the profile of `value_type` in a document that declares `minor` (spec 10.7.4, 10.13 rule
+/// Every way `domain` leaves the profile of `value_type` in a document that declares `minor` (Annex V, Annex S2 rule
 /// 3): a keyword outside it, a bound that is not a finite number (or, for an integer or a count, not a safe integer), a
 /// `multipleOf` that is not positive, a `pattern` that is not of the restricted form or that the Rust `regex` crate
 /// refuses, a non-scalar `enum` or `const`.
@@ -164,7 +164,7 @@ fn check_node(
 ) {
     let Some(allowed) = keywords(value_type) else {
         problems.push(format!(
-            "{at}: a {} argument has no domain (spec 10.7.4)",
+            "{at}: a {} argument has no domain (Annex V1)",
             value_type.as_str()
         ));
         return;
@@ -185,7 +185,7 @@ fn check_node(
         }
         if !allowed.contains(&keyword.as_str()) {
             problems.push(format!(
-                "{at}: keyword {keyword} is outside the domain profile of {} (spec 10.7.4)",
+                "{at}: keyword {keyword} is outside the domain profile of {} (Annex V1)",
                 value_type.as_str()
             ));
             continue;
@@ -197,7 +197,7 @@ fn check_node(
                     problems.push(format!("{at}: {keyword} is not a finite number"));
                 }
                 Some(number) if integral && !is_safe_integer(value) => problems.push(format!(
-                    "{at}: {keyword} {number} is not a safe integer (spec 10.7.5)"
+                    "{at}: {keyword} {number} is not a safe integer (Annex V3)"
                 )),
                 Some(number) if keyword == "multipleOf" && number <= 0.0 => {
                     problems.push(format!("{at}: multipleOf is not positive"));
@@ -209,12 +209,10 @@ fn check_node(
             match value.as_str() {
                 Some(pattern) => {
                     if let Some(problem) = pattern_problem(pattern, minor) {
-                        problems.push(format!("{at}: pattern {value}: {problem} (spec 10.7.4)"));
+                        problems.push(format!("{at}: pattern {value}: {problem} (Annex V2)"));
                     }
                 }
-                None => problems.push(format!(
-                    "{at}: pattern {value}: is not a string (spec 10.7.4)"
-                )),
+                None => problems.push(format!("{at}: pattern {value}: is not a string (Annex V2)")),
             }
         }
         if (keyword == "enum" || keyword == "const")
@@ -227,7 +225,7 @@ fn check_node(
                 .any(|item| item.is_object() || item.is_array())
         {
             problems.push(format!(
-                "{at}: {keyword} admits only scalar values in a domain (spec 10.7.4)"
+                "{at}: {keyword} admits only scalar values in a domain (Annex V1)"
             ));
         }
         if keyword == "properties" {
@@ -291,7 +289,7 @@ pub fn pattern_admits_comma(pattern: &str) -> bool {
         .map_or(true, |hir| holds(&hir))
 }
 
-/// What is wrong with `pattern` as a domain `pattern` of a document that declares `minor` (spec 10.7.4): `None` when it
+/// What is wrong with `pattern` as a domain `pattern` of a document that declares `minor` (Annex V2): `None` when it
 /// is `^`, an I-Regexp body with the contract's restrictions, and `$`, and the Rust `regex` crate compiles it with its
 /// default limits (a compiled size of 10 MiB, a nesting depth of 250). From 1.5 the body may use `\p{White_Space}` and
 /// `\P{White_Space}`, spelled exactly so.
@@ -335,7 +333,7 @@ pub(crate) fn compiled(pattern: &str) -> Result<regex::Regex, regex::Error> {
     fresh
 }
 
-/// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of spec 10.7.4, in a document
+/// The I-Regexp (RFC 9485) syntax of the body of a domain pattern with the restrictions of Annex V2, in a document
 /// that declares `minor`. A port of `iregexpProblem` of the contract's `scripts/check.ts`.
 fn iregexp_problem(body: &str, minor: Minor) -> Option<String> {
     let mut scan = Scan {
@@ -582,7 +580,7 @@ impl Scan {
 /// Whether `value` is inside `domain`. `value` is the argument's value after normalisation (an integer as a JSON
 /// number, a string as it is). A domain that does not compile is an error.
 ///
-/// The domain is judged by the crate itself (the module `judge`): every keyword of the profile (spec 10.7.4) is read
+/// The domain is judged by the crate itself (the module `judge`): every keyword of the profile (Annex V1) is read
 /// there, a `pattern` with the `regex` crate, and the answer is the one `compile` gives. A keyword of JSON Schema outside
 /// the profile (`anyOf`, `$ref`, `minItems`, ...) is judged only with the feature `validate`; without it the domain is
 /// an error that names the keyword.

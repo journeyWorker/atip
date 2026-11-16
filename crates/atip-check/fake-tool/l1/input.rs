@@ -1,8 +1,8 @@
-//! `--input` of an L2 tool, as spec 11.2-11.11 order it: read and frame, validate each document against the fragment, find the
+//! `--input` of an L2 tool, as spec 10.2-10.11 order it: read and frame, validate each document against the fragment, find the
 //! conflicts with argv, merge, apply `env`, validate the arguments, then execute (a batch in two phases). It is derived from the
 //! model of `spec.rs`, so the documents `schema` prints and the behaviour agree by construction.
 //!
-//! A single document is converted to the argv that says the same (spec 11.9) and the ordinary handler of the command runs it; a
+//! A single document is converted to the argv that says the same (spec 10.9) and the ordinary handler of the command runs it; a
 //! batch is executed item by item by [`super::run::execute_batch`]. The seeded violations are members of the configuration; each
 //! names the rule it breaks where it acts.
 //!
@@ -25,7 +25,7 @@ use super::run::{path_words, refuse_failure};
 use super::spec::{Arg, Command, Kind};
 use crate::Tool;
 
-/// The largest integer a JSON parser, JavaScript and a Rust `i64` agree on (spec 10.7.5).
+/// The largest integer a JSON parser, JavaScript and a Rust `i64` agree on (Annex V3).
 const SAFE: i64 = 9_007_199_254_740_991;
 
 /// What the preparation of a call that has `--input` came to.
@@ -102,7 +102,7 @@ fn refuse(
 }
 
 fn usage(tool: &Tool, command: &str, message: &str, code_knob: &str) -> ExitCode {
-    // Seeded: a registered code of exit 2 that is not USAGE answers (a finer replacement of USAGE, spec 7.2.2).
+    // Seeded: a registered code of exit 2 that is not USAGE answers (a finer replacement of USAGE, spec 7.3.2).
     let replacement = tool.text("inputUsageCode", "USAGE");
     let code = if tool.flag(code_knob) {
         "INPUT_INVALID"
@@ -113,7 +113,7 @@ fn usage(tool: &Tool, command: &str, message: &str, code_knob: &str) -> ExitCode
     tool.refuse(code, message, command, &[("field", json!(field))])
 }
 
-/// Whether `value` is a JSON integer in the safe range, as a number or as a numeric string (spec 11.5).
+/// Whether `value` is a JSON integer in the safe range, as a number or as a numeric string (spec 10.5).
 /// A float that is a whole number below 2^53, as the integer it is.
 #[expect(
     clippy::cast_possible_truncation,
@@ -207,7 +207,7 @@ fn normalised(arg: &Arg, value: &Value) -> Vec<Value> {
     }
 }
 
-/// The problems of one document against the fragment (spec 11.7 step 2): known keys, flag-only keys absent, `null`, types.
+/// The problems of one document against the fragment (spec 10.7 step 2): known keys, flag-only keys absent, `null`, types.
 fn fragment_problems(
     tool: &Tool,
     command: &Command,
@@ -369,7 +369,7 @@ fn document_given(
     given
 }
 
-/// Whether the two values an argument got, from argv and from a document, are one value (spec 11.7 step 3).
+/// Whether the two values an argument got, from argv and from a document, are one value (spec 10.7 step 3).
 fn same_value(tool: &Tool, arg: &Arg, argv: &[Value], document: &[Value], raw: &Value) -> bool {
     if tool.flag("conflictJsonObjects")
         && arg.value_type == "json"
@@ -551,7 +551,7 @@ fn frame(
     Ok((documents, batch))
 }
 
-/// Translates the field of a refusal of step 6 into the pointer of the document (spec 11.8) when the value came from it.
+/// Translates the field of a refusal of step 6 into the pointer of the document (spec 10.8) when the value came from it.
 fn translate(
     tool: &Tool,
     command: &Command,
@@ -653,7 +653,7 @@ fn take_input(
     Ok(values.pop().map(|value| (rest, value)))
 }
 
-/// Prepares a call whose command takes `--input`: everything of spec 11.7 before execution.
+/// Prepares a call whose command takes `--input`: everything of spec 10.7 before execution.
 pub fn prepare(tool: &Tool, args: &[String]) -> Prepared {
     let words = path_words(args);
     if args
@@ -962,7 +962,7 @@ fn enforce_item(
     Ok(effective)
 }
 
-/// The argv that says what the merged document and argv say (spec 11.9): options as `--name=value`, operands after one `--`.
+/// The argv that says what the merged document and argv say (spec 10.9): options as `--name=value`, operands after one `--`.
 fn synthesize(
     tool: &Tool,
     command: &Command,

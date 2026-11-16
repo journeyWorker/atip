@@ -1,4 +1,4 @@
-//! Projecting a clap command tree onto the atip/1 self-description (spec 10;
+//! Projecting a clap command tree onto the atip/1 self-description (spec 9;
 //! approaches/rust.md section 4).
 //!
 //! clap parses argv, so clap is the one description of syntax. This module
@@ -200,7 +200,7 @@ fn distance(a: &str, b: &str) -> usize {
     prev[b.len()]
 }
 
-/// Resolves `words` (each already one path word) against the tree. There are no aliases: a word is a name or it is unknown (spec 9.10).
+/// Resolves `words` (each already one path word) against the tree. There are no aliases: a word is a name or it is unknown (Annex S1 item 7).
 pub fn resolve(root: &Command, words: &[String]) -> Result<Resolved, Unknown> {
     let mut cmd = root;
     let mut resolved: Vec<String> = Vec::new();
@@ -242,7 +242,7 @@ pub fn resolve(root: &Command, words: &[String]) -> Result<Resolved, Unknown> {
     })
 }
 
-/// The first line of every `--help` of the tool: it points at the self-description (spec 4.7). A tool's
+/// The first line of every `--help` of the tool: it points at the self-description (spec 4.4.2). A tool's
 /// root `about` and every group and command keep their own text below it.
 pub fn point_help_at_schema(cmd: Command, line: &'static str) -> Command {
     cmd.before_help(line)
@@ -266,7 +266,7 @@ fn is_builtin(arg: &Arg) -> bool {
     )
 }
 
-/// Clap's own `--help` and `--version`, which every command accepts and no document lists (spec 10.5).
+/// Clap's own `--help` and `--version`, which every command accepts and no document lists (spec 9.5).
 pub fn is_builtin_arg(arg: &Arg) -> bool {
     is_builtin(arg)
 }
@@ -345,7 +345,7 @@ pub fn implicit_bounds(arg: &Arg) -> Option<(Option<i64>, Option<i64>)> {
     })
 }
 
-/// The restriction the Rust type of an integer argument carries (spec 10.7.4): an unsigned parser refuses a negative
+/// The restriction the Rust type of an integer argument carries (spec 9.7.4): an unsigned parser refuses a negative
 /// value, a narrow one its overflow. clap erases the bounds of `value_parser!(u64).range(1..)`, so a tool's own table
 /// says those and the two are merged ([`crate::domain::merge`]); a test holds the table and the parser to one answer.
 fn implicit_domain(arg: &Arg, value_type: ValueType) -> Option<Value> {
@@ -397,7 +397,7 @@ pub fn value_type(
         })
 }
 
-/// Largest integer a JSON parser, JavaScript and a Rust `i64` all read the same (spec 10.7.5).
+/// Largest integer a JSON parser, JavaScript and a Rust `i64` all read the same (Annex V3).
 const SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
 fn parse_default(
@@ -440,7 +440,7 @@ fn parse_default(
     }
 }
 
-/// The typed `default` of `arg` (spec 10.7.3): `false` for a switch, `0` for a count, `null` for a required argument or
+/// The typed `default` of `arg` (spec 9.7.3): `false` for a switch, `0` for a count, `null` for a required argument or
 /// one with no default, else the clap default parsed with the argument's type (`"100"` is `100`); a repeatable
 /// argument's default is an array of its element type. A comma list's default strings are split on `,` first, as clap
 /// splits them (spec 9.7.6): `default_values(["x,y"])` is the default `["x", "y"]`.
@@ -563,12 +563,12 @@ pub const fn flag_only_options(minor: Minor) -> &'static [&'static str] {
 }
 
 /// What is wrong with the `flagOnly` marks of one command's `options` in a tool that declares `minor`: one line per
-/// option of [`flag_only_options`] that the command has and does not mark `flagOnly: true` (spec 11.6, 10.7.1).
+/// option of [`flag_only_options`] that the command has and does not mark `flagOnly: true` (spec 4.5, 9.7.1).
 pub fn flag_only_problems(options: &[OptionDoc], minor: Minor) -> Vec<String> {
     options
         .iter()
         .filter(|option| flag_only_options(minor).contains(&option.name.as_str()) && !option.flag_only)
-        .map(|option| format!("`--{}` is flag-only in a tool that declares {minor} (spec 11.6) but its document does not say `flagOnly: true`", option.name))
+        .map(|option| format!("`--{}` is flag-only in a tool that declares {minor} (spec 4.5) but its document does not say `flagOnly: true`", option.name))
         .collect()
 }
 
@@ -628,10 +628,10 @@ pub fn camel_case(name: &str) -> String {
 
 /// A JSON number as a string, per RFC 8259 section 6.
 pub(crate) const NUMBER_PATTERN: &str = "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$";
-/// A JSON integer as a string (spec 11.5).
+/// A JSON integer as a string (spec 9.7.2).
 pub(crate) const INTEGER_PATTERN: &str = "^-?(0|[1-9][0-9]*)$";
 
-/// The encoded form one value of `value_type` takes in an `--input` document (spec 10.7.2, 11.5).
+/// The encoded form one value of `value_type` takes in an `--input` document (spec 9.7.2, 10.5).
 fn encoded(value_type: ValueType, members: Option<&[String]>) -> Value {
     match value_type {
         ValueType::Switch => json!({ "type": "boolean" }),
@@ -688,13 +688,13 @@ fn document_properties(operands: &[OperandDoc], options: &[OptionDoc]) -> Map<St
     properties
 }
 
-/// The fragment schema of one `--input` document (spec 10.10): every key the command accepts with its accepted
+/// The fragment schema of one `--input` document (spec 9.9.2): every key the command accepts with its accepted
 /// encoded values, `additionalProperties: false`, no `required`, and no property for a flag-only option.
 pub fn fragment_schema(title: &str, operands: &[OperandDoc], options: &[OptionDoc]) -> Value {
     json!({ "title": title, "type": "object", "properties": document_properties(operands, options), "additionalProperties": false })
 }
 
-/// The schema of the argument object a command validates after merging (spec 10.10 `argumentsRef`): the fragment's
+/// The schema of the argument object a command validates after merging (spec 9.9.2 `argumentsRef`): the fragment's
 /// properties, the keys that are required, and one `oneOf` per set of keys of which exactly one is given
 /// (`one_of` holds document keys: `operands` or a camelCase option name). Informative: it is not stricter than the command.
 pub fn arguments_schema(
@@ -800,7 +800,7 @@ fn same_renamed(
     }
 }
 
-/// Adds the JSON Schema `schema` to `schemas` under `name` the way a command document carries it (spec 10.9.2,
+/// Adds the JSON Schema `schema` to `schemas` under `name` the way a command document carries it (spec 9.9.1,
 /// approaches/rust.md 5): its `$defs` become sibling members, every `#/$defs/<X>` becomes `#/schemas/<X>`, and no
 /// member keeps its own `$id` or `$schema`, which would make `#/schemas/..` resolve against that URN. A definition
 /// that another schema of the document already holds under the same name and content is shared; one with other content
@@ -865,7 +865,7 @@ pub fn add_schema(
 // -------------------------------------------------------------- relations
 
 /// The relations of a command the way a tool's guide writes them (`a | b`, `[--a --b <V>]`), read from the rules the
-/// command document lists as `constraints` (spec 10.8): a guide and `canon schema` say one thing. Only a rule that holds
+/// command document lists as `constraints` (spec 9.8): a guide and `canon schema` say one thing. Only a rule that holds
 /// whatever an argument's value is takes part; a rule that depends on a value is a document's alone.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Relations {

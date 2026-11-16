@@ -172,7 +172,7 @@ fn atip_check_deep_10_a_conforming_tool_passes_the_interface_checks_of_l0_in_ten
     );
     assert!(
         text.stdout
-            .contains("L0.no-prompt (spec 5.5) [--deep adds the run on a terminal"),
+            .contains("L0.no-prompt (spec 5.4) [--deep adds the run on a terminal"),
         "a check that judges part of its rule says what --deep adds: {}",
         text.stdout
     );

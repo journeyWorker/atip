@@ -1,5 +1,5 @@
 //! Field selection (spec 6.10): the path grammar, the projection of a record, the declaration a command document
-//! publishes (`outputs[].fields`, spec 10.9) and the rules an output with `fields` must keep (spec 10.13 rules 11, 15).
+//! publishes (`outputs[].fields`, spec 9.9.1) and the rules an output with `fields` must keep (Annex S2 rules 11, 15).
 //!
 //! One parser reads a path ([`FieldPath::parse`]) for both the `--fields` value and the declaration, and one writer
 //! ([`FieldPath`]'s `Display`) spells it, so a path in `meta.fields` compares as text: a member whose name is an
@@ -81,7 +81,7 @@ impl FieldPath {
         self.0.len() <= other.0.len() && self.0.iter().zip(&other.0).all(|(a, b)| a.name == b.name)
     }
 
-    /// Parses a path in its one spelling (spec 6.10, `envelope.schema.json#/$defs/fieldPath`).
+    /// Parses a path in its one spelling (Annex F1, `envelope.schema.json#/$defs/fieldPath`).
     ///
     /// # Errors
     /// When the text is not a path, or spells a member some other way than the one spelling: an identifier in brackets,
@@ -256,7 +256,7 @@ pub fn split_list(value: &str) -> Vec<String> {
 
 // -------------------------------------------------------------------------------------------------- projection
 
-/// Projects one record to the kept paths (spec 6.10 rules 2-4): a member a kept path covers stays whole, a member that
+/// Projects one record to the kept paths (Annex F4 rules 2-4): a member a kept path covers stays whole, a member that
 /// leads to a kept path keeps only what leads on, an array on the way keeps every element, and a `null` stays `null`.
 /// A kept member the record does not have is not made.
 pub fn project(record: &Value, kept: &[FieldPath]) -> Value {
@@ -339,7 +339,7 @@ pub fn pointer_tokens(pointer: &str) -> Option<Vec<String>> {
     })
 }
 
-/// The value at `pointer`, going through object members only (spec 6.10).
+/// The value at `pointer`, going through object members only (Annex F2).
 fn pointer_mut<'a>(data: &'a mut Value, pointer: &str) -> Option<&'a mut Value> {
     let mut at = data;
     for token in pointer_tokens(pointer)? {
@@ -350,7 +350,7 @@ fn pointer_mut<'a>(data: &'a mut Value, pointer: &str) -> Option<&'a mut Value> 
 
 // -------------------------------------------------------------------------------------------------- declaration
 
-/// What a command document declares for an output (`outputs[].fields`, spec 10.9): the paths a caller may select.
+/// What a command document declares for an output (`outputs[].fields`, spec 9.9.1): the paths a caller may select.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Declared {
     pub records: String,
@@ -401,7 +401,7 @@ impl Declared {
             })
     }
 
-    /// The paths a `--fields` value names (spec 6.10 rule 6).
+    /// The paths a `--fields` value names (Annex F4 rule 6).
     ///
     /// `None`, or a declaration without `default`: no selection is made and the answer is the whole record, without
     /// `meta.fields`. `None` with a `default`: the answer is projected to it.
@@ -478,7 +478,7 @@ const ANNOTATIONS: [&str; 8] = [
     "$comment",
 ];
 
-/// The keywords that can reject a projection of a valid value (spec 6.10): a cut node has none of them.
+/// The keywords that can reject a projection of a valid value (Annex F5): a cut node has none of them.
 const FORBIDDEN: [&str; 17] = [
     "const",
     "enum",
@@ -622,7 +622,7 @@ fn check_cut(node: &Value, label: &str, problems: &mut Vec<String>) {
     }
 }
 
-/// An object schema whose `additionalProperties` is a schema and whose `properties` is absent or empty (spec 6.10).
+/// An object schema whose `additionalProperties` is a schema and whose `properties` is absent or empty (Annex F3).
 fn is_map(node: &Value) -> bool {
     types_of(node).contains(&"object")
         && node.get("additionalProperties").is_some_and(|extra| {
@@ -634,7 +634,7 @@ fn is_map(node: &Value) -> bool {
             .is_none_or(Map::is_empty)
 }
 
-/// How a declaration is held to the contract (spec 10.13 rules 11, 15, 16): by the minor the command document declares.
+/// How a declaration is held to the contract (Annex S2 rules 11, 15, 16): by the minor the command document declares.
 /// Built by [`Rules::at`] or [`Rules::for_minor`], never by its field:
 ///
 /// ```compile_fail,E0451
@@ -642,7 +642,7 @@ fn is_map(node: &Value) -> bool {
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rules {
-    /// The document declares 1.1 or later (10.13 rule 16, "since 1.1" rules hold for every later minor): a bracketed
+    /// The document declares 1.1 or later (Annex S2 rule 16, "since 1.1" rules hold for every later minor): a bracketed
     /// path and map keys are allowed, and a declared map is a cut node.
     v11: bool,
 }
@@ -909,7 +909,7 @@ pub fn member_names(doc: &Value, root: &Value, records: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The declared paths of `paths` (as strings) whose schema, below `record`, is a map (spec 6.10): the keys of each are selectable.
+/// The declared paths of `paths` (as strings) whose schema, below `record`, is a map (Annex F3): the keys of each are selectable.
 pub fn declared_maps(doc: &Value, root: &Value, records: &str, paths: &[String]) -> Vec<FieldPath> {
     let mut ignore = Vec::new();
     let Some(record) = record_schema(doc, root, records) else {
@@ -929,7 +929,7 @@ pub fn declared_maps(doc: &Value, root: &Value, records: &str, paths: &[String])
 
 // -------------------------------------------------------------------------------------------------- reduced schema
 
-/// `root` with `required` reduced to the members present, in every object cut node at or below the record (spec 6.10,
+/// `root` with `required` reduced to the members present, in every object cut node at or below the record (Annex F5,
 /// "Projected schema"). The result is self-contained apart from the references it keeps to leaves and members kept
 /// whole; `projected_problems` (feature `validate`) puts the document back around it.
 pub fn reduced(doc: &Value, root: &Value, records: &str, kept: &[FieldPath]) -> Value {
@@ -1058,7 +1058,7 @@ fn reduce_at(doc: &Value, node: &Value, rel: &mut Vec<String>, kept: &[Vec<Strin
     })
 }
 
-/// The problems of `data` against the output's schema with `required` reduced for `kept` (spec 6.10): empty when the
+/// The problems of `data` against the output's schema with `required` reduced for `kept` (Annex F5): empty when the
 /// projected value is one the contract allows. The schema is `root`, its `$ref`s read in `doc`.
 #[cfg(feature = "validate")]
 pub fn projected_problems(

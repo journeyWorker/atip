@@ -22,27 +22,35 @@ use crate::schema::schemas;
 
 /// The 15 input and batch rows, in the order of approaches/checker.md.
 pub(crate) const TABLE: [Entry; 15] = [
-    must("L2.input-present", &["11.1"], &[]),
-    must("L2.input-example", &["10.10"], &[]),
-    must("L2.input-refusals", &["11.2-11.8", "11.10"], &[Commands]),
-    must("L2.input-tty", &["11.3"], &[]),
-    must("L2.input-usage", &["11.2"], &[Commands]),
-    should("L2.input-reasons", &["7.2.3"], &[Commands]),
-    must("L2.input-fragment", &["11.7"], &[Commands]),
-    must("L2.input-normalise", &["11.5"], &[Commands]),
-    must("L2.input-conflict", &["11.7"], &[Commands]),
-    must("L2.input-env", &["11.7"], &[Commands]),
-    must("L2.input-pointer", &["11.8"], &[Commands]),
-    must("L2.input-dash-values", &["11.9"], &[Commands]),
-    must("L2.batch-preflight", &["11.11"], &[Commands]),
-    must("L2.batch-incomplete", &["11.11"], &[Commands]),
-    must("L2.batch-ok", &["11.11"], &[Commands]),
+    must("L2.input-present", &["10.1"], &[]),
+    must("L2.input-example", &["9.9.2"], &[]),
+    must(
+        "L2.input-refusals",
+        &["10.2-10.8", "10.10", "9.9.2", "9.7.6"],
+        &[Commands],
+    ),
+    must("L2.input-tty", &["10.3"], &[]),
+    must("L2.input-usage", &["10.2"], &[Commands]),
+    should("L2.input-reasons", &["7.3.3"], &[Commands]),
+    must("L2.input-fragment", &["10.7"], &[Commands]),
+    must("L2.input-normalise", &["10.5"], &[Commands]),
+    must("L2.input-conflict", &["10.7"], &[Commands]),
+    must("L2.input-env", &["10.7"], &[Commands]),
+    must("L2.input-pointer", &["10.8"], &[Commands]),
+    must(
+        "L2.input-dash-values",
+        &["10.9", "approaches/implementation.md §4"],
+        &[Commands],
+    ),
+    must("L2.batch-preflight", &["10.11"], &[Commands]),
+    must("L2.batch-incomplete", &["10.11"], &[Commands]),
+    must("L2.batch-ok", &["10.11"], &[Commands]),
 ];
 
 /// The codes of the framing of `--input`, which no state and no later step can answer.
 const INPUT_CODES: [&str; 3] = ["INPUT_INVALID", "INPUT_CONFLICT", "INPUT_TOO_LARGE"];
 
-/// Whether `field` is a JSON pointer, or `--input`: where a failure of a document points (spec 11.8).
+/// Whether `field` is a JSON pointer, or `--input`: where a failure of a document points (spec 10.8).
 fn is_pointer_or_input(field: &str) -> bool {
     field == "--input" || field.starts_with('/')
 }
@@ -257,7 +265,7 @@ impl<'a> Judge<'a> {
         }
         for (id, doc) in &self.docs().commands {
             if matches!(doc.effect.as_str(), "write" | "destructive") {
-                c.holds("every-write-has-input", doc.input.is_some(), || format!("{id} is a {} command and its document has no `input`: spec 11.1 gives every write and destructive command --input", doc.effect));
+                c.holds("every-write-has-input", doc.input.is_some(), || format!("{id} is a {} command and its document has no `input`: spec 10.1 gives every write and destructive command --input", doc.effect));
             }
         }
         c.finish(true)
@@ -535,7 +543,7 @@ impl<'a> Judge<'a> {
                     reason.is_some_and(|reason| reasons.contains(&reason)),
                     || {
                         format!(
-                            "{}: {label} was refused with the reason {}, spec 7.2.3 reserves {}",
+                            "{}: {label} was refused with the reason {}, spec 7.3.3 reserves {}",
                             command.command,
                             reason.unwrap_or("none"),
                             reasons.join(" or ")
@@ -663,7 +671,7 @@ impl<'a> Judge<'a> {
                 let problems = self.differences(run.call, run.reference, run.twin);
                 c.holds_at(run.call, "env-applies-after-the-merge", problems.is_empty(), || {
                     format!(
-                        "{}: --{} given in the document with {}={} in the environment did not give the result it has without the variable: {} (an env value applies only to an argument absent after the merge, spec 11.7 step 5)",
+                        "{}: --{} given in the document with {}={} in the environment did not give the result it has without the variable: {} (an env value applies only to an argument absent after the merge, spec 10.7 step 5)",
                         command.command, run.option, run.variable, "an invalid value", problems.join("; ")
                     )
                 });
@@ -726,7 +734,7 @@ impl<'a> Judge<'a> {
                         });
                         if answered {
                             c.holds_at(run.call, "document-pointer", field.is_some_and(|field| field.starts_with('/')), || {
-                                format!("{}: {} was refused on {}, not on a pointer of the document (spec 11.8)", command.command, run.label, field.unwrap_or("no field"))
+                                format!("{}: {} was refused on {}, not on a pointer of the document (spec 10.8)", command.command, run.label, field.unwrap_or("no field"))
                             });
                         }
                     }
@@ -750,7 +758,7 @@ impl<'a> Judge<'a> {
                         });
                         if answered {
                             c.holds_at(run.call, "required-pointer", field.is_some_and(|field| at_pointer(field, pointer)), || {
-                                format!("{}: {} was refused on {}, the pointer the key would have is {pointer} (spec 11.8)", command.command, run.label, field.unwrap_or("no field"))
+                                format!("{}: {} was refused on {}, the pointer the key would have is {pointer} (spec 10.8)", command.command, run.label, field.unwrap_or("no field"))
                             });
                         }
                     }
@@ -894,7 +902,7 @@ impl<'a> Judge<'a> {
                     field.is_some_and(|field| field.starts_with(&format!("/{}/", run.index))),
                     || {
                         format!(
-                            "{}: {} was refused on {}, the pointer starts with /{}/ (spec 11.8)",
+                            "{}: {} was refused on {}, the pointer starts with /{}/ (spec 10.8)",
                             command.command,
                             run.label,
                             field.unwrap_or("no field"),

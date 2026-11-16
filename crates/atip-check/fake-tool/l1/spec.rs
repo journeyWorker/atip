@@ -10,7 +10,7 @@ pub enum Kind {
     Option,
 }
 
-/// One operand or option of a command (spec 10.6, 10.7).
+/// One operand or option of a command (spec 9.6, 9.7).
 #[derive(Debug, Clone)]
 pub struct Arg {
     pub name: &'static str,
@@ -27,7 +27,7 @@ pub struct Arg {
     pub possible: Vec<&'static str>,
     pub domain: Option<Value>,
     pub flag_only: bool,
-    /// The variable that gives the option its value when argv does not (spec 10.7.3).
+    /// The variable that gives the option its value when argv does not (spec 9.7.1).
     pub env: Option<&'static str>,
     /// A repeatable option whose every argv value is a comma-separated list (since 1.6).
     pub comma_list: bool,
@@ -139,7 +139,7 @@ impl Arg {
     }
 }
 
-/// One constraint (spec 10.8.1).
+/// One constraint (spec 9.8.1).
 #[derive(Debug, Clone)]
 pub struct Rule {
     pub rule: &'static str,
@@ -204,7 +204,7 @@ impl Rule {
     }
 }
 
-/// The stateless checks that a domain and a constraint cannot express (spec 10.8.3).
+/// The stateless checks that a domain and a constraint cannot express (spec 9.8.2).
 #[derive(Debug, Clone)]
 pub enum Check {
     /// The value of the argument is a calendar date that exists, `YYYY-MM-DD`.
@@ -230,9 +230,9 @@ pub struct Output {
     pub fields: Option<Value>,
     /// The `schemaVersion` of the output: `1.0` for a report, the format version for a `schema` answer.
     pub version: &'static str,
-    /// The report of a batch input (spec 11.11).
+    /// The report of a batch input (spec 10.11).
     pub batch: bool,
-    /// The name of the schema of an event, for an output that is a stream (spec 13.5).
+    /// The name of the schema of an event, for an output that is a stream (spec 13.1).
     pub event: Option<&'static str>,
 }
 
@@ -244,7 +244,7 @@ pub struct Command {
     pub effect: &'static str,
     pub idempotency: Option<&'static str>,
     pub effect_note: Option<&'static str>,
-    /// The command starts work it does not finish (spec 13.2): `async: true` in its document.
+    /// The command starts work it does not finish (spec 12.2): `async: true` in its document.
     pub is_async: bool,
     pub args: Vec<Arg>,
     pub rules: Vec<Rule>,
@@ -588,7 +588,7 @@ fn state_read(id: &'static str, summary: &'static str, report: &'static str) -> 
 
 fn member_list(shape: Shape) -> Command {
     let (is_1_1, is_1_2) = (shape.is_1_1, shape.is_1_2);
-    // Since 1.2 `limit`, `cursor`, `all` and `fields` are flag-only: they cannot appear in an `--input` document (spec 11.6).
+    // Since 1.2 `limit`, `cursor`, `all` and `fields` are flag-only: they cannot appear in an `--input` document (spec 10.6).
     let flag = |arg: Arg| {
         if is_1_2 && !(arg.name == "limit" && shape.limit_not_flag_only) {
             arg.flag_only()
@@ -698,7 +698,7 @@ fn member_list(shape: Shape) -> Command {
                     "tags": {"type": "array", "items": {"type": "string"}},
                     "owners": {"type": "array", "items": {"$ref": "#/schemas/Owner"}},
                     "attributes": {
-                        "description": "Free-form directory attributes: a map, so each key is selectable (spec 6.10).",
+                        "description": "Free-form directory attributes: a map, so each key is selectable (Annex F3).",
                         "type": "object",
                         "additionalProperties": {"type": "string"}
                     }

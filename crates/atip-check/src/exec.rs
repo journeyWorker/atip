@@ -58,7 +58,7 @@ pub struct Call {
     pub measure: bool,
     /// Run in an empty directory with an empty `HOME` and only `PATH`, `HOME` and `LANG` in the environment: no fixture state, no fixture variables (`L1.no-state`).
     pub empty: bool,
-    /// Run in an empty directory and an empty `HOME` with the fixture's environment: the fixture state without its `setup` (`L1.validators`: a validator reads no state, spec 10.8.3).
+    /// Run in an empty directory and an empty `HOME` with the fixture's environment: the fixture state without its `setup` (`L1.validators`: a validator reads no state, spec 9.8.2).
     pub without_setup: bool,
     /// Run this program instead of the tool (a `prepare` command of the fixture).
     pub program: Option<String>,
@@ -147,7 +147,7 @@ impl Call {
         self
     }
 
-    /// Whether argv selects JSON mode: the word `--json` before the first `--` (spec 4.4).
+    /// Whether argv selects JSON mode: the word `--json` before the first `--` (spec 4.3.4).
     pub fn json_mode(&self) -> bool {
         atip::wants_json(&self.argv)
     }

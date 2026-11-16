@@ -22,7 +22,7 @@ pub(crate) const FALLBACK_PATH: &str = "/usr/bin:/bin";
 
 /// Rust starts with SIGPIPE ignored, so printing to a closed stdout panics (exit 101). `atip` restores the default
 /// action once the run is over and before it prints: a closed stdout ends it by the signal (spec 8.4), as `canon` does, and exit 101
-/// never appears (spec 8.6). During the run SIGPIPE stays ignored ([`ignore_sigpipe`]): a document written to the stdin of a tool
+/// never appears (spec 8.2). During the run SIGPIPE stays ignored ([`ignore_sigpipe`]): a document written to the stdin of a tool
 /// that has already exited is an `EPIPE` the checker ignores, not a signal that ends the checker.
 #[expect(
     unsafe_code,

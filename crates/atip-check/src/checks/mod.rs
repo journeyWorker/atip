@@ -78,50 +78,54 @@ use Need::{Commands, Probe, Registry};
 
 /// The L0 table, in the order of approaches/checker.md.
 const TABLE: [Entry; 28] = [
-    must("L0.version", &["4.6"], &[]),
-    should("L0.version-format", &["4.6"], &[]),
+    must("L0.version", &["4.4.1"], &[]),
+    should("L0.version-format", &["4.4.1"], &[]),
     must(
         "L0.unknown-command",
-        &["4.4", "6.4", "6.6", "6.11", "7.2"],
+        &["4.3.4", "6.4", "6.6", "6.11", "7.3"],
         &[],
     ),
     must("L0.unknown-command-text", &["5.3"], &[]),
-    should("L0.text-error-form", &["7.4"], &[]),
-    must("L0.bare", &["7.2", "9.2"], &[]),
-    must("L0.unknown-option", &["4.4", "6.6", "9.9"], &[Probe]),
-    must("L0.json-mode-preparse", &["4.4"], &[Probe]),
-    must("L0.after-dashdash", &["4.4"], &[Probe]),
+    should(
+        "L0.text-error-form",
+        &["5.3", "approaches/implementation.md §6"],
+        &[],
+    ),
+    must("L0.bare", &["7.3", "4.1.2"], &[]),
+    must(
+        "L0.unknown-option",
+        &["4.3.4", "6.6", "Annex S1 item 6"],
+        &[Probe],
+    ),
+    must("L0.json-mode-preparse", &["4.3.4"], &[Probe]),
+    must("L0.after-dashdash", &["4.3.4"], &[Probe]),
     must(
         "L0.ok-exit",
-        &["6.2", "6.4", "7.3.2", "7.3.3", "8.1", "8.3.1", "8.4"],
+        &["6.2", "6.4", "7.4.2", "8.1", "8.3.1", "8.4"],
         &[Registry],
     ),
     must("L0.no-null", &["6.5"], &[]),
     must("L0.envelope", &["6.1-6.6"], &[]),
-    should("L0.compact", &["5.4"], &[]),
+    should("L0.compact", &["5.1"], &[]),
     must("L0.one-document", &["5.1"], &[Probe]),
-    must("L0.no-env-switch", &["4.3"], &[Probe]),
-    must("L0.no-env-switch-text", &["4.3"], &[Probe]),
+    must("L0.no-env-switch", &["4.3.3"], &[Probe]),
+    must("L0.no-env-switch-text", &["4.3.3"], &[Probe]),
     should("L0.contract", &["6.6"], &[]),
     must(
         "L0.contract-version",
-        &["6.6", "10.1.4", "10.13 rule 16", "15.7", "15.8"],
+        &["6.6", "9.1.2", "Annex S2 rule 16", "15.5", "15.6"],
         &[],
     ),
     must("L0.stderr-result", &["5.2"], &[]),
     should("L0.stderr-quiet", &["5.2"], &[]),
     must("L0.next", &["6.8"], &[]),
     must("L0.page", &["6.9"], &[Commands]),
-    must("L0.refusal-effects", &["8.2", "12.2"], &[]),
-    must("L0.no-prompt", &["5.5"], &[Commands]),
-    must(
-        "L0.registry",
-        &["7.3.4", "7.5", "7.6.2", "17.3"],
-        &[Registry],
-    ),
+    must("L0.refusal-effects", &["8.2", "11.2"], &[]),
+    must("L0.no-prompt", &["5.4"], &[Commands]),
+    must("L0.registry", &["7.4.3", "7.5", "7.6"], &[Registry]),
     should("L0.usage-hint", &["7.1.3"], &[]),
     must("L0.hint-form", &["7.1.2"], &[]),
-    should("L0.global-on-group", &["9.13"], &[Commands]),
+    should("L0.global-on-group", &["Annex S1 item 9"], &[Commands]),
 ];
 
 /// The ids of the L0 checks, in table order.
@@ -244,7 +248,7 @@ const NO_SUCH_COMMAND: &str = "nosuch-xyz";
 const NO_SUCH_OPTION: &str = "--bogus-xyz";
 /// The value no cursor has: the probe for a command that does not page.
 const NO_SUCH_CURSOR: &str = "x";
-/// The variations of the environment under which the output kind must not change (spec 4.3), each a variable and its value.
+/// The variations of the environment under which the output kind must not change (spec 4.3.3), each a variable and its value.
 const ENV_VARIATIONS: [(&str, &str); 5] = [
     ("CI", "1"),
     ("CLAUDECODE", "1"),
@@ -1104,7 +1108,7 @@ pub(crate) fn run_checks(
     if l2.is_some() {
         table.extend(l2::table());
     } else {
-        // `L2.effects` is advisory at L0 and L1: no level gains a rule of a higher level (spec 3.2).
+        // `L2.effects` is advisory at L0 and L1: no level gains a rule of a higher level (spec 3.3).
         table.push(l2::effects_entry());
     }
     let deep_checks: Vec<&'static str> = match mode {
@@ -1850,7 +1854,7 @@ impl<'a> Judge<'a> {
     }
 
     /// How the tool refused `index`, an invocation of `command` that the fixture lists to succeed: with exit 2 and an error code, by a step that reads no state
-    /// (spec 11.7 steps 1-6) or by a precondition.
+    /// (spec 10.7 steps 1-6) or by a precondition.
     fn fixture_refusal(&self, command: &str, index: usize) -> Option<Refusal> {
         if self.at(index).exit != Exit::Code(2) {
             return None;
@@ -2300,7 +2304,7 @@ impl<'a> Judge<'a> {
         let mut c = self.check("L0.envelope");
         self.judge_served(&mut c, true);
         for (index, document) in self.documents_of_json_runs() {
-            // A tool emits envelopes or stream lines (13.5): a stream is judged line by line by the stream-line schema.
+            // A tool emits envelopes or stream lines (spec 13): a stream is judged line by line by the stream-line schema.
             let found = if rules::is_stream_start(document) {
                 stream_lines(&self.at(index).stdout)
                     .iter()
@@ -2427,7 +2431,7 @@ impl<'a> Judge<'a> {
                     None => {}
                 }
             }
-            // A stream is NDJSON by design (13.5): its lines are `L0.envelope`'s.
+            // A stream is NDJSON by design (spec 13): its lines are `L0.envelope`'s.
             if self.documents[index]
                 .as_ref()
                 .is_some_and(rules::is_stream_start)
@@ -2447,7 +2451,7 @@ impl<'a> Judge<'a> {
         c.finish(true)
     }
 
-    /// The probe's JSON output does not depend on the environment or a terminal (spec 4.3).
+    /// The probe's JSON output does not depend on the environment or a terminal (spec 4.3.3).
     fn no_env_switch(&'a self) -> Finding {
         let mut c = self.check("L0.no-env-switch");
         let Some(probe) = self.deep_probe() else {
@@ -2583,7 +2587,7 @@ impl<'a> Judge<'a> {
         c.finish(true)
     }
 
-    /// The document declares the claimed minor, and nothing of a later one (spec 15.7, 10.13 rule 16).
+    /// The document declares the claimed minor, and nothing of a later one (spec 15.5, Annex S2 rule 16).
     fn contract_version(&'a self) -> Finding {
         let mut c = self.check("L0.contract-version");
         self.judge_served(&mut c, false);
@@ -2835,7 +2839,7 @@ impl<'a> Judge<'a> {
         }
     }
 
-    /// A refusal changes nothing in the working directory or in `HOME`, and nothing the probe reports (spec 8.2, 12.2).
+    /// A refusal changes nothing in the working directory or in `HOME`, and nothing the probe reports (spec 8.2, 11.2).
     fn refusal_effects(&'a self) -> Finding {
         let mut c = self.check("L0.refusal-effects");
         for (index, outcome) in self.log.iter().enumerate() {
@@ -2880,7 +2884,7 @@ impl<'a> Judge<'a> {
         c.finish(true)
     }
 
-    /// `missingValue` on a terminal in canonical mode refuses as the control run with stdin at end-of-file does (spec 5.5).
+    /// `missingValue` on a terminal in canonical mode refuses as the control run with stdin at end-of-file does (spec 5.4).
     fn no_prompt(&'a self) -> Finding {
         let mut c = self.check("L0.no-prompt");
         if self.fixture.commands.is_none() {
@@ -2993,7 +2997,7 @@ impl<'a> Judge<'a> {
         })
     }
 
-    /// The registries the tool prints against the schemas and the fixture, and every code, reason and warning the run emitted against them (spec 7.3.4, 7.5, 7.6, 17.3).
+    /// The registries the tool prints against the schemas and the fixture, and every code, reason and warning the run emitted against them (spec 7.4.3, 7.5, 7.6; approaches/checker.md 6).
     fn registry(&'a self) -> Finding {
         let calls = self.calls;
         let mut c = self.check("L0.registry");
@@ -3213,7 +3217,7 @@ impl<'a> Judge<'a> {
             })
     }
 
-    /// Every error code, reason and warning code any run emitted is registered (spec 7.3.1, 7.5.1, 7.6.2).
+    /// Every error code, reason and warning code any run emitted is registered (spec 7.4.1, 7.5.1, 7.6).
     fn emitted_conditions(&self, c: &mut Conditions<'_>) {
         let Some(rows) = &self.rows else {
             return;
@@ -3335,7 +3339,7 @@ impl<'a> Judge<'a> {
         c.finish(true)
     }
 
-    /// A tool-wide option after a group word is no error: the group still answers `COMMAND_REQUIRED` (spec 9.13).
+    /// A tool-wide option after a group word is no error: the group still answers `COMMAND_REQUIRED` (Annex S1 item 9).
     fn global_on_group(&'a self) -> Finding {
         let mut c = self.check("L0.global-on-group");
         let Some(commands) = &self.fixture.commands else {
@@ -3432,7 +3436,7 @@ impl<'a> Judge<'a> {
 /// How the tool refused an invocation the fixture lists to succeed (`ok`, `paged`, `fields`), with exit 2 and the code it names (approaches/checker.md 5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Refusal {
-    /// A step that reads no state refused it (spec 11.7 steps 1-6): the fixture invocation is wrong, or the tool enforces a rule it does not declare. The check that runs it fails.
+    /// A step that reads no state refused it (spec 10.7 steps 1-6): the fixture invocation is wrong, or the tool enforces a rule it does not declare. The check that runs it fails.
     Stateless(String),
     /// Any other exit 2 code: the state or the environment the fixture gives did not give the command what it needs (a credential, a reachable backend). The checks that run it are `unprovided`, which still fails a MUST level.
     Precondition(String),
@@ -3674,7 +3678,7 @@ fn first_document_line(text: &str) -> std::borrow::Cow<'_, str> {
 }
 
 /// The code of a refusal at the start of a `notRun` command that the state or the environment of the fixture caused: exit 2 with an error
-/// envelope whose code is registered (when the fixture lists a registry) and is not one a step that reads no state gives (spec 11.7 steps 1-6),
+/// envelope whose code is registered (when the fixture lists a registry) and is not one a step that reads no state gives (spec 10.7 steps 1-6),
 /// which is a fixture error, as any other way to end is. A step that reads no state gives `USAGE` and its finer replacements, `UNKNOWN_COMMAND`,
 /// `COMMAND_REQUIRED`, every `INPUT_*` code, any code whose `field` names an argument, and, with the command's document, a code it declares on a
 /// constraint or a validator.
@@ -3716,7 +3720,7 @@ fn served_precondition(
     (!stateless && registered).then(|| code.to_string())
 }
 
-/// Spec 5.1 and 5.4: UTF-8, one JSON document, one newline, nothing else.
+/// Spec 5.1: UTF-8, one JSON document, one newline, nothing else.
 fn one_document(stdout: &[u8]) -> Result<Value, String> {
     let text =
         std::str::from_utf8(stdout).map_err(|error| format!("stdout is not UTF-8: {error}"))?;
@@ -4158,5 +4162,118 @@ mod tests {
             strength("L2.effects", Claim::V1_4, Level::L2),
             Strength::Must
         );
+    }
+
+    /// The repository's file `path`, read from the crate (`crates/atip-check`) up.
+    fn repository_file(path: &str) -> String {
+        let full = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(path);
+        std::fs::read_to_string(&full).unwrap_or_else(|error| panic!("{}: {error}", full.display()))
+    }
+
+    /// The numbers of `text`'s sections, without the closing dot: every numbered heading (`## 10. Input documents`,
+    /// `### 4.1. The command tree`) and every numbered paragraph (`10.7. **Processing.**`; a list item `1. ` is no section).
+    fn section_numbers(text: &str) -> std::collections::BTreeSet<&str> {
+        text.lines()
+            .filter_map(|line| {
+                let heading = line.starts_with('#');
+                let (number, _) = line.trim_start_matches('#').trim_start().split_once(". ")?;
+                let numeric = number
+                    .split('.')
+                    .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()));
+                (numeric && (heading || number.contains('.'))).then_some(number)
+            })
+            .collect()
+    }
+
+    /// Whether the annex citation `citation` (`Annex F`, `Annex V2`, `Annex S2 rule 16`, `Annex S2 rules 2, 10, 13`,
+    /// `Annex S1 item 9`) names an annex, a part and numbered items that `annexes` (the texts of `spec/annex-*.md`) have.
+    fn annex_has(annexes: &[String], citation: &str) -> bool {
+        let Some(rest) = citation.strip_prefix("Annex ") else {
+            return false;
+        };
+        let (part, items) = rest.split_once(' ').unwrap_or((rest, ""));
+        let Some(letter) = part.chars().next() else {
+            return false;
+        };
+        let Some(annex) = annexes
+            .iter()
+            .find(|text| text.starts_with(&format!("# Annex {letter}:")))
+        else {
+            return false;
+        };
+        if part.len() == 1 {
+            return items.is_empty();
+        }
+        let Some((_, section)) = annex.split_once(&format!("\n## {part}. ")) else {
+            return false;
+        };
+        let section = section.split("\n## ").next().unwrap_or(section);
+        let Some(numbers) = ["rules ", "rule ", "items ", "item "]
+            .iter()
+            .find_map(|kind| items.strip_prefix(kind))
+        else {
+            return items.is_empty();
+        };
+        numbers
+            .split([',', '-'])
+            .flat_map(|piece| piece.split(" and "))
+            .map(str::trim)
+            .all(|number| {
+                !number.is_empty()
+                    && section
+                        .lines()
+                        .any(|line| line.trim_start().starts_with(&format!("{number}. ")))
+            })
+    }
+
+    #[test]
+    fn atip_check_citations_01_every_rule_a_check_cites_names_a_section_the_spec_and_its_annexes_have(
+    ) {
+        let spec = repository_file("spec/atip-1.md");
+        let sections = section_numbers(&spec);
+        let annexes: Vec<String> = [
+            "spec/annex-fields.md",
+            "spec/annex-domains.md",
+            "spec/annex-schema.md",
+        ]
+        .into_iter()
+        .map(repository_file)
+        .collect();
+        let implementation = repository_file("approaches/implementation.md");
+        // The rules of every check of every level and claim, as the reports print them after "spec".
+        let mut missing = Vec::new();
+        for entry in TABLE
+            .iter()
+            .chain(super::l1::table(Claim::V1_6))
+            .chain(super::l2::table())
+        {
+            assert!(!entry.rules.is_empty(), "{} cites no rule", entry.id);
+            for rule in entry.rules {
+                let found = if rule.starts_with(|first: char| first.is_ascii_digit()) {
+                    // `6.9`, or a range `6.1-6.6` whose two ends are sections.
+                    rule.split('-').all(|number| sections.contains(number))
+                } else if rule.starts_with("Annex ") {
+                    annex_has(&annexes, rule)
+                } else if let Some(section) = rule.strip_prefix("approaches/implementation.md §") {
+                    implementation.contains(&format!("\n## {section}. "))
+                } else {
+                    false
+                };
+                if !found {
+                    missing.push(format!("{}: {rule}", entry.id));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "rules that name no section of spec/atip-1.md, its annexes or approaches/implementation.md: {missing:?}"
+        );
+        // The reader itself: a section the spec has, one it lacks, and the annex forms.
+        assert!(sections.contains("10.7") && sections.contains("4.1.1") && sections.contains("16"));
+        assert!(!sections.contains("10.13") && !sections.contains("17.3"));
+        assert!(annex_has(&annexes, "Annex S2 rules 2, 10, 13") && annex_has(&annexes, "Annex F"));
+        assert!(!annex_has(&annexes, "Annex S2 rule 99") && !annex_has(&annexes, "Annex V9"));
     }
 }

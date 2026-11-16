@@ -71,7 +71,7 @@ fn purge(pair_code: bool) -> Command {
     command
 }
 
-/// The relation of `--commit` and `--plan-digest` states its own code when the tool registers one (spec 10.8.1).
+/// The relation of `--commit` and `--plan-digest` states its own code when the tool registers one (spec 9.8.1).
 fn with_code(rule: Rule, pair_code: bool) -> Rule {
     if pair_code {
         rule.code("PAIR_REQUIRED")
@@ -329,7 +329,7 @@ fn purge_run(tool: &Tool, _args: &[String], parsed: &Parsed) -> ExitCode {
         commit_argv.extend(["--kind", &kind, "--before", &before].map(String::from));
     }
     if tool.flag("digestOneWord") {
-        // The form of spec 9.12.1: every valued option as `--name=value`.
+        // The form of spec 4.2.1: every valued option as `--name=value`.
         commit_argv.extend([
             "--commit".to_string(),
             format!("--plan-digest={digest}"),

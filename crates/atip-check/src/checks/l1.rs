@@ -28,37 +28,45 @@ use crate::l1::witness::{Expect, GroupOutcome};
 
 /// The L1 table, in the order of approaches/checker.md.
 pub(crate) const TABLE: [Entry; 31] = [
-    must("L1.tree", &["10.3", "10.13"], &[]),
-    must("L1.no-state", &["10.2"], &[]),
-    must("L1.walk", &["10.4", "10.5", "10.13"], &[]),
-    must("L1.quoted-path", &["10.1.1"], &[]),
-    must("L1.schema-errors", &["7.3.4", "10.1.2"], &[]),
-    must("L1.registry", &["7.2.1", "7.3"], &[]),
-    must("L1.reasons", &["7.6.1", "7.6.2"], &[]),
-    should("L1.reasons-reserved", &["7.2.3"], &[]),
-    must("L1.warnings", &["7.5.2", "7.5.3", "10.1"], &[]),
-    must("L1.reserved-applicable", &["7.2.1"], &[]),
-    must("L1.codes-known", &["10.5"], &[]),
-    must("L1.groups-not-runnable", &["9.2"], &[]),
-    must("L1.grammar", &["9.1", "9.5", "9.8"], &[]),
+    must("L1.tree", &["3.5", "9.3", "Annex S2"], &[]),
+    must("L1.no-state", &["9.2"], &[]),
+    must("L1.walk", &["9.4", "9.5", "9.7.6", "Annex S2"], &[]),
+    must("L1.quoted-path", &["9.1.1"], &[]),
+    must("L1.schema-errors", &["7.4.3", "9.1.1"], &[]),
+    must("L1.registry", &["7.3.1", "7.4", "8.3.2"], &[]),
+    must("L1.reasons", &["7.6"], &[]),
+    should("L1.reasons-reserved", &["7.3.3"], &[]),
+    must("L1.warnings", &["7.5.2", "9.1"], &[]),
+    must("L1.reserved-applicable", &["7.3.1", "7.3.2", "9.5"], &[]),
+    must("L1.codes-known", &["9.5"], &[]),
+    must("L1.groups-not-runnable", &["4.1.2"], &[]),
+    must(
+        "L1.grammar",
+        &["4.1.1", "Annex S1 item 3", "4.5", "10.6"],
+        &[],
+    ),
     should("L1.depth", &["4.1.1"], &[]),
-    must("L1.one-meaning", &["9.6"], &[]),
-    should("L1.one-meaning-values", &["9.6"], &[]),
-    must("L1.examples", &["10.5", "10.10"], &[]),
-    must("L1.example-runs", &["10.5"], &[Commands]),
-    must("L1.constraints", &["10.8"], &[Commands]),
-    must("L1.domains", &["10.7.4"], &[Commands]),
-    must("L1.patterns", &["10.7.4"], &[Commands]),
-    must("L1.numbers", &["10.7.5"], &[Commands]),
-    must("L1.validators", &["10.8.3"], &[Commands]),
-    must("L1.output-data", &["6.6", "6.11", "10.9"], &[Commands]),
+    must("L1.one-meaning", &["Annex S1 item 4"], &[]),
+    should("L1.one-meaning-values", &["Annex S1 item 4"], &[]),
+    must("L1.examples", &["4.2.1", "9.5", "9.9.2"], &[]),
+    must("L1.example-runs", &["9.5"], &[Commands]),
+    must(
+        "L1.constraints",
+        &["9.8", "9.8.1", "approaches/implementation.md §2"],
+        &[Commands],
+    ),
+    must("L1.domains", &["9.7.4", "Annex V1"], &[Commands]),
+    must("L1.patterns", &["9.7.4", "Annex V2"], &[Commands]),
+    must("L1.numbers", &["9.7.5", "Annex V3"], &[Commands]),
+    must("L1.validators", &["9.8.2", "9.9.3"], &[Commands]),
+    must("L1.output-data", &["6.6", "6.11", "9.9"], &[Commands]),
     must("L1.next", &["6.8"], &[]),
     should("L1.hint-command", &["7.1.2"], &[]),
-    must("L1.help-line", &["4.7"], &[]),
-    should("L1.defaults", &["10.7.3"], &[]),
-    should("L1.deterministic", &["10.2.4"], &[]),
-    must("L1.paging", &["6.9", "7.2.1"], &[Commands]),
-    must("L1.fields", &["6.10"], &[Commands]),
+    must("L1.help-line", &["4.4.2"], &[]),
+    should("L1.defaults", &["9.7.3"], &[]),
+    should("L1.deterministic", &["9.2"], &[]),
+    must("L1.paging", &["6.9", "7.3.1"], &[Commands]),
+    must("L1.fields", &["6.10", "Annex F"], &[Commands]),
 ];
 
 /// The ids of the L1 checks of a claim of 1.1 or 1.0, in table order.
@@ -66,9 +74,13 @@ pub(crate) fn ids() -> [&'static str; 31] {
     TABLE.each_ref().map(|entry| entry.id)
 }
 
-/// `L1.check-order`: run from a claim of 1.2 (spec 11.7 step 6; approaches/checker.md 6); MUST for exactly 1.2, SHOULD from 1.3 (the first failure answers,
+/// `L1.check-order`: run from a claim of 1.2 (spec 10.7 step 6; approaches/checker.md 6); MUST for exactly 1.2, SHOULD from 1.3 (the first failure answers,
 /// and the order of the stateless checks is a recommendation, spec 10.7 step 6).
-pub(crate) const CHECK_ORDER: Entry = must("L1.check-order", &["11.7"], &[Commands]);
+pub(crate) const CHECK_ORDER: Entry = must(
+    "L1.check-order",
+    &["10.7", "approaches/implementation.md §1"],
+    &[Commands],
+);
 
 /// `L1.code-names`: run from a claim of 1.3 (spec 7.2, Annex S2 rule 14).
 pub(crate) const CODE_NAMES: Entry = must("L1.code-names", &["7.2", "Annex S2 rule 14"], &[]);
@@ -103,7 +115,7 @@ pub(crate) fn table(claim: Claim) -> Vec<&'static Entry> {
     rows
 }
 
-/// The reserved reasons of spec 7.2.3, by code.
+/// The reserved reasons of spec 7.3.3, by code.
 const RESERVED_REASONS: [(&str, &[&str]); 3] = [
     (
         "INPUT_INVALID",
@@ -354,7 +366,7 @@ impl<'a> Judge<'a> {
         }
     }
 
-    /// `L1.check-order` (spec 11.7 step 6, a claim of 1.2): a passing invocation changed to break two stages at once is answered by the earlier
+    /// `L1.check-order` (spec 10.7 step 6, a claim of 1.2): a passing invocation changed to break two stages at once is answered by the earlier
     /// stage, with its code and its `field` (what the earlier fault alone is answered with).
     fn l1_check_order(&'a self) -> Finding {
         let l1 = self.l1();
@@ -666,7 +678,7 @@ impl<'a> Judge<'a> {
             );
         };
         expect(&mut c, "unknown-path", l1.unknown_path, "UNKNOWN_COMMAND");
-        // `field`, when the refusal has one, is `command` (spec 10.1.2; an empty `expected` is the envelope schema's: it requires at least one word).
+        // `field`, when the refusal has one, is `command` (spec 9.1.1; an empty `expected` is the envelope schema's: it requires at least one word).
         let refusal = self
             .envelope(l1.unknown_path)
             .filter(|document| document.get("ok") == Some(&Value::Bool(false)));
@@ -891,7 +903,7 @@ impl<'a> Judge<'a> {
                 });
                 let spelled_otherwise = spelled_otherwise.flatten();
                 c.holds_at(self.calls.schema_errors, "reserved-names", spelled_otherwise.is_none(), || {
-                    format!("under {code} the reason {reason} names a situation spec 7.2.3 names {}", spelled_otherwise.unwrap_or_default())
+                    format!("under {code} the reason {reason} names a situation spec 7.3.3 names {}", spelled_otherwise.unwrap_or_default())
                 });
             }
         }
@@ -1972,7 +1984,7 @@ impl<'a> Judge<'a> {
     }
 
     /// A hint that starts with the tool name is a command line that parses against the `schema` document (spec 7.1.2): the command words, the
-    /// option names and the grammar of 9.12. A value that stands for a `<PLACEHOLDER>` is not judged against a domain or a constraint.
+    /// option names and the grammar of 4.2. A value that stands for a `<PLACEHOLDER>` is not judged against a domain or a constraint.
     fn l1_hint_command(&'a self) -> Finding {
         let l1 = self.l1();
         let mut c = self.check("L1.hint-command");
@@ -2043,7 +2055,7 @@ impl<'a> Judge<'a> {
             first.contains("schema"),
             || {
                 format!(
-                    "the first line of `--help` is {:?}, it must point at `schema` (spec 4.7)",
+                    "the first line of `--help` is {:?}, it must point at `schema` (spec 4.4.2)",
                     excerpt(first.as_bytes())
                 )
             },
@@ -2231,7 +2243,7 @@ impl<'a> Judge<'a> {
         c.finish(true)
     }
 
-    /// The 1.2 half of `L1.paging` for one paged command (spec 6.9, 10.7.2, 12.5): the cursor is bound to what the invocation gave. For a claim of exactly 1.2 every part
+    /// The 1.2 half of `L1.paging` for one paged command (spec 6.9, 9.7.2; approaches/implementation.md §3): the cursor is bound to what the invocation gave. For a claim of exactly 1.2 every part
     /// is a MUST; from 1.3 a cursor is bound to everything but `--json --limit --all --cursor --fields` (`env` values included) and the next page continues, which stay MUST,
     /// while whether an explicit default rebinds and what the next-page entry carries are recommendations (spec 6.9): their violations are advisories of the check.
     fn judge_paging_1_2(&'a self, c: &mut Conditions<'a>, run: &super::l1_plan::PagingRun) {
@@ -2438,7 +2450,7 @@ impl<'a> Judge<'a> {
                 });
             }
             c.observe(run.projected);
-            // Since 1.2 `--fields` alone is no reason to refuse (spec 12.5): the first selection with no `--json` is not refused; the text is not compared.
+            // Since 1.2 `--fields` alone is no reason to refuse (spec 6.10): the first selection with no `--json` is not refused; the text is not compared.
             if let Some(text) = run.text {
                 c.own(text);
                 let outcome = self.at(text);

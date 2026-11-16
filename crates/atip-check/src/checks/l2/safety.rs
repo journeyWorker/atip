@@ -2,7 +2,7 @@
 //! that is accepted and not done, operation keys, and `L2.effects`.
 //!
 //! **A change is a change of the snapshot**: a preview, a refusal, `--dry-run`, `--help`, `--version` and a successful read
-//! change nothing (spec 12.2), except the paths a `read` command with an `effectNote` lists in the fixture's `allowedEffects`. The
+//! change nothing (spec 11.2), except the paths a `read` command with an `effectNote` lists in the fixture's `allowedEffects`. The
 //! invocations are made by [`super::safety_plan`] and [`super::effects_plan`].
 
 use serde_json::Value;
@@ -19,23 +19,23 @@ pub(crate) const EFFECTS_ID: &str = "L2.effects";
 
 /// The safety rows, in the order of approaches/checker.md, `L2.effects` last (it is the row of the effects of every level).
 pub(crate) const TABLE: [Entry; 9] = [
-    must("L2.idempotency", &["12.3"], &[Commands]),
-    must("L2.destructive-safety", &["12.4", "12.8"], &[]),
+    must("L2.idempotency", &["11.3"], &[Commands]),
+    must("L2.destructive-safety", &["11.4", "11.8", "9.5"], &[]),
     must(
         "L2.destructive-preview",
-        &["12.2", "12.4", "12.5"],
+        &["11.2", "11.4", "11.5"],
         &[Commands],
     ),
-    must("L2.destructive-preview-stdin", &["12.5"], &[Commands]),
-    must("L2.destructive-stale", &["12.7"], &[Commands]),
-    must("L2.destructive-half", &["12.7"], &[Commands]),
-    must("L2.destructive-commit", &["12.7"], &[Commands]),
-    must("L2.async", &["13.2", "13.3"], &[Commands]),
-    must("L2.operation-key", &["13.4"], &[Commands]),
+    must("L2.destructive-preview-stdin", &["11.5"], &[Commands]),
+    must("L2.destructive-stale", &["11.7"], &[Commands]),
+    must("L2.destructive-half", &["11.7"], &[Commands]),
+    must("L2.destructive-commit", &["11.7"], &[Commands]),
+    must("L2.async", &["12.2", "12.3"], &[Commands]),
+    must("L2.operation-key", &["12.4"], &[Commands]),
 ];
 
 /// `L2.effects`: a MUST at L2 and an advisory at L0 and L1 (the caller sets the strength).
-pub(crate) const EFFECTS: Entry = must(EFFECTS_ID, &["12.2"], &[Commands]);
+pub(crate) const EFFECTS: Entry = must(EFFECTS_ID, &["11.2"], &[Commands]);
 
 /// The words of `data`'s string members, depth first.
 fn strings_of(value: &Value, out: &mut Vec<String>) {
@@ -255,13 +255,13 @@ impl<'a> Judge<'a> {
                     } else {
                         ""
                     };
-                    format!("{id} is destructive and has no --{name} option: spec 12.4 gives every destructive command --commit and --plan-digest{listed}")
+                    format!("{id} is destructive and has no --{name} option: spec 11.4 gives every destructive command --commit and --plan-digest{listed}")
                 });
                 if let Some(option) = option {
-                    c.holds("option-flag-only", option.flag_only, || format!("{id}: --{name} is not `flagOnly`: a document must never carry it (spec 12.8)"));
+                    c.holds("option-flag-only", option.flag_only, || format!("{id}: --{name} is not `flagOnly`: a document must never carry it (spec 10.6)"));
                 }
             }
-            c.holds("no-batch", !doc.input.as_ref().is_some_and(|input| input.batch), || format!("{id} is destructive and takes a batch (`input.batch`): spec 12.8 gives a destructive command no batch"));
+            c.holds("no-batch", !doc.input.as_ref().is_some_and(|input| input.batch), || format!("{id} is destructive and takes a batch (`input.batch`): spec 10.11 gives a destructive command no batch"));
         }
         if judged {
             c.finish_as(End::Observed)
@@ -321,7 +321,7 @@ impl<'a> Judge<'a> {
                 )
             });
             c.holds_at(run.preview, "preview-changes-nothing", outcome.changes.is_empty(), || {
-                format!("{}: the preview changed {}: a preview writes nothing, whatever its `effectNote` says (spec 12.2)", run.command, outcome.changes.join(", "))
+                format!("{}: the preview changed {}: a preview writes nothing, whatever its `effectNote` says (spec 11.2)", run.command, outcome.changes.join(", "))
             });
             let data = document.and_then(|document| document.get("data"));
             let digest = data
@@ -402,7 +402,7 @@ impl<'a> Judge<'a> {
             if has_dash {
                 // The replay of a `next` that needs stdin is the condition above's.
                 c.holds_at(stdin.preview, "next-without-stdin", false, || {
-                    format!("{}: `meta.next[0].argv` ({}) carries `--input -`: a replay has no stdin to read it from (spec 12.5)", run.command, argv.join(" "))
+                    format!("{}: `meta.next[0].argv` ({}) carries `--input -`: a replay has no stdin to read it from (spec 11.5)", run.command, argv.join(" "))
                 });
                 continue;
             }
@@ -593,7 +593,7 @@ impl<'a> Judge<'a> {
                 }
                 if next_argv(&start.stdout).is_some() {
                     c.holds_at(outcome.start, "start-reports-identifier", identifier_of(&start.stdout).is_some(), || {
-                        format!("{}: the start reports no identifier that `meta.next[0].argv` carries: `data` must name what the wait follows (spec 13.2)", run.command)
+                        format!("{}: the start reports no identifier that `meta.next[0].argv` carries: `data` must name what the wait follows (spec 12.2)", run.command)
                     });
                 }
                 let mut words = Vec::new();
@@ -603,10 +603,10 @@ impl<'a> Judge<'a> {
                 let claims_done = words
                     .iter()
                     .any(|word| COMPLETE_WORDS.contains(&word.to_ascii_lowercase().as_str()));
-                c.holds_at(outcome.start, "start-is-not-complete", !claims_done, || format!("{}: the start presents the work as complete ({}): accepted is not done (spec 13.2)", run.command, words.join(", ")));
+                c.holds_at(outcome.start, "start-is-not-complete", !claims_done, || format!("{}: the start presents the work as complete ({}): accepted is not done (spec 12.2)", run.command, words.join(", ")));
                 let next = next_argv(&start.stdout);
-                // Always: next[0] is there, and it reads (the command that reads or waits for the outcome, spec 13.2).
-                c.holds_at(outcome.start, "start-next-exists", next.is_some(), || format!("{}: the start has no `meta.next[0]`: it must lead with the command that reads or waits for the outcome (spec 13.2)", run.command));
+                // Always: next[0] is there, and it reads (the command that reads or waits for the outcome, spec 12.2).
+                c.holds_at(outcome.start, "start-next-exists", next.is_some(), || format!("{}: the start has no `meta.next[0]`: it must lead with the command that reads or waits for the outcome (spec 12.2)", run.command));
                 let Some(next) = next else { continue };
                 let reads = self
                     .docs()
@@ -615,8 +615,8 @@ impl<'a> Judge<'a> {
                     .filter(|doc| next.starts_with(&doc.path))
                     .max_by_key(|doc| doc.path.len())
                     .map(|doc| doc.effect == "read");
-                c.holds_at(outcome.start, "start-next-reads", reads != Some(false), || format!("{}: `meta.next[0]` of the start ({}) is not a read command: it must read or wait for the outcome, not start more work (spec 13.2)", run.command, next.join(" ")));
-                // The three outcomes are driven only when next[0] carries `--wait`, the reserved option of a command that waits (spec 13.3).
+                c.holds_at(outcome.start, "start-next-reads", reads != Some(false), || format!("{}: `meta.next[0]` of the start ({}) is not a read command: it must read or wait for the outcome, not start more work (spec 12.2)", run.command, next.join(" ")));
+                // The three outcomes are driven only when next[0] carries `--wait`, the reserved option of a command that waits (spec 12.3).
                 if !next
                     .iter()
                     .any(|word| word == "--wait" || word.starts_with("--wait="))
@@ -675,7 +675,7 @@ impl<'a> Judge<'a> {
                                 .and_then(Value::as_bool)
                                 == Some(true);
                             c.holds_at(wait, "timeout-retryable", retryable, || {
-                                format!("{}: the timed out wait answered retryable {}: spec 13.3 wants a retryable code", run.command, wait_doc.and_then(|document| document.pointer("/error/retryable")).map_or("absent".to_string(), ToString::to_string))
+                                format!("{}: the timed out wait answered retryable {}: spec 12.3 wants a retryable code", run.command, wait_doc.and_then(|document| document.pointer("/error/retryable")).map_or("absent".to_string(), ToString::to_string))
                             });
                             let again = next_argv(&waited.stdout);
                             c.holds_at(wait, "timeout-next-is-the-same-wait", again.as_ref().is_some_and(|argv| words_of(argv) == words_of(&waited.call.argv)), || {
@@ -745,11 +745,11 @@ impl<'a> Judge<'a> {
             let mut starts_nothing = true;
             if repeated {
                 c.holds_at(run.repeat, "repeat-same-report", report(run.first).is_some() && report(run.first) == report(run.repeat), || {
-                    format!("{}: a repeat of the same --operation returned {}, the first request {}: a repeat returns the result of the first (spec 13.4)", run.command, report(run.repeat).map_or("nothing".to_string(), |data| data.to_string()), report(run.first).map_or("nothing".to_string(), |data| data.to_string()))
+                    format!("{}: a repeat of the same --operation returned {}, the first request {}: a repeat returns the result of the first (spec 12.4)", run.command, report(run.repeat).map_or("nothing".to_string(), |data| data.to_string()), report(run.first).map_or("nothing".to_string(), |data| data.to_string()))
                 });
                 starts_nothing = self.at(run.repeat).changes.is_empty();
                 c.holds_at(run.repeat, "repeat-starts-nothing", starts_nothing, || {
-                    format!("{}: a repeat of the same --operation changed {}: it must start no new work (spec 13.4)", run.command, self.at(run.repeat).changes.join(", "))
+                    format!("{}: a repeat of the same --operation changed {}: it must start no new work (spec 12.4)", run.command, self.at(run.repeat).changes.join(", "))
                 });
             }
             // A tool that starts again on a sequential repeat starts again under a concurrent pair too: that is not judged twice.
@@ -757,7 +757,7 @@ impl<'a> Judge<'a> {
                 let both = succeeds(run.pair[0]) && succeeds(run.pair[1]);
                 c.holds_at(run.pair[0], "concurrent-one-start", both && run.pair_state == run.lone_state, || {
                     if both {
-                        format!("{}: two concurrent starts with one --operation left another state than one start of it alone: the worker saw more than one start (spec 13.4, reservation)", run.command)
+                        format!("{}: two concurrent starts with one --operation left another state than one start of it alone: the worker saw more than one start (spec 12.4, reservation)", run.command)
                     } else {
                         format!(
                             "{}: two concurrent starts with one fresh --operation did not both succeed: {} / {}",

@@ -409,7 +409,7 @@ fn atip_checkl2safety_03_every_condition_a_conforming_run_judges_has_a_seed_and_
 #[test]
 fn atip_checkl2safety_04_the_variants_that_pass_are_no_failure_a_one_word_digest_a_pairs_own_code_a_start_whose_next_only_reads_an_allowed_audit_line_and_directories_that_are_no_effect(
 ) {
-    // Planted together: `next[0]` writes the digest as `--plan-digest=<hex>` (spec 9.12.1); the half `--commit` alone is refused
+    // Planted together: `next[0]` writes the digest as `--plan-digest=<hex>` (spec 4.2.1); the half `--commit` alone is refused
     // with the pair's own code; `stamp` appends an audit line the fixture allows and its note names, and makes an empty directory
     // on every run; `peek` makes the directory that holds its allowed file and another that holds nothing; and the fixture lists
     // no `seal`, a write that is named and never run; the start of the worker has a `next[0]` that only reads.

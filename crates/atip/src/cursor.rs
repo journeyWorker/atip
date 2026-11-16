@@ -1,4 +1,4 @@
-//! Paging cursors bound to the call that issued them (spec 6.9, 15.10; approaches/typescript.md 3.8).
+//! Paging cursors bound to the call that issued them (spec 6.9, 15.7; approaches/typescript.md 3.8).
 //!
 //! A cursor is one opaque ASCII string. It carries the *scope* (the command that issued it), the *binding* (a digest of the
 //! arguments of the call that issued it) and the tool's own *position* in the result, and it refuses to be resumed by another
@@ -80,7 +80,7 @@ impl Cursors {
 
     /// The binding of an invocation whose arguments are `given`: the explicit arguments the rules of the minor name, the
     /// tool's flag-only options apart from them, and, for 1.2 and later, the environment values. A switch that is `false`, a count of
-    /// `0` and an empty list are not given (spec 10.7.2), and an argument given twice counts once, the last. An integer
+    /// `0` and an empty list are not given (spec 9.7.2), and an argument given twice counts once, the last. An integer
     /// that is not within ±(2^53-1), or a number that is not an integer, is an error (see [`crate::jcs`]).
     pub fn binding(&self, given: &[Given]) -> Result<Binding, jcs::Error> {
         let twelve = self.rules == Minor::V1_2;
@@ -185,7 +185,7 @@ pub fn next_page_argv(
     write_argv(path, &arguments)
 }
 
-/// Why a cursor was refused (spec 7.2.3).
+/// Why a cursor was refused (spec 7.3.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
     /// The cursor was not issued by this command, or is not a cursor.
@@ -265,7 +265,7 @@ impl From<CursorInvalid> for CliError {
     }
 }
 
-/// The reasons of `CURSOR_INVALID` for a tool's code row, sorted by name (spec 7.2.3, 7.6).
+/// The reasons of `CURSOR_INVALID` for a tool's code row, sorted by name (spec 7.3.3, 7.6).
 pub const CURSOR_INVALID_REASONS: [ReasonInfo; 3] = [
     ReasonInfo {
         reason: "ARGUMENTS_CHANGED",
@@ -692,7 +692,7 @@ mod tests {
             CliError::from(CursorInvalid::expired()).reason_name(),
             Some("EXPIRED")
         );
-        // The rows a tool registers under `CURSOR_INVALID`: sorted, the three reasons of spec 7.2.3.
+        // The rows a tool registers under `CURSOR_INVALID`: sorted, the three reasons of spec 7.3.3.
         let names: Vec<&str> = CURSOR_INVALID_REASONS
             .iter()
             .map(|reason| reason.reason)

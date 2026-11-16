@@ -6,7 +6,7 @@
 //! succeed, and the process exit code. The exit code and `retryable` are not
 //! chosen at the site that builds the error: they come from the code's row in
 //! the tool's table of [`CodeInfo`] rows ([`CliError::from_row`]), so one code
-//! has one exit everywhere and nothing overrides it at a call site (spec 7.3.2).
+//! has one exit everywhere and nothing overrides it at a call site (spec 7.4.2).
 //! A situation that needs another exit needs another code.
 //!
 //! The crate owns the shape and the tool owns the table: which codes exist,
@@ -15,7 +15,7 @@
 //!
 //! - text mode, on stderr: [`CliError::human`], `<tool>: <CODE>: <message>`,
 //!   then indented `field:`, `expected:`, `suggestions:` and `hint:` lines
-//!   for the members the error has (spec 7.4);
+//!   for the members the error has (approaches/implementation.md §6);
 //! - JSON mode: [`CliError::body_with`], the failure envelope's `error` member
 //!   ([`ErrorBody`]): `code`, `reason` (one of the reasons registered under the
 //!   code, since 1.1), `message`, `retryable`, then `field` (the argument or
@@ -274,7 +274,7 @@ struct CliErrorDetail {
     received: Option<String>,
     /// The nearest valid words, closest first.
     suggestions: Vec<String>,
-    /// Tool extension members of the error object (`x-<tool>`, spec 7.1): name and value.
+    /// Tool extension members of the error object (`x-<tool>`, spec 9.10.2): name and value.
     extensions: BTreeMap<String, Value>,
     /// Every error of an input that yields several, the first included (spec 7.1.1); empty for an error alone.
     details: Vec<CliError>,
@@ -471,7 +471,7 @@ impl CliError {
 
     /// The stderr text: `<tool>: <CODE>: <message>`, then one indented line for
     /// each of `field`, `expected`, `suggestions` and `hint` the error has
-    /// (spec 7.4.1). `tool` is the executable name (`canon`). `field` is the
+    /// (approaches/implementation.md §6). `tool` is the executable name (`canon`). `field` is the
     /// name as the tool states it in the document (see [`CliError::body_with`]).
     pub fn human(&self, tool: &str, field: Option<&str>, suggestions: &[String]) -> String {
         let mut text = format!("{tool}: {}: {}", self.code, self.message);

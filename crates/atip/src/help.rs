@@ -4,7 +4,7 @@
 //! `--json` refuses with `USAGE`, `field` `--help` and the `hint` `<tool> schema <PATH> --json` for the path it named
 //! (`<tool> schema --json` at the root), and `--version` with `--json` refuses with `USAGE`, `field` `--version` and the hint
 //! `<tool> --version` (every envelope's `meta.toolVersion` carries the version). Both resolve the path first, so a word that is
-//! no command still answers `UNKNOWN_COMMAND` with the valid words there (spec 4.4.1, 1.4.2). Earlier minors MAY answer
+//! no command still answers `UNKNOWN_COMMAND` with the valid words there (spec 4.4.1, since 1.4.2). Earlier minors MAY answer
 //! `--help --json` with the `schema` document; a tool that declares one of them does not call these.
 //!
 //! [`json_request`] reads the flag from argv before clap has parsed it, and [`Request::refusal`] builds the refusal over the
@@ -126,7 +126,7 @@ pub fn refuse_help(root: &Command, tool: &str, words: &[String]) -> CliError {
     }
 }
 
-/// `--version --json` over the path `words` (spec 4.4.1, 1.4.2): `UNKNOWN_COMMAND` when a word is no command, else `USAGE`
+/// `--version --json` over the path `words` (spec 4.4.1, since 1.4.2): `UNKNOWN_COMMAND` when a word is no command, else `USAGE`
 /// with `field` `--version` and the hint `<tool> --version`.
 pub fn refuse_version(root: &Command, tool: &str, words: &[String]) -> CliError {
     match resolved_path(root, tool, words) {

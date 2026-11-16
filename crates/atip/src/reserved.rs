@@ -12,7 +12,7 @@ use crate::error::{CliError, CodeInfo};
 use crate::minor::Minor;
 
 /// An error of the reserved code `name`, with the exit and retryability the contract gives it (spec 7.3.1): the table, not a
-/// call site, chooses them (spec 7.3.2).
+/// call site, chooses them (spec 7.4.2).
 ///
 /// # Panics
 /// When `name` is not a code of [`RESERVED_CODES`]: the call is a bug of this crate.
