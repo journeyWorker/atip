@@ -1,6 +1,6 @@
 {
   "name": "@journeykit/atip",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The atip/1 contract for TypeScript tools on Effect 4: defineCommand, defineError, defineTool, the schema documents, the envelope, the runner",
   "license": "MIT",
   "repository": {

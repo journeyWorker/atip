@@ -309,20 +309,28 @@ const contractCodes = (command: CommandDescription, rules: ContractRules): Reado
 export const FLAG_ONLY_SINCE_12: ReadonlyArray<string> = ["limit", "cursor", "all", "fields"];
 
 /**
- * A declared command as the tool describes it: its own options, then the tool's shared ones, then the contract's it
- * lacks (in a tool that declares 1.2, the reserved paging and selection options flag-only); its own constraints, then
- * the shared options', then the contract's; its declared codes, then the contract's and the tool's; and the tool's own
- * members as it publishes them.
+ * A declared command as the tool describes it: its own options, then the contract's it lacks (`--input`, `--fields`,
+ * `--commit`, `--plan-digest`), then the tool's shared ones, then `--json` last (in a tool that declares 1.2, the
+ * reserved paging and selection options flag-only); its own constraints, then the shared options', then the
+ * contract's; its declared codes, then the contract's and the tool's; and the tool's own members as it publishes them.
  */
 export const toolDescription = (
   declared: CommandDescription,
   tool: ToolProfile,
 ): CommandDescription => {
+  const sharedOptions = tool.sharedOptions(declared);
   const shared: CommandDescription = {
     ...declared,
-    options: [...declared.options, ...tool.sharedOptions(declared)],
+    options: [...declared.options, ...sharedOptions],
   };
-  const options = [...shared.options, ...contractOptions(shared, tool.contract)];
+  const contract = contractOptions(shared, tool.contract);
+  const json = contract.filter((option) => option.name === "json");
+  const options = [
+    ...declared.options,
+    ...contract.filter((option) => option.name !== "json"),
+    ...sharedOptions,
+    ...json,
+  ];
   const withOptions: CommandDescription = {
     ...declared,
     options: declaresAtLeast(tool.contractVersion, "1.2")
