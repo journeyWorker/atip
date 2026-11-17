@@ -1,5 +1,39 @@
 # Changelog
 
+## TypeScript 0.1.0 (unreleased)
+
+No spec change; the spec stays 1.6.1. This is the first release of the TypeScript package `@journeykit/atip`
+(`packages/atip`, npm), which implements approaches/typescript.md §3 for tools on Effect 4. It supports the minors 1.1
+to 1.6 (`CONTRACT_VERSION` `"1.6"`).
+
+- **What it gives.** `defineCommand` (an Effect Schema `Struct` as the input, typed handler arguments and error
+  channel), `defineError` and `defineWarning`, `defineTool` (tree, group and command documents, the `--schemas` answer,
+  error and warning registries, `schema` and `skills show`), the argv parser and the `--input` merge, the runner
+  `runCommandLine`, cursors, plan digests with `runDestructive`, field paths, next steps, envelope Schemas, and
+  `@journeykit/atip/validate`.
+- **Contract options and codes come from the package.** `defineTool` adds `--json` to every command, `--input` to
+  writes and to a read that declares a batch, `--fields` where an output declares `fields`, and `--commit` and
+  `--plan-digest` (each requiring the other) to a destructive command. It lists the `INPUT_*` codes with `--input` (a
+  1.4 document implies them), `PLAN_STALE`, `CURSOR_INVALID` with `--cursor` and `BATCH_INCOMPLETE` with a batch.
+  `profile.contract` rewords the help texts, chooses the commands that take `--input`, and names finer codes
+  (`commitPairCode`, `fieldsCode`). A tool's own option of a reserved name replaces the package's.
+- **Batches (spec 10.11).** The runner checks every item first: the first refusal answers for the whole batch, with
+  its pointer under `/<index>`. It then runs the items in order and stops at the first that fails, which gives
+  `BATCH_INCOMPLETE` with the items `written`, `unchanged`, `failed` or `skipped`. `batchReport` builds the report. An
+  empty batch is `INPUT_INVALID` (`EMPTY`), and one over `maxItems` is `INPUT_TOO_LARGE` (`TOO_MANY_ITEMS`).
+- **Checks when a tool is defined.** Domain patterns must use the dialect of the declared minor (`\p{White_Space}` and
+  `\P{White_Space}` from 1.5). The other checks are comma lists, path shape, one meaning per option name (tool-wide
+  below 1.6, per group from 1.6), code names, finer replacements of `USAGE`, and every code a command lists being
+  registered. The checks are exported for tools that keep their own command records.
+- **Cursors** are bound by `sha256:` and the SHA-256 of the binding's RFC 8785 text (format version 2).
+- **Schemas.** The package publishes `schema/`, a byte-identical copy of the spec's `schema/` that a test checks.
+  Its tests read `examples/` in place, the plan digest vectors included.
+- **Releases.** The tag `atip-ts-vX.Y.Z` publishes the package (`.github/workflows/publish-ts.yml`). CI's
+  `typescript` job runs the typecheck (the negative type tests included), the tests, the build, and the built package
+  under Node and Bun.
+- **Not yet in the package:** stream outputs, `async` report rules, `--operation` and its operation store, and running
+  a destructive handler from the runner itself (the tool's `execute` hook calls `runDestructive`).
+
 ## Crates 0.4.1 (2026-11-15)
 
 - **`atip-check` 0.4.1:** reports and code cite the sections of the current spec, not of 1.2; a test checks each exists.

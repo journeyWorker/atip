@@ -1,0 +1,126 @@
+name: Publish @journeykit/atip
+run-name: "publish @journeykit/atip ${{ inputs.version || github.ref_name }}"
+
+# Publishes the TypeScript package `@journeykit/atip` (packages/atip) to npm.
+#
+# A release bumps `version` in packages/atip/package.json in a normal commit on main, then pushes the tag
+# `atip-ts-vX.Y.Z` on it. The tag must name the version of packages/atip/package.json at that commit, or nothing is
+# published. `workflow_dispatch` publishes the version at the chosen ref (`gh workflow run publish-ts.yml --ref main -f
+# version=X.Y.Z`); `version` must equal packages/atip/package.json's at that ref.
+#
+# Before publishing, the job runs what CI's `typescript` job runs (frozen lockfile, typecheck, tests, build, smoke), so
+# a tag on a commit that does not pass publishes nothing. A version with a hyphen (`0.2.0-rc.1`) is published under the
+# dist-tag `next`, never `latest`. Re-runnable: a version already on npm is skipped, never published again.
+
+on:
+  push:
+    tags:
+      - "atip-ts-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version of packages/atip/package.json at the chosen ref (confirms what is published)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish @journeykit/atip to npm
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: packages/atip
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify the tag or the confirmed version against packages/atip/package.json
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          CONFIRMED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version package.json)
+          name=$(jq -r .name package.json)
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "::error::no version in packages/atip/package.json" >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            if [ "$REF_TYPE" != "tag" ] || [ "$REF_NAME" != "atip-ts-v$version" ]; then
+              echo "::error::tag $REF_NAME does not match packages/atip/package.json version $version (expected atip-ts-v$version)" >&2
+              exit 1
+            fi
+          elif [ "$CONFIRMED" != "$version" ]; then
+            echo "::error::confirmed version '$CONFIRMED' is not packages/atip/package.json's $version at $REF_NAME" >&2
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "name=$name"
+          } >> "$GITHUB_OUTPUT"
+          echo "$name $version"
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      # The same npm as publish-check.yml: OIDC trusted publishing needs npm 11.5.1 or later; npm 12 keeps
+      # `--provenance` and token publishing. npm tries OIDC first (`id-token: write`, against the trusted publisher
+      # configured on the package's page: repository journeyWorker/atip, workflow publish-ts.yml) and falls back to
+      # NODE_AUTH_TOKEN (the NPM_TOKEN secret), the bootstrap for a package that does not exist yet. Since npm 12 an
+      # unpublished package is created `restricted` unless asked otherwise, so the publish passes `--access public`.
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@12.2.2
+
+      - name: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile
+
+      - name: typecheck, test, build, smoke
+        run: |
+          set -euo pipefail
+          bun run typecheck
+          bun run test
+          bun run build
+          bun run smoke
+
+      # Fails closed: only npm's E404 (never published) counts as absent; any other failure of `npm view` stops the
+      # release rather than being read as "not published".
+      - name: Publish (skipped when the version is on npm)
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          err=$(mktemp)
+          status=0
+          out=$(npm view "$NAME@$VERSION" version 2>"$err") || status=$?
+          if [ "$status" -eq 0 ] && [ "$out" = "$VERSION" ]; then
+            echo "$NAME@$VERSION is already on npm: skipped."
+            exit 0
+          fi
+          if [ "$status" -ne 0 ] && ! grep -q 'E404' "$err"; then
+            echo "::error::npm view $NAME@$VERSION failed (not a 404), stopping the release:" >&2
+            cat "$err" >&2
+            exit 1
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            npm publish --provenance --access public --tag next
+          else
+            npm publish --provenance --access public
+          fi

@@ -1,0 +1,54 @@
+{
+  "name": "@journeykit/atip",
+  "version": "0.1.0",
+  "description": "The atip/1 contract for TypeScript tools on Effect 4: defineCommand, defineError, defineTool, the schema documents, the envelope, the runner",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journeyWorker/atip.git",
+    "directory": "packages/atip"
+  },
+  "homepage": "https://github.com/journeyWorker/atip/tree/main/packages/atip#readme",
+  "keywords": ["atip", "cli", "agents", "effect", "json-schema"],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./validate": {
+      "types": "./dist/validate.d.ts",
+      "default": "./dist/validate.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "schema", "src"],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test",
+    "smoke": "node smoke.mjs && bun smoke.mjs",
+    "schema:copy": "cp ../../schema/*.json schema/",
+    "prepack": "bun run build"
+  },
+  "peerDependencies": {
+    "ajv": "^8.17.1",
+    "effect": "^4.1.1"
+  },
+  "peerDependenciesMeta": {
+    "ajv": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "@types/node": "24.19.2",
+    "ajv": "8.20.0",
+    "effect": "4.1.1",
+    "typescript": "7.0.2"
+  }
+}

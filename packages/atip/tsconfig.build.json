@@ -1,0 +1,15 @@
+{
+  // The published build (`bun run build`): ESM JavaScript and declarations of src/ into dist/, the `.ts` import
+  // specifiers rewritten to `.js`, so Node and Bun load the same files.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
