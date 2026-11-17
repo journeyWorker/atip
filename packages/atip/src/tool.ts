@@ -197,7 +197,8 @@ export interface ToolProfile {
 /**
  * The contract's reserved options and the codes they imply, which the package adds to every described command so a
  * tool writes none of them: `--json` on every command (spec 4.3); `--input` on the commands `takesInput` names (spec
- * 10.1: every write and destructive command at L2); `--fields` on a command whose output declares `fields` (spec 6.10);
+ * 10.1: every write and destructive command at L2, and a read that declares a batch), with the `INPUT_*` codes;
+ * `--fields` on a command whose output declares `fields` (spec 6.10);
  * `--commit` and `--plan-digest` on a destructive command (spec 11.4), each requiring the other with `commitPairCode`
  * (spec 11.7), and `PLAN_STALE` and `commitPairCode` in its errors; `BATCH_INCOMPLETE` on a command that declares a
  * batch (spec 10.11); `CURSOR_INVALID` on a command that takes `--cursor` (spec 6.9); `fieldsCode` on a command that
@@ -213,7 +214,10 @@ export interface ContractRules {
     readonly commit: string;
     readonly planDigest: string;
   };
-  /** Whether the command takes `--input`. Default: every `write` and `destructive` command (a `read` may, spec 10.1). */
+  /**
+   * Whether the command takes `--input`. Default: every `write` and `destructive` command, and a `read` that declares
+   * a batch (spec 10.1, Annex S2 rule 5); another `read` may.
+   */
   readonly takesInput: (command: CommandDescription) => boolean;
   /**
    * The registered code the relation of `--commit` and `--plan-digest` answers (spec 11.7: `USAGE`, a finer
@@ -236,7 +240,8 @@ export const CONTRACT_RULES: ContractRules = {
     commit: "Act: carry out the plan whose digest --plan-digest gives",
     planDigest: "data.planDigest of the preview being committed",
   },
-  takesInput: (command) => command.effect !== "read",
+  // a read takes --input when it declares a batch, which only --input can carry (Annex S2 rule 5)
+  takesInput: (command) => command.effect !== "read" || command.input.batch !== undefined,
 };
 
 /** The contract's options a command does not give itself (its own and the tool's shared ones), in the contract's order. */
@@ -282,12 +287,14 @@ const contractConstraints = (
 };
 
 /**
- * The codes the contract's options and a batch imply on a command (spec 6.9, 6.10, 10.11, 11.7), beyond `PLAN_STALE`
- * (`describe`).
+ * The codes the contract's options and a batch imply on a command (spec 6.9, 6.10, 7.3.1, 10.11, 11.7), beyond
+ * `PLAN_STALE` (`describe`): the `INPUT_*` codes with `--input`, which a document before 1.4 lists (Annex S2 rule 4)
+ * and a 1.4 document implies.
  */
 const contractCodes = (command: CommandDescription, rules: ContractRules): ReadonlyArray<string> => {
   const takes = (name: string) => command.options.some((option) => option.name === name);
   return [
+    ...(takes("input") ? ["INPUT_INVALID", "INPUT_CONFLICT", "INPUT_TOO_LARGE"] : []),
     ...(command.input.batch === undefined ? [] : ["BATCH_INCOMPLETE"]),
     ...(takes("cursor") ? ["CURSOR_INVALID"] : []),
     ...(takes("fields") && rules.fieldsCode !== undefined ? [rules.fieldsCode] : []),

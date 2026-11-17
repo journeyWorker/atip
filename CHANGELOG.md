@@ -12,9 +12,10 @@ to 1.6 (`CONTRACT_VERSION` `"1.6"`).
   `runCommandLine`, cursors, plan digests with `runDestructive`, field paths, next steps, envelope Schemas, and
   `@journeykit/atip/validate`.
 - **Contract options and codes come from the package.** `defineTool` adds `--json` to every command, `--input` to
-  writes, `--fields` where an output declares `fields`, and `--commit` and `--plan-digest` (each requiring the other)
-  to a destructive command. It lists `PLAN_STALE`, `CURSOR_INVALID` with `--cursor` and `BATCH_INCOMPLETE` with a
-  batch. `profile.contract` rewords the help texts, chooses the commands that take `--input`, and names finer codes
+  writes and to a read that declares a batch, `--fields` where an output declares `fields`, and `--commit` and
+  `--plan-digest` (each requiring the other) to a destructive command. It lists the `INPUT_*` codes with `--input` (a
+  1.4 document implies them), `PLAN_STALE`, `CURSOR_INVALID` with `--cursor` and `BATCH_INCOMPLETE` with a batch.
+  `profile.contract` rewords the help texts, chooses the commands that take `--input`, and names finer codes
   (`commitPairCode`, `fieldsCode`). A tool's own option of a reserved name replaces the package's.
 - **Batches (spec 10.11).** The runner checks every item first: the first refusal answers for the whole batch, with
   its pointer under `/<index>`. It then runs the items in order and stops at the first that fails, which gives

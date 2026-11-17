@@ -9,6 +9,7 @@ import {
   CONTRACT_RULES,
   CONTRACT_VERSION,
   type CommandFailure,
+  commandDocument,
   defineCommand,
   defineError,
   defineTool,
@@ -172,6 +173,9 @@ describe("defineTool: the documents and registries of acme", () => {
       "MEMBER_NOT_FOUND",
       "ROSTER_UNAVAILABLE",
       "PLAN_STALE",
+      "INPUT_INVALID",
+      "INPUT_CONFLICT",
+      "INPUT_TOO_LARGE",
       "OPTION_CONFLICT",
     ]);
     const document = ACME_TOOL.document(memberPurge);
@@ -193,16 +197,52 @@ describe("defineTool: the documents and registries of acme", () => {
     ]);
   });
 
-  test("the package adds the contract's options to a write and nothing else: --input, then --json", () => {
+  test("the package adds the contract's options to a write and nothing else: --input, then --json, and the INPUT_* codes", () => {
     const described = toolDescription(memberTag.description, ACME);
     expect(described.constraints).toEqual(memberTag.description.constraints);
-    expect(described.errors).toEqual(memberTag.description.errors);
+    expect(described.errors).toEqual([
+      ...memberTag.description.errors,
+      "INPUT_INVALID",
+      "INPUT_CONFLICT",
+      "INPUT_TOO_LARGE",
+    ]);
     expect(described.ext).toEqual(memberTag.description.ext);
     expect(described.options).toEqual([
       ...memberTag.description.options,
       inputOption(CONTRACT_RULES.help.input),
       jsonOption(CONTRACT_RULES.help.json),
     ]);
+  });
+
+  test("a 1.3 document of a command with --input lists the INPUT_* codes though no generic code names them (Annex S2 rule 4); 1.4 implies them", () => {
+    const profile13 = toolProfile({ name: "acme", genericErrors: [], contractVersion: "1.3" });
+    const listed13 = commandDocument(memberTag.description, profile13)["errors"];
+    expect(listed13).toEqual(expect.arrayContaining(["INPUT_CONFLICT", "INPUT_INVALID", "INPUT_TOO_LARGE"]));
+    const profile14 = toolProfile({ name: "acme", genericErrors: [], contractVersion: "1.4" });
+    const listed14 = commandDocument(memberTag.description, profile14)["errors"];
+    expect(JSON.stringify(listed14)).not.toContain("INPUT_");
+    // a read without --input lists none
+    expect(JSON.stringify(commandDocument(memberShow.description, profile13)["errors"])).not.toContain("INPUT_");
+  });
+
+  test("a read that declares a batch takes --input by default (Annex S2 rule 5)", () => {
+    const batchedRead = defineCommand(
+      {
+        path: ["member", "check"],
+        summary: "Check members",
+        effect: { kind: "read" },
+        input: Schema.Struct({}),
+        outputs: [report("Checked", "1.0", Schema.Struct({ ok: Schema.Boolean }))],
+        errors: [],
+        batch: { maxItems: 5, report: "1.0" },
+        examples: ["acme member check --json"],
+      },
+      () => Effect.succeed({ ok: true }),
+    );
+    const described = toolDescription(batchedRead.description, ACME);
+    expect(described.options.map((option) => option.name)).toEqual(["input", "json"]);
+    expect(described.errors).toContain("BATCH_INCOMPLETE");
+    expect(described.errors).toContain("INPUT_INVALID");
   });
 
   test("without a commit pair code the relation of --commit and --plan-digest answers USAGE, and no code is added", () => {
@@ -220,7 +260,14 @@ describe("defineTool: the documents and registries of acme", () => {
       { rule: "requires", if: { name: "commit" }, needs: ["plan-digest"] },
       { rule: "requires", if: { name: "plan-digest" }, needs: ["commit"] },
     ]);
-    expect(purge.errors).toEqual(["MEMBER_NOT_FOUND", "ROSTER_UNAVAILABLE", "PLAN_STALE"]);
+    expect(purge.errors).toEqual([
+      "MEMBER_NOT_FOUND",
+      "ROSTER_UNAVAILABLE",
+      "PLAN_STALE",
+      "INPUT_INVALID",
+      "INPUT_CONFLICT",
+      "INPUT_TOO_LARGE",
+    ]);
   });
 
   test("a tool's own option of a contract name, its own relation and its own --input rule replace the contract's", () => {
