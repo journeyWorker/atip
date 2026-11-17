@@ -1,7 +1,8 @@
 # TypeScript and Effect 4: spec-first commands
 
-Not normative. How a TypeScript tool built on Effect 4 can become ATIP conformant, and what the shared package
-`@journeykit/atip` should look like. Section numbers ("spec 10.7") refer to `spec/atip-1.md`, version 1.4.0.
+Not normative. How a TypeScript tool built on Effect 4 can become ATIP conformant, and the shared package
+`@journeykit/atip` (`packages/atip`, on npm) that implements approach B. Section numbers ("spec 10.7") refer to
+`spec/atip-1.md`, version 1.4.0; the sections cited here kept their numbers through 1.6.1.
 
 ## 1. Where a TypeScript tool starts
 
@@ -33,6 +34,25 @@ defaults that are strings or prose, and every new option is two edits that a tes
 
 One declaration per command. The input is an Effect Schema `Struct`; argv parsing, `--input` decoding, help text,
 the `schema` answer and the input JSON Schema are all derived from it, so the type exists once.
+
+**The package.** `@journeykit/atip` 0.1.0 (`packages/atip`, `bun add @journeykit/atip effect`) implements this section
+for the minors 1.1 to 1.6: `defineCommand`, `defineError`, `defineWarning`, `defineTool`, the argv parser and the
+`--input` merge of §3.2, the documents and the `--schemas` answer, `schema` and `skills show`, the runner
+(`runCommandLine`) with the batch runner of §3.5, cursors bound by §3.8 (JCS and SHA-256), plan digests and
+`runDestructive`, and the JSON Schema validators (`@journeykit/atip/validate`). `defineTool` adds the contract's
+options and codes as §3.1 says (`--json`, `--input` on writes, `--fields` where an output declares `fields`,
+`--commit` and `--plan-digest` with their relation and `PLAN_STALE`, `CURSOR_INVALID` with `--cursor`,
+`BATCH_INCOMPLETE` with a batch); a tool rewords them or names its finer codes in `profile.contract`. A pattern may use
+`\p{White_Space}` when the tool declares 1.5 or later. Where 0.1.0 differs from the sketch below:
+
+- Streams (§3.5's `stream` output), `async`'s report rules and `--operation` with an `OperationStore` are not in the
+  package yet; `async: true` only marks the document.
+- The runner does not run a destructive command's `{ plan, commit }` itself: the tool's `execute` hook calls
+  `runDestructive`, which computes the digest, previews with the commit line, and refuses `PLAN_STALE`.
+- The sketch's `path("dir")` is `Path`, a string with `format: "path"` (the kind is not recorded); `switchOption(help)`,
+  `count(help)` and `json(schema?)` are as the sketch uses them.
+
+`packages/atip/README.md` has a complete one-command tool.
 
 ### 3.1 Sketch
 
@@ -401,25 +421,31 @@ should not stop there.
 
 ## 5. Adoption order
 
-1. Publish `@journeykit/atip` with `defineCommand`, `defineError`, `defineTool`, the envelope, the registry and
-   `schema`/`skills show`.
+1. `@journeykit/atip` ships as 0.1.0 (released by the tag `atip-ts-v0.1.0`): `defineCommand`, `defineError`,
+   `defineTool` with the contract's reserved options and codes, the envelope, the registries, `schema`/`skills show`,
+   the runner with batches, cursors and plan digests. Streams, `async` reports and `--operation` come in a later 0.x
+   release.
 2. A tool with a hand-written spec ports its records to `defineCommand` one group at a time; handlers keep their
    bodies. Byte-compared generated files and seeded grammar tests stay and must stay green; the generated JSON
-   changes only where atip/1 differs from the tool's earlier shape.
+   changes only where atip/1 differs from the tool's earlier shape. A tool that keeps its own command records instead
+   (a registry that generates its argv) maps them to `CommandDescription` and uses the parser, the `--input` merge, the
+   document writers and the rule checks `defineTool` runs (`patternMinorProblems`, `commaListProblems`,
+   `pathShapeProblems`, `optionMeaningProblems`, `unregisteredCodeProblems`) without `defineTool`.
 3. A tool on `effect/cli` reaches L0 first, independent of the parser (text by default with `--json`; `field`,
    `expected` and `suggestions` at the top of the error, `details` only for several errors; UPPER_SNAKE codes;
    `meta.tool`; nothing on stdout when a module fails to load, spec 5.5), then L1 through §4 or directly by
-   porting families to `defineCommand`, then L2.
+   porting families to `defineCommand`, then L2. Before porting it can already use the parts that need no
+   declaration: the envelope Schemas, `defineError`, plan digests, field paths, cursors and `@journeykit/atip/validate`.
 4. Whatever the starting point, the contract changes that are not renames: a `--yes` or `--dry-run`-to-act flag
    on a destructive command becomes preview + `--commit --plan-digest` (spec 11.8); a digest lives at
    `data.planDigest`; an idempotency key option is `--operation` (spec 12.4); several values of one kind are a
    repeatable option, never a second operand of another kind (Annex S1 item 2); a refusal or a `schema` call writes no
    log file (spec 11.2).
-5. A tool that adopts 1.1 members (reasons, a warning registry, escaped field paths) sets `CONTRACT_VERSION` to
-   `"1.1"` from the package and claims "ATIP 1.1" with its level (spec 15.5); `approaches/migration.md` lists the
-   steps.
-6. A tool that adopts 1.3 renames its own codes to `<SUBJECT>_<CONDITION>`, moves its warning codes into the warning
-   registry, replaces `STOPPED_MIDWAY` by its own `INCOMPLETE` code, sets `CONTRACT_VERSION` to `"1.3"` and claims
-   "ATIP 1.3" with its level (spec 15.5, 15.8); `approaches/migration.md` lists the steps.
+5. A tool declares its minor in its profile (`profile.contractVersion`, default the package's `CONTRACT_VERSION`,
+   `"1.6"`) and claims "ATIP 1.x" with its level (spec 15.5). A tool that adopts 1.1 members (reasons, a warning
+   registry, escaped field paths) declares at least `"1.1"`; one that adopts 1.3 renames its own codes to
+   `<SUBJECT>_<CONDITION>`, moves its warning codes into the warning registry and replaces `STOPPED_MIDWAY` by its
+   own `INCOMPLETE` code (spec 15.8); `defineTool` refuses a registry that breaks the rules of the declared minor.
+   `approaches/migration.md` lists the steps.
 
 `approaches/migration.md` lists the steps for any tool and two worked examples.

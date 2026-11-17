@@ -2,4 +2,7 @@
 target/
 # The platform binaries the release workflow stages into the npm packages.
 /npm/*/bin/
+# The TypeScript package's dependencies and build output (packages/atip: `bun install`, `bun run build`).
+node_modules/
+/packages/atip/dist/
 .DS_Store

@@ -43,7 +43,7 @@ contract was called `agent-cli/1`.
 
 **Names.** Contract id `atip/1` (`meta.contract`); schema `$id`s under `https://atip.dev/1/` (placeholders); the
 checker command `atip check` (npm `@journeykit/atip-check`, crate `atip-check`); the TypeScript package `@journeykit/atip`
-(approaches/typescript.md; not published yet) and the Rust crate `atip`. OpenCLI is out of scope (spec 1.4).
+(`packages/atip`, approaches/typescript.md) and the Rust crate `atip`. OpenCLI is out of scope (spec 1.4).
 
 ## Install
 
@@ -64,6 +64,18 @@ A Rust tool links the shared crate from crates.io:
 [dependencies]
 atip = "0.3"
 ```
+
+A TypeScript tool on Effect 4 declares its commands with the package `@journeykit/atip` (`packages/atip/README.md`):
+
+```sh
+bun add @journeykit/atip effect
+```
+
+It gives `defineCommand` (one declaration per command, an Effect Schema `Struct` as the input), `defineError`,
+`defineTool` (the tree, the command documents, the registries, and the contract's reserved options and codes added
+for you), the runner (`--input`, batches, validators, preconditions), cursors, plan digests, the envelope, and
+`@journeykit/atip/validate` for tests. **Status: 0.1.0**, the first release; it supports the minors 1.1 to 1.6 of
+atip/1.
 
 `scripts/check.ts` is this repository's check of its own examples (`scripts/validate.sh`), not a step of a tool's CI.
 
@@ -123,9 +135,10 @@ names. What changed in 0.4.0 for callers of `atip`:
 | `crates/atip-check/` | The Rust crate `atip-check`: the checker, `atip check`, and its test subject, a fake tool whose behaviour is a JSON configuration (`fake-tool/`). Tags `atip-crate-v0.x.y` and `atip-check-v0.x.y` version the two crates independently of the spec and publish them (crates.io; the checker also on npm); `atip::CONTRACT_VERSION` is the newest spec minor a crate release supports (1.6 since `atip-crate-v0.3.0`); `atip check --contract` takes `1.0` to `1.6`. |
 | `docs/` | The checker's own CLI: `atip.cli.json`, its generated spec (tree, command documents, schemas answers, registries, environment), and `atip-vocabulary.tsv`, the vocabulary of its value names; and `rust-coding-rules.md`, the Rust rules of this workspace (lints, toolchain, panics, dependencies, platform code). |
 | `crates/atip-probe/` | An unpublished crate (`publish = false`): the smallest tool that depends on `atip` with its default features. Its test and `scripts/check_no_jsonschema.sh` prove with `cargo tree` that such a tool does not link `jsonschema`, which only the feature `validate` brings in. |
+| `packages/atip/` | The TypeScript package `@journeykit/atip` (npm): `defineCommand`, `defineError`, `defineTool` with the contract's reserved options and codes, the runner with batches, cursors, plan digests and the envelope, for tools on Effect 4 (approaches/typescript.md §3). It publishes `packages/atip/schema/`, a copy of `schema/` its test keeps byte-identical; its tests read `examples/` in place. |
 | `Cargo.toml`, `rust-toolchain.toml`, `clippy.toml`, `deny.toml` | The Cargo workspace (`crates/atip`, `crates/atip-check`, `crates/atip-probe`, `scripts/regex-parity`; one `Cargo.lock`), its lint set, the pinned development toolchain (Rust 1.100.0, the `rust-version` of `atip-check`; the published library `atip` keeps its own floor, Rust 1.99, tested by CI's `msrv` job), the clippy configuration and the cargo-deny policy (docs/rust-coding-rules.md). |
 | `justfile`, `.github/workflows/ci.yml` | Contributor recipes and the CI job that runs the same steps. |
-| `.github/workflows/publish-crate.yml`, `publish-check.yml`, `build-native.yml` | Releases. The tag `atip-crate-vX.Y.Z` publishes the crate `atip`; `atip-check-vX.Y.Z` builds the `atip` binary for each platform (on a runner of its architecture; the Linux ones static, for the `*-unknown-linux-musl` targets), publishes the npm packages and the crate `atip-check`. Each tag must name its crate's `Cargo.toml` version. |
+| `.github/workflows/publish-crate.yml`, `publish-check.yml`, `build-native.yml`, `publish-ts.yml` | Releases. The tag `atip-crate-vX.Y.Z` publishes the crate `atip`; `atip-check-vX.Y.Z` builds the `atip` binary for each platform (on a runner of its architecture; the Linux ones static, for the `*-unknown-linux-musl` targets), publishes the npm packages and the crate `atip-check`; `atip-ts-vX.Y.Z` publishes `@journeykit/atip`. Each tag must name its package's version (`Cargo.toml`, or `packages/atip/package.json`). |
 | `npm/` | The npm packages of the checker: `atip-check` (`@journeykit/atip-check`, the launcher that runs the platform's binary as the command `atip`) and `atip-check-<platform>` (the binaries, staged by the release workflow). |
 | `approaches/` | Not normative. `rust.md` (clap → spec, the shared crate, constraints, `--input` in Rust, canon and lute), `typescript.md` (spec-first `defineCommand` for Effect 4, fragment schemas and numeric codecs, an `effect/cli` interim), `checker.md` (the black-box conformance checker: strengths, coverage, fixtures, tool-owned obligations; a tool that tests the spec, not its definition), `migration.md` (adopting ATIP level by level, canon and lute as worked examples, and the costs the contract does not soften). |
 | `approaches/implementation.md` | Not normative. Recommendations beyond the protocol: the order of the stateless checks, which argument a constraint violation names, cursor binding details and the next-page entry, converting an `--input` document to argv, why each pattern restriction and the cross-engine record, the text-mode error form, and naming error codes in practice. Rules a tool that declares 1.2 must still follow, and that 1.3 recommends. |
@@ -177,6 +190,25 @@ there and in CI, never in code: a suppression is `#[expect(lint, reason = "...")
 or `pub(in ..)` (`scripts/check_visibility.sh`). The schemas in `schema/` are the ones the spec publishes; the `atip`
 crate embeds its own copy, `crates/atip/schema/`, so that the published crate carries them. A schema edit is made in
 `schema/` and copied with `cp schema/*.json crates/atip/schema/`; the crate's test `schema_copy` fails while the two differ.
+
+## Contributing to the TypeScript package
+
+`packages/atip` is the npm package `@journeykit/atip`, with its own lockfile. It needs Bun 1.4.4; the smoke step needs
+Node too.
+
+```sh
+cd packages/atip
+bun install --frozen-lockfile
+bun run typecheck   # tsc --noEmit over src/ and test/ (test/define-types.test.ts holds the negative type tests)
+bun run test        # bun test, against the repository's schema/ and examples/ (the plan digest vectors included)
+bun run build       # dist/: ESM JavaScript and .d.ts
+bun run smoke       # the built package loaded by Node and by Bun
+```
+
+The package publishes `schema/`, a copy of the spec's `schema/` that its test keeps byte-identical; after a schema edit,
+run `bun run schema:copy`. A release bumps `version` in `packages/atip/package.json` on main and pushes the tag
+`atip-ts-vX.Y.Z` (`.github/workflows/publish-ts.yml`), which must name that version. The workflow checks, tests,
+builds and runs `npm publish --provenance --access public`; a version with a hyphen goes to the dist-tag `next`.
 
 ## Related
 

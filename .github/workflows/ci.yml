@@ -19,7 +19,9 @@ name: CI
 # fixture's `ok` call of `check` checks `atip` itself. A third job runs `cargo deny --locked check` (deny.toml): RustSec
 # advisories, licenses, bans and sources, with a pinned cargo-deny whose download is checked against its SHA-256. A fourth
 # job builds and tests the published library `atip` on its own floor, the `rust-version` of crates/atip/Cargo.toml (`just
-# msrv`; docs/rust-coding-rules.md).
+# msrv`; docs/rust-coding-rules.md). A fifth job checks the TypeScript package `@journeykit/atip` (packages/atip): its
+# frozen lockfile, `tsc --noEmit` over the sources and the type tests, `bun test` against the repository's schema/ and
+# examples/, the build of dist/, and that build loaded by Node and by Bun (`bun run smoke`).
 #
 # The Rust toolchain is the one `rust-toolchain.toml` pins, installed with rustup (never a floating `stable`); the job fails
 # when `rustc` is not that version. It runs on ubuntu and macOS: the checker needs a pseudo-terminal and process groups, and the
@@ -172,3 +174,42 @@ jobs:
         run: |
           PATH="$PWD/target/release:$PATH" atip check --bin atip \
             --fixture crates/atip-check/tests/self/atip.fixture.json --level L2 --deep --contract 1.6
+
+  typescript:
+    name: "@journeykit/atip (TypeScript)"
+    runs-on: ubuntu-26.04
+    defaults:
+      run:
+        working-directory: packages/atip
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      # A Node for the smoke step (the package's `engines` floor is 22; this is the current LTS): Node and Bun load the
+      # same dist/.
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile
+
+      - name: typecheck (tsc --noEmit, the type tests included)
+        run: bun run typecheck
+
+      - name: bun test
+        run: bun run test
+
+      - name: build
+        run: bun run build
+
+      - name: smoke (dist/ loaded by Node and by Bun)
+        run: bun run smoke
+
+      - name: npm pack --dry-run (the published files)
+        run: npm pack --dry-run
