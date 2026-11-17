@@ -1,6 +1,12 @@
 # Changelog
 
-## TypeScript 0.1.0 (unreleased)
+## TypeScript 0.1.1 (2026-11-18)
+
+- **Option order.** The options the package adds (`--input`, `--fields`, `--commit`, `--plan-digest`) now stand
+  between a command's own options and the tool's shared ones, and `--json` stays last. A tool that lets the package
+  add `--input` keeps its earlier order in `--help` and in a refusal's `expected` list; a 1.4 document is unchanged.
+
+## TypeScript 0.1.0 (2026-11-17)
 
 No spec change; the spec stays 1.6.1. This is the first release of the TypeScript package `@journeykit/atip`
 (`packages/atip`, npm), which implements approaches/typescript.md §3 for tools on Effect 4. It supports the minors 1.1

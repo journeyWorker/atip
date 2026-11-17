@@ -214,6 +214,24 @@ describe("defineTool: the documents and registries of acme", () => {
     ]);
   });
 
+  test("the contract's options stand before the tool's shared ones, and --json last", () => {
+    const server = { ...inputOption("The server"), name: "server", valueName: "URL" };
+    const profile = toolProfile({ name: "acme", genericErrors: [], sharedOptions: () => [server] });
+    expect(toolDescription(memberTag.description, profile).options.map((option) => option.name)).toEqual([
+      ...memberTag.description.options.map((option) => option.name),
+      "input",
+      "server",
+      "json",
+    ]);
+    expect(toolDescription(memberPurge.description, profile).options.map((option) => option.name)).toEqual([
+      "input",
+      "commit",
+      "plan-digest",
+      "server",
+      "json",
+    ]);
+  });
+
   test("a 1.3 document of a command with --input lists the INPUT_* codes though no generic code names them (Annex S2 rule 4); 1.4 implies them", () => {
     const profile13 = toolProfile({ name: "acme", genericErrors: [], contractVersion: "1.3" });
     const listed13 = commandDocument(memberTag.description, profile13)["errors"];
@@ -284,8 +302,8 @@ describe("defineTool: the documents and registries of acme", () => {
     const show = toolDescription(memberShow.description, profile);
     expect(show.options.map((option) => [option.name, option.help])).toEqual([
       ["with-tags", "Include the member's tags"],
-      ["json", "One envelope on stdout"],
       ["input", "A document"],
+      ["json", "One envelope on stdout"],
     ]);
     // the tool stated one direction itself: the package adds only the other
     expect(toolDescription(memberPurge.description, profile).constraints).toEqual([
